@@ -163,7 +163,8 @@ export const WhatsAppConcierge: React.FC<WhatsAppConciergeProps> = ({ isOpen, on
 
     if (fullName) lines.push(`Name: ${capitalize(fullName)}`);
     if (phone) {
-      const formattedPhone = phone.length === 10 ? `+91 ${phone}` : phone;
+      const phoneDigits = phone.replace(/\D/g, '');
+      const formattedPhone = phoneDigits.length === 10 ? `+91 ${phoneDigits}` : phone;
       lines.push(`Phone: ${formattedPhone}`);
     }
 
@@ -238,7 +239,7 @@ export const WhatsAppConcierge: React.FC<WhatsAppConciergeProps> = ({ isOpen, on
       keepalive: true,
       body: JSON.stringify({
         fullName: formData.fullName,
-        phone: formData.phone,
+        phone: formData.phone.replace(/\D/g, '').length === 10 ? `+91${formData.phone.replace(/\D/g, '')}` : formData.phone,
         tripType: formData.tripType,
         fromCity: formData.fromCity,
         toCity: formData.toCity,
@@ -280,7 +281,10 @@ export const WhatsAppConcierge: React.FC<WhatsAppConciergeProps> = ({ isOpen, on
       case 3: return formData.isFlexible || !!formData.departureDate;
       case 4: return formData.adults > 0 && (formData.children === 0 || formData.childAges.trim().length > 0);
       case 5: return true; 
-      case 6: return formData.fullName.trim().length > 2 && formData.phone.replace(/[^0-9]/g, '').length === 10;
+      case 6: {
+        const digitsLen = formData.phone.replace(/[^0-9]/g, '').length;
+        return formData.fullName.trim().length > 2 && digitsLen >= 7 && digitsLen <= 15;
+      }
       default: return false;
     }
   };
@@ -610,23 +614,20 @@ export const WhatsAppConcierge: React.FC<WhatsAppConciergeProps> = ({ isOpen, on
               </div>
               <div className="relative group">
                 <Phone className="absolute left-4 top-1/2 -translate-y-1/2 text-gold" size={18} />
-                <div className="absolute left-11 top-1/2 -translate-y-1/2 text-base font-bold text-gray-400">
-                  +91
-                </div>
                 <input 
                   type="tel"
                   value={formData.phone}
                   onChange={(e) => {
-                    const val = e.target.value.replace(/[^0-9]/g, '').slice(0, 10);
+                    const val = e.target.value.replace(/[^\d+]/g, '');
                     updateField('phone', val);
                   }}
-                  placeholder="10-digit number"
-                  className="w-full pl-20 pr-6 py-4 bg-white border-2 border-gray-100 rounded-xl text-base font-bold text-gray-900 focus:border-gold focus:ring-0 transition-all placeholder:text-gray-200"
+                  placeholder="WhatsApp / Phone number"
+                  className="w-full pl-11 pr-6 py-4 bg-white border-2 border-gray-100 rounded-xl text-base font-bold text-gray-900 focus:border-gold focus:ring-0 transition-all placeholder:text-gray-200"
                 />
               </div>
-              {formData.phone.length > 0 && formData.phone.length !== 10 && (
+              {formData.phone.length > 0 && (formData.phone.replace(/[^0-9]/g, '').length < 7 || formData.phone.replace(/[^0-9]/g, '').length > 15) && (
                 <p className="text-[10px] text-red-500 font-bold animate-in fade-in slide-in-from-top-1">
-                  Please enter exactly 10 digits
+                  Please enter a valid phone number (7 to 15 digits)
                 </p>
               )}
               <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-100 flex items-start gap-3">
