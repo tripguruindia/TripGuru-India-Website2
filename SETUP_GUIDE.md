@@ -2,12 +2,12 @@
 
 ## 1. Dependency
 
-Deploy TravWeb first. TripGuru needs the live TravWeb backend URL for offers and lead capture.
+Deploy InTravWeb first. TripGuru needs the live InTravWeb backend URL for offers and lead capture.
 
 Production backend currently used:
 
 ```text
-https://travweb-api.onrender.com
+https://intravweb.onrender.com
 ```
 
 ## 2. Deploy On Vercel
@@ -26,7 +26,7 @@ Output Directory: dist
 4. Add this environment variable:
 
 ```env
-VITE_TRAVWEB_API_BASE=https://travweb-api.onrender.com
+VITE_INTRAVWEB_API_BASE=https://intravweb.onrender.com
 ```
 
 5. Deploy.
@@ -36,15 +36,15 @@ VITE_TRAVWEB_API_BASE=https://travweb-api.onrender.com
 1. Add `tripguruindia.com` and `www.tripguruindia.com` in Vercel.
 2. Follow Vercel DNS instructions.
 3. Keep `https://www.tripguruindia.com` as the canonical domain.
-4. Confirm TravWeb `ALLOWED_ORIGINS` includes both TripGuru domains.
+4. Confirm InTravWeb `ALLOWED_ORIGINS` includes both TripGuru domains.
 
 ## 4. End-To-End Test
 
 1. Open the live TripGuru site.
 2. Confirm homepage, destinations, offers, reviews, services, and contact sections load.
-3. Confirm offers load from TravWeb.
+3. Confirm offers load from InTravWeb.
 4. Submit the concierge form and continue to WhatsApp.
-5. Confirm the lead appears in TravWeb.
+5. Confirm the lead appears in InTravWeb.
 6. Confirm the email alert reaches `travel@tripguruindia.com`.
 
 ## 5. Local Development
@@ -58,14 +58,14 @@ npm run dev
 Use a local backend by changing `.env.local`:
 
 ```env
-VITE_TRAVWEB_API_BASE=http://localhost:4000
+VITE_INTRAVWEB_API_BASE=http://localhost:4000
 ```
 
 ## 6. Env Var Table
 
 | Variable | Required | Purpose |
 |---|---|---|
-| `VITE_TRAVWEB_API_BASE` | Yes | Base URL for TravWeb offers and lead APIs |
+| `VITE_INTRAVWEB_API_BASE` | Yes | Base URL for InTravWeb offers and lead APIs |
 
 ## 7. Project Structure
 
@@ -98,14 +98,14 @@ public/
 
 ## 9. Pre-Launch Checklist
 
-- [ ] `VITE_TRAVWEB_API_BASE` is set in Vercel.
+- [ ] `VITE_INTRAVWEB_API_BASE` is set in Vercel.
 - [ ] If deploying from ZIP, it is flat and excludes `node_modules/`, `dist/`, `.env`, and `.env.local`.
-- [ ] TravWeb is live before frontend deployment.
-- [ ] TravWeb `ALLOWED_ORIGINS` includes TripGuru domains.
+- [ ] InTravWeb is live before frontend deployment.
+- [ ] InTravWeb `ALLOWED_ORIGINS` includes TripGuru domains.
 - [ ] `npm run lint` passes.
 - [ ] `npm run build` passes.
 - [ ] Sitemap uses `https://www.tripguruindia.com`.
 - [ ] Robots file points to the TripGuru sitemap.
-- [ ] Offers load from TravWeb.
-- [ ] Lead submission appears in TravWeb.
+- [ ] Offers load from InTravWeb.
+- [ ] Lead submission appears in InTravWeb.
 - [ ] Email alert reaches `travel@tripguruindia.com`.

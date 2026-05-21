@@ -1,6 +1,6 @@
 # TripGuru Website
 
-TripGuru is the public travel website for international packages, flights, hotels, visas, and lead capture through TravWeb.
+TripGuru is the public travel website for international packages, flights, hotels, visas, and lead capture through InTravWeb.
 
 ## Tech Stack
 
@@ -9,7 +9,7 @@ TripGuru is the public travel website for international packages, flights, hotel
 - Vite
 - Tailwind CSS
 - React Router
-- TravWeb API integration
+- InTravWeb API integration
 
 ## Quick Start
 
@@ -35,12 +35,12 @@ npm run build
 | `npm run build` | Build the site and regenerate sitemap output |
 | `npm run preview` | Preview the production build locally |
 
-## TravWeb Integration
+## InTravWeb Integration
 
-Set `VITE_TRAVWEB_API_BASE` to the deployed TravWeb backend URL.
+Set `VITE_INTRAVWEB_API_BASE` to the deployed InTravWeb backend URL.
 
 ```env
-VITE_TRAVWEB_API_BASE=https://travweb-api.onrender.com
+VITE_INTRAVWEB_API_BASE=https://intravweb.onrender.com
 ```
 
 The site reads:
