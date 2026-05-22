@@ -49,8 +49,8 @@ export const Footer: React.FC = () => {
           <ul className="space-y-4">
             {[
               { label: 'Home', to: '/' },
-              { label: 'Offers', to: '/offers' },
               { label: 'Destinations', to: '/destinations' },
+              { label: 'Offers', to: '/offers' },
               { label: 'Services', to: '/services' },
               { label: 'Contact', to: '/contact' },
             ].map((item) => (
