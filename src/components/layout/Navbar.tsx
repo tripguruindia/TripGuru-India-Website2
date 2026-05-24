@@ -62,7 +62,6 @@ export const Navbar = ({ onOpenConcierge }: NavbarProps) => {
           <div className="hidden md:flex items-center gap-10">
             <Link to="/" onClick={handleHomeClick} className={`transition-colors text-xs font-semibold tracking-[0.14em] uppercase ${isScrolled ? 'text-text-primary hover:text-gold' : 'text-white/92 hover:text-white drop-shadow-[0_1px_8px_rgba(0,0,0,0.45)]'}`}>Home</Link>
             <Link to="/destinations" className={`transition-colors text-xs font-semibold tracking-[0.14em] uppercase ${isScrolled ? 'text-text-primary hover:text-gold' : 'text-white/92 hover:text-white drop-shadow-[0_1px_8px_rgba(0,0,0,0.45)]'}`}>Destinations</Link>
-            <Link to="/nepal" className={`transition-colors text-xs font-semibold tracking-[0.14em] uppercase ${isScrolled ? 'text-text-primary hover:text-gold' : 'text-white/92 hover:text-white drop-shadow-[0_1px_8px_rgba(0,0,0,0.45)]'}`}>Nepal Portal</Link>
             <Link to="/offers" className={`transition-colors text-xs font-semibold tracking-[0.14em] uppercase ${isScrolled ? 'text-text-primary hover:text-gold' : 'text-white/92 hover:text-white drop-shadow-[0_1px_8px_rgba(0,0,0,0.45)]'}`}>Offers</Link>
             <Link to="/reviews" className={`transition-colors text-xs font-semibold tracking-[0.14em] uppercase ${isScrolled ? 'text-text-primary hover:text-gold' : 'text-white/92 hover:text-white drop-shadow-[0_1px_8px_rgba(0,0,0,0.45)]'}`}>Reviews</Link>
             <Link to="/services" className={`transition-colors text-xs font-semibold tracking-[0.14em] uppercase ${isScrolled ? 'text-text-primary hover:text-gold' : 'text-white/92 hover:text-white drop-shadow-[0_1px_8px_rgba(0,0,0,0.45)]'}`}>Services</Link>
@@ -96,7 +95,6 @@ export const Navbar = ({ onOpenConcierge }: NavbarProps) => {
             <div className="px-4 py-8 flex flex-col gap-6 text-center">
               <Link to="/" onClick={handleHomeClick} className="text-text-secondary text-[11px] font-normal tracking-[0.14em] uppercase">Home</Link>
               <Link to="/destinations" onClick={() => setIsMobileMenuOpen(false)} className="text-text-secondary text-[11px] font-normal tracking-[0.14em] uppercase">Destinations</Link>
-              <Link to="/nepal" onClick={() => setIsMobileMenuOpen(false)} className="text-text-secondary text-[11px] font-normal tracking-[0.14em] uppercase">Nepal Portal</Link>
               <Link to="/offers" onClick={() => setIsMobileMenuOpen(false)} className="text-text-secondary text-[11px] font-normal tracking-[0.14em] uppercase">Offers</Link>
               <Link to="/reviews" onClick={() => setIsMobileMenuOpen(false)} className="text-text-secondary text-[11px] font-normal tracking-[0.14em] uppercase">Reviews</Link>
               <Link to="/services" onClick={() => setIsMobileMenuOpen(false)} className="text-text-secondary text-[11px] font-normal tracking-[0.14em] uppercase">Services</Link>
