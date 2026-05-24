@@ -754,3 +754,22 @@
   left: 120%;
 }
 
+/* Mobile-responsive Customizer Timeline adjustments */
+@media (max-width: 640px) {
+  .itinerary-timeline {
+    padding-left: 1.25rem;
+  }
+  .timeline-node {
+    left: -1.25rem;
+  }
+}
+
+/* Responsive Sticky Pricing Sidebar behavior */
+@media (max-width: 1024px) {
+  .quote-sidebar {
+    position: relative !important;
+    top: auto !important;
+  }
+}
+
+

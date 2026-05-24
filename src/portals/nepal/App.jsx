@@ -4543,7 +4543,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                           });
 
                           return (
-                            <div key={pkg.id} className="premium-card bg-white flex flex-col justify-between h-[500px] relative border border-slate-200 rounded-2xl overflow-hidden hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
+                            <div key={pkg.id} className="premium-card bg-white flex flex-col justify-between min-h-[520px] md:h-[520px] relative border border-slate-200 rounded-2xl overflow-hidden hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
                               {/* Card Banner Cover */}
                               <div className="img-zoom-container h-[160px] relative overflow-hidden shrink-0">
                                 <img 
@@ -4729,7 +4729,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                               
                               {/* Hotel 1: Marriott Kathmandu */}
-                              <div className="premium-card bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between h-[360px] group">
+                              <div className="premium-card bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between min-h-[360px] md:h-[360px] group">
                                 <div className="h-[140px] relative overflow-hidden shrink-0">
                                   <img 
                                     src="/hotel_marriott.png" 
@@ -4753,7 +4753,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                               </div>
 
                               {/* Hotel 2: Temple Tree Resort & Spa */}
-                              <div className="premium-card bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between h-[360px] group">
+                              <div className="premium-card bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between min-h-[360px] md:h-[360px] group">
                                 <div className="h-[140px] relative overflow-hidden shrink-0">
                                   <img 
                                     src="/hotel_templetree.png" 
@@ -4777,7 +4777,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                               </div>
 
                               {/* Hotel 3: Barahi Jungle Lodge */}
-                              <div className="premium-card bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between h-[360px] group">
+                              <div className="premium-card bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm flex flex-col justify-between min-h-[360px] md:h-[360px] group">
                                 <div className="h-[140px] relative overflow-hidden shrink-0">
                                   <img 
                                     src="/hotel_barahi.png" 
@@ -5043,9 +5043,9 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                         
                         {/* DESTINATIONS INPUT BLOCK */}
                         <div>
-                          <div className="flex items-center justify-between mb-2">
-                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Destinations</h4>
-                            <div className="flex gap-2">
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+                            <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider text-left">Destinations</h4>
+                            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                               <button 
                                 type="button"
                                 onClick={() => {
@@ -5079,14 +5079,14 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                     setB2cSubView('customize');
                                   }
                                 }}
-                                className="bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold py-2 px-3.5 rounded-xl text-xs transition border border-indigo-200 flex items-center gap-1.5 shadow-sm cursor-pointer select-none"
+                                className="w-full sm:w-auto bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold py-2 px-3.5 rounded-xl text-xs transition border border-indigo-200 flex items-center justify-center gap-1.5 shadow-sm cursor-pointer select-none"
                               >
-                                <Compass size={13} className="text-indigo-650" />
+                                <Compass size={13} className="text-indigo-655" />
                                 <span>Customize Recommended Itinerary</span>
                               </button>
                               <button 
                                 type="submit"
-                                className={`bg-${themeColor === 'emerald' ? 'emerald-600 hover:bg-emerald-700' : 'orange-600 hover:bg-orange-700'} text-white font-extrabold py-2 px-4 rounded-xl text-xs transition-all duration-200 shadow-md flex items-center gap-1.5 glow-hover btn-shimmer cursor-pointer select-none`}
+                                className={`w-full sm:w-auto bg-${themeColor === 'emerald' ? 'emerald-600 hover:bg-emerald-700' : 'orange-600 hover:bg-orange-700'} text-white font-extrabold py-2 px-4 rounded-xl text-xs transition-all duration-200 shadow-md flex items-center justify-center gap-1.5 glow-hover btn-shimmer cursor-pointer select-none`}
                               >
                                 <span>Build From Scratch</span>
                               </button>
@@ -5270,7 +5270,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                         
                                         <div className="grid grid-cols-2 gap-4">
                                           {/* Adults Counter */}
-                                          <div className="flex items-center justify-between">
+                                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                                             <div>
                                               <div className="text-xs font-semibold text-slate-700">Adults <span className="text-[10px] text-slate-400">(12+)</span></div>
                                             </div>
@@ -5282,7 +5282,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                           </div>
                                           
                                           {/* Children Counter */}
-                                          <div className="flex items-center justify-between">
+                                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                                             <div>
                                               <div className="text-xs font-semibold text-slate-700">Children <span className="text-[10px] text-slate-400">(&lt;12)</span></div>
                                             </div>
@@ -5448,26 +5448,26 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                           </p>
                         </div>
 
-                        <div className="z-10 flex flex-col gap-4">
-                          <div className="flex flex-wrap items-center gap-4 bg-slate-950/45 p-4 rounded-xl border border-white/5 backdrop-blur-md">
+                        <div className="z-10 flex flex-col gap-4 w-full md:w-auto">
+                          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 bg-slate-950/45 p-4 rounded-xl border border-white/5 backdrop-blur-md w-full">
                             {/* Date selection */}
-                            <div className="flex flex-col">
+                            <div className="flex flex-col w-full sm:w-auto">
                               <label className="text-[10px] uppercase text-slate-400 font-extrabold mb-1 tracking-wider">Travel Date</label>
                               <input 
                                 type="date"
                                 value={travelDate}
                                 onChange={(e) => setTravelDate(e.target.value)}
-                                className={`bg-slate-900 border border-slate-700 text-white rounded-lg py-1.5 px-3 text-xs w-[135px] focus:outline-none focus:border-${themeColor}-400 transition`}
+                                className={`bg-slate-900 border border-slate-700 text-white rounded-lg py-1.5 px-3 text-xs w-full sm:w-[135px] focus:outline-none focus:border-${themeColor}-400 transition`}
                               />
                             </div>
                             
                             {/* Hotel Category Selector */}
-                            <div className="flex flex-col">
+                            <div className="flex flex-col w-full sm:w-auto">
                               <label className="text-[10px] uppercase text-slate-400 font-extrabold mb-1 tracking-wider">Hotel Tier</label>
                               <select 
                                 value={selectedHotelCategory} 
                                 onChange={(e) => handleCategoryChange(e.target.value)}
-                                className={`bg-slate-900 border border-slate-700 text-white rounded-lg py-1.5 px-3 text-xs w-[125px] focus:outline-none focus:border-${themeColor}-400 transition cursor-pointer`}
+                                className={`bg-slate-900 border border-slate-700 text-white rounded-lg py-1.5 px-3 text-xs w-full sm:w-[125px] focus:outline-none focus:border-${themeColor}-400 transition cursor-pointer`}
                               >
                                 <option value="3-Star">3-Star Budget</option>
                                 <option value="4-Star">4-Star Deluxe</option>
@@ -5476,12 +5476,12 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                             </div>
 
                             {/* Vehicle Tier Selector */}
-                            <div className="flex flex-col">
+                            <div className="flex flex-col w-full sm:w-auto">
                               <label className="text-[10px] uppercase text-slate-400 font-extrabold mb-1 tracking-wider">Private Transport</label>
                               <select 
                                 value={selectedVehicleId} 
                                 onChange={(e) => setSelectedVehicleId(e.target.value)}
-                                className={`bg-slate-900 border border-slate-700 text-white rounded-lg py-1.5 px-3 text-xs w-[160px] focus:outline-none focus:border-${themeColor}-400 transition cursor-pointer`}
+                                className={`bg-slate-900 border border-slate-700 text-white rounded-lg py-1.5 px-3 text-xs w-full sm:w-[160px] focus:outline-none focus:border-${themeColor}-400 transition cursor-pointer`}
                               >
                                 {db.vehicles.map(v => (
                                   <option key={v.id} value={v.id}>{v.name} (Max {v.capacity} pax)</option>
@@ -5702,7 +5702,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                     </div>
 
                                     {/* Middle: Hotel & Meals */}
-                                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/60 flex flex-col md:flex-row gap-4 items-center justify-between">
+                                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/60 flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
                                       <div className="flex items-center gap-3 w-full md:w-auto flex-1">
                                         <div className="flex flex-col gap-1 w-full max-w-sm">
                                           <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1.5">
@@ -5755,7 +5755,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                       </div>
 
                                       {!isLast && hotel && (
-                                        <div className="flex items-center gap-4 bg-white border border-slate-200/50 p-2.5 rounded-lg shrink-0">
+                                        <div className="flex items-center justify-between md:justify-start gap-4 bg-white border border-slate-200/50 p-2.5 rounded-lg w-full md:w-auto shrink-0">
                                           <div className="flex items-center gap-1.5">
                                             <span className="text-[10px] font-extrabold text-slate-500 uppercase">Meals:</span>
                                             <select
@@ -5786,12 +5786,12 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                       {(() => {
                                         const routeObj = db.routes.find(r => r.key === day.transfer_route);
                                         return routeObj ? (
-                                          <div className="flex items-center justify-between bg-white border border-slate-200 p-2.5 rounded-lg shadow-sm">
-                                            <div className="flex items-center gap-2">
-                                              <span className="bg-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded uppercase">Transfer</span>
-                                              <span className="text-xs text-slate-700 font-medium">{routeObj.name} - {routeObj.description}</span>
+                                          <div className="flex items-center justify-between gap-2 w-full min-w-0 bg-white border border-slate-200 p-2.5 rounded-lg shadow-sm">
+                                            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 flex-1 min-w-0 pr-2">
+                                              <span className="bg-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded uppercase shrink-0">Transfer</span>
+                                              <span className="text-xs text-slate-700 font-medium break-words text-left min-w-0">{routeObj.name} - {routeObj.description}</span>
                                             </div>
-                                            <button type="button" onClick={() => handleDayFieldChange(idx, 'transfer_route', '')} className="text-slate-400 hover:text-red-500 p-1">
+                                            <button type="button" onClick={() => handleDayFieldChange(idx, 'transfer_route', '')} className="text-slate-400 hover:text-red-500 p-1 shrink-0">
                                               <Trash2 size={14}/>
                                             </button>
                                           </div>
@@ -5804,12 +5804,12 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                           .map(actId => db.activities.find(a => a.id === actId))
                                           .filter(Boolean);
                                         return selectedActs.map(act => (
-                                          <div key={act.id} className="flex items-center justify-between bg-white border border-slate-200 p-2.5 rounded-lg shadow-sm">
-                                            <div className="flex items-center gap-2">
-                                              <span className={`bg-${themeColor}-100 text-${themeColor}-700 text-[10px] font-bold px-2 py-0.5 rounded uppercase`}>Activity</span>
-                                              <span className="text-xs text-slate-700 font-medium">{act.name}</span>
+                                          <div key={act.id} className="flex items-center justify-between gap-2 w-full min-w-0 bg-white border border-slate-200 p-2.5 rounded-lg shadow-sm">
+                                            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 flex-1 min-w-0 pr-2">
+                                              <span className={`bg-${themeColor}-100 text-${themeColor}-700 text-[10px] font-bold px-2 py-0.5 rounded uppercase shrink-0`}>Activity</span>
+                                              <span className="text-xs text-slate-700 font-medium break-words text-left min-w-0">{act.name}</span>
                                             </div>
-                                            <div className="flex items-center gap-3">
+                                            <div className="flex items-center gap-3 shrink-0">
                                               <strong className="text-xs text-brand-navy font-bold">
                                                 {view === 'b2c' && !isLeadCaptured 
                                                   ? '🔒 Locked' 
@@ -5824,18 +5824,18 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                         ));
                                       })()}
 
-                                      <div className="flex items-center gap-3 mt-1">
+                                      <div className="flex flex-col sm:flex-row gap-2 mt-1">
                                         <button 
                                           type="button" 
                                           onClick={() => setShowTransferModal({ open: true, dayIndex: idx })}
-                                          className="flex-1 bg-white border border-dashed border-slate-300 hover:border-indigo-400 hover:bg-indigo-50 text-slate-600 hover:text-indigo-700 font-bold text-[11px] uppercase tracking-wider py-2 rounded-lg transition flex items-center justify-center gap-2"
+                                          className="flex-1 w-full bg-white border border-dashed border-slate-300 hover:border-indigo-400 hover:bg-indigo-50 text-slate-600 hover:text-indigo-700 font-bold text-[11px] uppercase tracking-wider py-2 rounded-lg transition flex items-center justify-center gap-2"
                                         >
                                           <Plus size={14} /> Add Transfer
                                         </button>
                                         <button 
                                           type="button" 
                                           onClick={() => setShowActivityModal({ open: true, dayIndex: idx })}
-                                          className={`flex-1 bg-white border border-dashed border-slate-300 hover:border-${themeColor}-400 hover:bg-${themeColor}-50 text-slate-600 hover:text-${themeColor}-700 font-bold text-[11px] uppercase tracking-wider py-2 rounded-lg transition flex items-center justify-center gap-2`}
+                                          className={`flex-1 w-full bg-white border border-dashed border-slate-300 hover:border-${themeColor}-400 hover:bg-${themeColor}-50 text-slate-600 hover:text-${themeColor}-700 font-bold text-[11px] uppercase tracking-wider py-2 rounded-lg transition flex items-center justify-center gap-2`}
                                         >
                                           <Plus size={14} /> Add Activity
                                         </button>
@@ -6067,27 +6067,27 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                 return (
                   <div className="max-w-4xl mx-auto py-2">
                     
-                    <div className="bg-white border border-slate-200 p-4 rounded-xl mb-6 flex justify-between items-center no-print">
-                      <div className="flex items-center gap-2 text-green-700 text-sm font-semibold">
+                    <div className="bg-white border border-slate-200 p-4 rounded-xl mb-6 flex flex-col sm:flex-row gap-4 justify-between items-stretch sm:items-center no-print">
+                      <div className="flex items-center justify-center sm:justify-start gap-2 text-green-700 text-xs sm:text-sm font-semibold text-center sm:text-left">
                         <ShieldCheck /> {isB2BInvoice ? "B2B Partner Voucher Generated & Confirmed" : "Quote Generated & Confirmed"} (Ref ID: {lastBookingId})
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
                         <button 
                           onClick={() => handleCopyWhatsAppMessage(isB2BInvoice, whiteLabel, invoiceAcc, invoiceTrans, invoiceAct, displayedInvoiceTax, displayedInvoiceTotal)}
-                          className="btn btn-secondary btn-sm flex items-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-250 font-bold"
+                          className="btn btn-secondary btn-sm w-full sm:w-auto flex items-center justify-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-250 font-bold"
                           title="Copy message formatted for WhatsApp"
                         >
                           <MessageSquare size={13} className="text-emerald-600" /> Copy WhatsApp Msg
                         </button>
                         <button 
                           onClick={() => window.print()}
-                          className="btn btn-secondary btn-sm flex items-center gap-1.5"
+                          className="btn btn-secondary btn-sm w-full sm:w-auto flex items-center justify-center gap-1.5"
                         >
                           <Printer size={13} /> Print Quote / Save PDF
                         </button>
                         <button 
                           onClick={() => setSubView('packages')}
-                          className="btn btn-primary btn-sm rounded"
+                          className="btn btn-primary btn-sm w-full sm:w-auto rounded flex items-center justify-center"
                         >
                           {isB2BInvoice ? "Create New Booking" : "Create Another Quote"}
                         </button>
@@ -6095,13 +6095,13 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                     </div>
                     
                     {/* Print Canvas Sheet */}
-                    <div className="bg-white border border-slate-200 p-8 md:p-12 rounded-3xl shadow-lg relative text-slate-800" id="print-sheet">
+                    <div className="bg-white border border-slate-200 p-4 sm:p-8 md:p-12 rounded-3xl shadow-lg relative text-slate-800" id="print-sheet">
                       {/* Top Accent Line */}
                       <div className={`absolute top-0 left-0 right-0 h-2 bg-${isB2BInvoice ? 'emerald' : 'orange'}-600 rounded-t-3xl`}></div>
 
                       {/* Title Banner */}
                       <div className="text-center mb-8 mt-2">
-                        <h1 className="text-3xl md:text-4xl font-extrabold uppercase tracking-tight text-slate-900 font-heading">
+                        <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold uppercase tracking-tight text-slate-900 font-heading">
                           Holiday Travel Proposal
                         </h1>
                         <p className={`text-xs md:text-sm font-bold tracking-wider uppercase text-${isB2BInvoice ? 'emerald' : 'orange'}-600 mt-1`}>
@@ -6112,7 +6112,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
                       {/* Header: Centered Company Logo & Name */}
                       <div className="flex flex-col items-center justify-center text-center mb-6 pb-6 border-b border-slate-100">
-                        <div className="flex items-center justify-center gap-4">
+                        <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
                           {isB2BInvoice && whiteLabel ? (
                             whiteLabel.agencyLogo ? (
                               <img src={whiteLabel.agencyLogo} alt={whiteLabel.agencyName || "Agency Logo"} className="max-h-16 object-contain w-auto block rounded-lg" />
