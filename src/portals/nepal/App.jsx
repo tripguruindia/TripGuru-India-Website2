@@ -38,6 +38,41 @@ const getTransferDesc = (routeKey, startCity, endCity, dayCity, isFirstDay, isLa
 };
 
 function App() {
+  // Routing helper
+  const getRouteFromHash = () => {
+    if (typeof window === 'undefined') return 'b2c';
+    const hash = window.location.hash;
+    if (hash.startsWith('#/b2b')) return 'b2b';
+    if (hash.startsWith('#/admin')) return 'admin';
+    return 'b2c';
+  };
+
+  const [currentRoute, setCurrentRoute] = useState(getRouteFromHash);
+
+  // Navigation state
+  // "b2c" (Client App), "b2b" (B2B Agent Portal), or "admin" (Admin Panel)
+  const [view, setView] = useState(() => getRouteFromHash());
+  // Admin tabs: "dashboard" | "hotels" | "activities" | "vehicles"
+  const [activeAdminTab, setActiveAdminTab] = useState('dashboard');
+  // B2C sub-views: "packages" (browse) | "customize" (builder) | "invoice" (after booking)
+  const [b2cSubView, setB2cSubView] = useState('packages');
+  // B2B sub-views: "dashboard" (agent portal dashboard) | "packages" | "wizard" | "customize" | "invoice"
+  const [b2bSubView, setB2bSubView] = useState('dashboard');
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      const route = getRouteFromHash();
+      setCurrentRoute(route);
+      setView(route);
+    };
+    window.addEventListener('hashchange', handleHashChange);
+    // Align view initially
+    handleHashChange();
+    return () => {
+      window.removeEventListener('hashchange', handleHashChange);
+    };
+  }, []);
+
   // DB State
   const [db, setDb] = useState(() => {
     const loaded = initializeDB() || {
@@ -231,40 +266,7 @@ function App() {
 
   const [profileSuccessMessage, setProfileSuccessMessage] = useState('');
 
-  // Routing helper
-  const getRouteFromHash = () => {
-    if (typeof window === 'undefined') return 'b2c';
-    const hash = window.location.hash;
-    if (hash.startsWith('#/b2b')) return 'b2b';
-    if (hash.startsWith('#/admin')) return 'admin';
-    return 'b2c';
-  };
 
-  const [currentRoute, setCurrentRoute] = useState(getRouteFromHash);
-
-  // Navigation state
-  // "b2c" (Client App), "b2b" (B2B Agent Portal), or "admin" (Admin Panel)
-  const [view, setView] = useState(() => getRouteFromHash());
-  // Admin tabs: "dashboard" | "hotels" | "activities" | "vehicles"
-  const [activeAdminTab, setActiveAdminTab] = useState('dashboard');
-  // B2C sub-views: "packages" (browse) | "customize" (builder) | "invoice" (after booking)
-  const [b2cSubView, setB2cSubView] = useState('packages');
-  // B2B sub-views: "dashboard" (agent portal dashboard) | "packages" | "wizard" | "customize" | "invoice"
-  const [b2bSubView, setB2bSubView] = useState('dashboard');
-
-  useEffect(() => {
-    const handleHashChange = () => {
-      const route = getRouteFromHash();
-      setCurrentRoute(route);
-      setView(route);
-    };
-    window.addEventListener('hashchange', handleHashChange);
-    // Align view initially
-    handleHashChange();
-    return () => {
-      window.removeEventListener('hashchange', handleHashChange);
-    };
-  }, []);
 
   useEffect(() => {
     if (currentRoute === 'admin') {
