@@ -5,6 +5,7 @@ import {
   Printer, ArrowLeft, ArrowRight, RefreshCw, Hotel, Car, Coffee, ShieldCheck, Check, Info, AlertTriangle,
   Download, Upload, Lock, Unlock, Image, User, Mail, Phone, Globe, X, MessageSquare, LogOut
 } from 'lucide-react';
+import { fetchSheetDB, syncUserToSheet, syncLeadToSheet, syncBookingToSheet } from './utils/dbSync';
 import { initializeDB, saveDB, resetDB, INITIAL_ROUTES } from './data/seedData';
 import { calculateQuote, validateRoomCapacity, deriveFromRooms } from './utils/calculator';
 import './App.css';
@@ -104,6 +105,90 @@ function App() {
     }
   }, [currentUser, currentRoute]);
 
+
+  // Sync B2C Leads, Users, and Bookings from Google Sheets Database
+  useEffect(() => {
+    async function syncWithGoogleSheets() {
+      const sheetData = await fetchSheetDB();
+      if (sheetData) {
+        setDb(prevDb => {
+          // Merge Users
+          const localUsers = prevDb.users || [];
+          const sheetUsers = (sheetData.users || []).map(function(u) {
+            var detailsObj = {};
+            if (u.Details) {
+              try { detailsObj = JSON.parse(u.Details); } catch(e) {}
+            }
+            return Object.assign({
+              id: u.ID,
+              email: u.Email,
+              role: u.Role,
+              fullName: u.FullName,
+              phone: u.Phone,
+              created_at: u.CreatedAt
+            }, detailsObj);
+          });
+          const mergedUsers = localUsers.slice();
+          sheetUsers.forEach(function(su) {
+            if (!mergedUsers.some(function(mu) { return mu.id === su.id; })) {
+              mergedUsers.push(su);
+            }
+          });
+
+          // Merge Leads
+          const localLeads = prevDb.leads || [];
+          const sheetLeads = (sheetData.leads || []).map(function(l) {
+            return {
+              id: l.ID,
+              name: l.Name,
+              email: l.Email,
+              phone: l.Phone,
+              created_at: l.CreatedAt,
+              source: l.Source
+            };
+          });
+          const mergedLeads = localLeads.slice();
+          sheetLeads.forEach(function(sl) {
+            if (!mergedLeads.some(function(ml) { return ml.id === sl.id; })) {
+              mergedLeads.push(sl);
+            }
+          });
+
+          // Merge Bookings
+          const localBookings = prevDb.bookings || [];
+          const sheetBookings = (sheetData.bookings || []).map(function(b) {
+            return {
+              id: b.ID,
+              client_name: b.ClientName,
+              email: b.Email,
+              phone: b.Phone,
+              travel_date: b.TravelDate,
+              itinerary_summary: b.ItinerarySummary,
+              total_price: Number(b.TotalPrice) || 0,
+              status: b.Status,
+              created_at: b.CreatedAt
+            };
+          });
+          const mergedBookings = localBookings.slice();
+          sheetBookings.forEach(function(sb) {
+            if (!mergedBookings.some(function(mb) { return mb.id === sb.id; })) {
+              mergedBookings.push(sb);
+            }
+          });
+
+          const newDb = Object.assign({}, prevDb, {
+            users: mergedUsers,
+            leads: mergedLeads,
+            bookings: mergedBookings
+          });
+          saveDB(newDb);
+          return newDb;
+        });
+      }
+    }
+    syncWithGoogleSheets();
+  }, []);
+
   // Sync active user when shifting between portal URLs (hash links)
   useEffect(() => {
     const saved = localStorage.getItem('nepal_quote_user_' + currentRoute);
@@ -202,6 +287,8 @@ function App() {
     
     const updatedUsers = [...(db.users || []), newUser];
     const updatedDb = { ...db, users: updatedUsers };
+    // Sync User to Google Sheets
+    syncUserToSheet(newUser);
     setDb(updatedDb);
     saveDB(updatedDb);
     
@@ -468,6 +555,8 @@ function App() {
     setDb(newDb);
     saveDB(newDb);
 
+    // Sync Lead to Google Sheets
+    syncLeadToSheet(newLead);
     localStorage.setItem('nepal_quote_lead_info', JSON.stringify(newLead));
     setIsLeadCaptured(true);
     return true;
@@ -1614,6 +1703,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
     const updatedBookings = [newBooking, ...db.bookings];
     updateDBState({ ...db, bookings: updatedBookings });
+    // Sync Booking to Google Sheets
+    syncBookingToSheet(newBooking);
 
     setLastBookingId(newId);
     setShowCheckoutModal(false);
