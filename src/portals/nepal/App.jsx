@@ -5120,7 +5120,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                   </button>
                                 </div>
 
-                                <div className="flex-1 grid grid-cols-2 gap-4">
+                                <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                                   <div>
                                     <label className="block text-[10px] uppercase text-slate-500 font-bold mb-1">City Name</label>
                                     <select
