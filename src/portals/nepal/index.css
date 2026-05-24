@@ -57,12 +57,7 @@
   text-align: left;
 }
 
-.nepal-portal-root h1, 
-.nepal-portal-root h2, 
-.nepal-portal-root h3, 
-.nepal-portal-root h4, 
-.nepal-portal-root h5, 
-.nepal-portal-root h6 {
+.nepal-portal-root :where(h1, h2, h3, h4, h5, h6) {
   font-family: var(--font-heading);
   font-weight: 700;
   color: var(--primary-dark);
