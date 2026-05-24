@@ -58,7 +58,7 @@ function App() {
   const [b2cSubView, setB2cSubView] = useState('packages');
   // B2B sub-views: "dashboard" (agent portal dashboard) | "packages" | "wizard" | "customize" | "invoice"
   const [b2bSubView, setB2bSubView] = useState('dashboard');
-  const [showB2cLoginPortal, setShowB2cLoginPortal] = useState(false);
+  const [showB2bLoginPortal, setShowB2bLoginPortal] = useState(false);
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -140,6 +140,7 @@ function App() {
     } else if (user.role === 'b2b') {
       setView('b2b');
       setB2bSubView('dashboard');
+      setShowB2bLoginPortal(false);
       // Sync B2B Profile
       setB2bProfile({
         agentName: user.fullName || 'B2B Partner',
@@ -157,7 +158,6 @@ function App() {
     } else {
       setView('b2c');
       setB2cSubView('packages');
-      setShowB2cLoginPortal(false);
       // Sync B2C Profile
       setB2cProfile({
         fullName: user.fullName || '',
@@ -214,7 +214,7 @@ function App() {
     localStorage.removeItem('nepal_quote_current_user');
     
     setCurrentUser(null);
-    setShowB2cLoginPortal(false);
+    setShowB2bLoginPortal(false);
     setIsLeadCaptured(!!localStorage.getItem('nepal_quote_lead_info'));
     
     if (activeRole === 'admin' || activeRole === 'b2b') {
@@ -3640,8 +3640,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
     const config = routeConfig[currentRoute] || routeConfig.b2c;
 
-    const isB2c = currentRoute === 'b2c';
-    const backdropClass = isB2c 
+    const isB2b = currentRoute === 'b2b';
+    const backdropClass = isB2b 
       ? "fixed inset-0 w-full h-full flex items-center justify-center bg-slate-900/60 backdrop-blur-md z-[9999] overflow-y-auto px-4 py-8"
       : "fixed inset-0 w-full h-full flex items-center justify-center bg-gradient-to-br from-indigo-950 via-slate-900 to-[#0c1a30] z-[9999] overflow-y-auto px-4 py-8";
 
@@ -3649,11 +3649,11 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       <div className="nepal-portal-root">
         <div className={backdropClass}>
           <div className="bg-slate-950/90 border border-slate-800/80 backdrop-blur-xl rounded-3xl shadow-2xl p-6 sm:p-8 max-w-md w-full flex flex-col my-auto relative transition-all duration-300">
-            {/* Close button for B2C public user */}
-            {isB2c && (
+            {/* Close button for B2B public user */}
+            {isB2b && (
               <button
                 type="button"
-                onClick={() => setShowB2cLoginPortal(false)}
+                onClick={() => setShowB2bLoginPortal(false)}
                 className="absolute top-4 right-4 text-slate-400 hover:text-white transition font-bold text-lg select-none cursor-pointer"
               >
                 ✕
@@ -3880,12 +3880,12 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
             )}
           </form>
 
-          {currentRoute === 'b2c' && (
+          {currentRoute === 'b2b' && (
             <div className="text-center mt-3">
               <button
                 type="button"
                 onClick={() => {
-                  setShowB2cLoginPortal(false);
+                  setShowB2bLoginPortal(false);
                   setAuthForm({
                     email: '', password: '', fullName: '', phone: '', countryCode: '+91',
                     agencyName: '', agencyAddress: '', agencyWebsite: ''
@@ -3893,7 +3893,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                 }}
                 className="w-full text-center text-xs text-slate-400 hover:text-white border border-slate-800 rounded-xl py-2 hover:bg-slate-900 transition font-bold cursor-pointer"
               >
-                Cancel and Return to Explorer
+                Cancel and Return to Portal
               </button>
             </div>
           )}
@@ -3925,7 +3925,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   };
 
   const isAuthorizedForRoute = () => {
-    if (currentRoute === 'b2c') return true; // B2C is public layout, auth gate is modal
+    if (currentRoute === 'b2b') return true; // B2B is public layout, auth gate is modal
     if (!currentUser) return false;
     if (currentUser.role === 'admin') return true;
     return currentUser.role === currentRoute;
@@ -4145,20 +4145,6 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                 <span className="hidden sm:inline-block text-xs bg-orange-100 text-orange-850 font-bold px-2.5 py-1 rounded-full border border-orange-200/40">
                   Live Pricing (INR ₹)
                 </span>
-
-                {!currentUser && (
-                  <button 
-                    type="button"
-                    onClick={() => {
-                      setShowB2cLoginPortal(true);
-                      setAuthRole('b2c');
-                      setAuthTab('login');
-                    }}
-                    className="text-xs bg-orange-600 hover:bg-orange-700 text-white font-extrabold px-3 py-1.5 rounded-xl border border-orange-700 shadow-sm transition active:scale-95 cursor-pointer"
-                  >
-                    Sign In / Register
-                  </button>
-                )}
                 
                 {currentUser && (
                   <div className="flex items-center gap-2 bg-slate-50 border border-slate-200/65 p-1 rounded-xl pr-3">
@@ -4268,9 +4254,37 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                     </button>
                   </div>
                 ) : (
-                  <span className="text-xs bg-emerald-100 text-emerald-800 font-semibold px-2.5 py-1 rounded">
-                    B2B Agent Account: AGT-9021 (Gold Partner)
-                  </span>
+                  view === 'b2b' ? (
+                    <div className="flex items-center gap-3">
+                      {!currentUser ? (
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            setShowB2bLoginPortal(true);
+                            setAuthRole('b2b');
+                            setAuthTab('login');
+                          }}
+                          className="text-xs bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold px-3 py-1.5 rounded-xl border border-emerald-700 shadow-sm transition active:scale-95 cursor-pointer animate-pulse"
+                        >
+                          Partner Sign In / Register
+                        </button>
+                      ) : (
+                        <>
+                          <span className="text-xs bg-emerald-100 text-emerald-800 font-semibold px-2.5 py-1 rounded">
+                            Agent: {currentUser.agencyName || currentUser.fullName}
+                          </span>
+                          <button 
+                            type="button"
+                            onClick={handleLogout}
+                            className="w-6 h-6 rounded-lg bg-white hover:bg-red-50 border border-slate-200 hover:border-red-200 flex items-center justify-center text-slate-450 hover:text-red-500 transition shadow-sm cursor-pointer"
+                            title="Log Out"
+                          >
+                            <LogOut size={12} />
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  ) : null
                 )}
               </div>
             </>
@@ -8953,8 +8967,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
         </div>
       )}
 
-      {/* B2C Sign In / Register Modal Popup Overlay */}
-      {showB2cLoginPortal && renderAuthGate()}
+      {/* B2B Sign In / Register Modal Popup Overlay */}
+      {showB2bLoginPortal && renderAuthGate()}
 
     </div>
     </div>
