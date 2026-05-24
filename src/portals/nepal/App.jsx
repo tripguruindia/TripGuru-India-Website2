@@ -58,6 +58,7 @@ function App() {
   const [b2cSubView, setB2cSubView] = useState('packages');
   // B2B sub-views: "dashboard" (agent portal dashboard) | "packages" | "wizard" | "customize" | "invoice"
   const [b2bSubView, setB2bSubView] = useState('dashboard');
+  const [showB2cLoginPortal, setShowB2cLoginPortal] = useState(false);
 
   useEffect(() => {
     const handleHashChange = () => {
@@ -156,6 +157,7 @@ function App() {
     } else {
       setView('b2c');
       setB2cSubView('packages');
+      setShowB2cLoginPortal(false);
       // Sync B2C Profile
       setB2cProfile({
         fullName: user.fullName || '',
@@ -202,6 +204,7 @@ function App() {
     localStorage.removeItem('nepal_quote_current_user');
     
     setCurrentUser(null);
+    setShowB2cLoginPortal(false);
     setIsLeadCaptured(!!localStorage.getItem('nepal_quote_lead_info'));
     
     if (activeRole === 'admin' || activeRole === 'b2b') {
@@ -3852,6 +3855,24 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
             )}
           </form>
 
+          {currentRoute === 'b2c' && (
+            <div className="text-center mt-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowB2cLoginPortal(false);
+                  setAuthForm({
+                    email: '', password: '', fullName: '', phone: '', countryCode: '+91',
+                    agencyName: '', agencyAddress: '', agencyWebsite: ''
+                  });
+                }}
+                className="w-full text-center text-xs text-slate-400 hover:text-white border border-slate-800 rounded-xl py-2 hover:bg-slate-900 transition font-bold cursor-pointer"
+              >
+                Cancel and Return to Explorer
+              </button>
+            </div>
+          )}
+
           {/* Quick-Login Evaluator Section */}
           <div className="border-t border-slate-800/80 mt-6 pt-5">
             <h4 className="text-[9px] uppercase font-extrabold text-amber-500 tracking-widest mb-3 text-center">
@@ -3879,6 +3900,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   };
 
   const isAuthorizedForRoute = () => {
+    if (currentRoute === 'b2c' && !showB2cLoginPortal) return true;
     if (!currentUser) return false;
     if (currentUser.role === 'admin') return true;
     return currentUser.role === currentRoute;
@@ -4098,6 +4120,20 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                 <span className="hidden sm:inline-block text-xs bg-orange-100 text-orange-850 font-bold px-2.5 py-1 rounded-full border border-orange-200/40">
                   Live Pricing (INR ₹)
                 </span>
+
+                {!currentUser && (
+                  <button 
+                    type="button"
+                    onClick={() => {
+                      setShowB2cLoginPortal(true);
+                      setAuthRole('b2c');
+                      setAuthTab('login');
+                    }}
+                    className="text-xs bg-orange-600 hover:bg-orange-700 text-white font-extrabold px-3 py-1.5 rounded-xl border border-orange-700 shadow-sm transition active:scale-95 cursor-pointer"
+                  >
+                    Sign In / Register
+                  </button>
+                )}
                 
                 {currentUser && (
                   <div className="flex items-center gap-2 bg-slate-50 border border-slate-200/65 p-1 rounded-xl pr-3">
