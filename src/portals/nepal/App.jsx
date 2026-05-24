@@ -51,17 +51,27 @@ function App() {
 
   // Authentication State
   const [currentUser, setCurrentUser] = useState(() => {
-    const saved = localStorage.getItem('nepal_quote_current_user');
+    const route = typeof window !== 'undefined' ? (window.location.hash.startsWith('#/b2b') ? 'b2b' : window.location.hash.startsWith('#/admin') ? 'admin' : 'b2c') : 'b2c';
+    const saved = localStorage.getItem('nepal_quote_user_' + route) || localStorage.getItem('nepal_quote_current_user');
     return saved ? JSON.parse(saved) : null;
   });
 
+  // Keep separate sessions for separate portals
   useEffect(() => {
     if (currentUser) {
+      localStorage.setItem('nepal_quote_user_' + currentUser.role, JSON.stringify(currentUser));
       localStorage.setItem('nepal_quote_current_user', JSON.stringify(currentUser));
     } else {
+      localStorage.removeItem('nepal_quote_user_' + currentRoute);
       localStorage.removeItem('nepal_quote_current_user');
     }
-  }, [currentUser]);
+  }, [currentUser, currentRoute]);
+
+  // Sync active user when shifting between portal URLs (hash links)
+  useEffect(() => {
+    const saved = localStorage.getItem('nepal_quote_user_' + currentRoute);
+    setCurrentUser(saved ? JSON.parse(saved) : null);
+  }, [currentRoute]);
 
   const handleLogin = (email, password) => {
     const user = (db.users || []).find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === password);
@@ -152,10 +162,18 @@ function App() {
   };
 
   const handleLogout = () => {
+    const activeRole = currentUser ? currentUser.role : currentRoute;
+    localStorage.removeItem('nepal_quote_user_' + activeRole);
+    localStorage.removeItem('nepal_quote_current_user');
+    
     setCurrentUser(null);
     setIsLeadCaptured(!!localStorage.getItem('nepal_quote_lead_info'));
-    setView('b2c');
-    setB2cSubView('packages');
+    
+    if (activeRole === 'admin' || activeRole === 'b2b') {
+      window.location.hash = '#/';
+      setView('b2c');
+      setB2cSubView('packages');
+    }
   };
 
   // Profiles State and Persistence
