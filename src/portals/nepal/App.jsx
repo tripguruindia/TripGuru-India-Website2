@@ -176,6 +176,16 @@ function App() {
       window.alert("An account with this email already exists!");
       return false;
     }
+
+    // Password strength validation rules
+    if (password.length < 6) {
+      window.alert("Password security rule violation:\nPassword must be at least 6 characters long.");
+      return false;
+    }
+    if (!/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) {
+      window.alert("Password security rule violation:\nPassword must contain at least one letter and one number.");
+      return false;
+    }
     
     const newUser = {
       id: 'usr-' + Date.now(),
