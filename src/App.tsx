@@ -22,6 +22,7 @@ import { SeoManager } from './components/seo/SeoManager';
 import { cityLandingPageMap, cityLandingPages } from './cityLandingPages';
 import { DESTINATIONS } from './constants';
 import { Destination } from './types';
+import NepalApp from './portals/nepal/App';
 
 const ScrollToSection = () => {
   const { pathname } = useLocation();
@@ -164,6 +165,12 @@ function AppContent() {
   }, [openConcierge]);
 
   const normalizedPath = location.pathname.replace(/\/+$/, '') || '/';
+  const isNepalRoute = normalizedPath === '/nepal';
+
+  if (isNepalRoute) {
+    return <NepalApp />;
+  }
+
   const cityLandingPage =
     cityLandingPageMap[normalizedPath as keyof typeof cityLandingPageMap];
 
@@ -178,6 +185,7 @@ function AppContent() {
             <Route path={page.path} element={null} />
           </React.Fragment>
         ))}
+        <Route path="/nepal" element={null} />
         <Route path="/:section" element={null} />
         <Route path="/" element={null} />
         {/* Catch-all redirect to home */}
