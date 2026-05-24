@@ -3630,10 +3630,25 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
     const config = routeConfig[currentRoute] || routeConfig.b2c;
 
+    const isB2c = currentRoute === 'b2c';
+    const backdropClass = isB2c 
+      ? "fixed inset-0 w-full h-full flex items-center justify-center bg-slate-900/60 backdrop-blur-md z-[9999] overflow-y-auto px-4 py-8"
+      : "fixed inset-0 w-full h-full flex items-center justify-center bg-gradient-to-br from-indigo-950 via-slate-900 to-[#0c1a30] z-[9999] overflow-y-auto px-4 py-8";
+
     return (
       <div className="nepal-portal-root">
-        <div className="fixed inset-0 w-full h-full flex items-center justify-center bg-gradient-to-br from-indigo-950 via-slate-900 to-[#0c1a30] z-[9999] overflow-y-auto px-4 py-8">
-        <div className="bg-slate-950/60 border border-slate-800/80 backdrop-blur-xl rounded-3xl shadow-2xl p-6 sm:p-8 max-w-md w-full flex flex-col my-auto transition-all duration-300">
+        <div className={backdropClass}>
+          <div className="bg-slate-950/90 border border-slate-800/80 backdrop-blur-xl rounded-3xl shadow-2xl p-6 sm:p-8 max-w-md w-full flex flex-col my-auto relative transition-all duration-300">
+            {/* Close button for B2C public user */}
+            {isB2c && (
+              <button
+                type="button"
+                onClick={() => setShowB2cLoginPortal(false)}
+                className="absolute top-4 right-4 text-slate-400 hover:text-white transition font-bold text-lg select-none cursor-pointer"
+              >
+                ✕
+              </button>
+            )}
           
           {/* Brand Header */}
           <div className="text-center mb-6">
@@ -3900,7 +3915,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   };
 
   const isAuthorizedForRoute = () => {
-    if (currentRoute === 'b2c' && !showB2cLoginPortal) return true;
+    if (currentRoute === 'b2c') return true; // B2C is public layout, auth gate is modal
     if (!currentUser) return false;
     if (currentUser.role === 'admin') return true;
     return currentUser.role === currentRoute;
@@ -8927,6 +8942,9 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           </div>
         </div>
       )}
+
+      {/* B2C Sign In / Register Modal Popup Overlay */}
+      {showB2cLoginPortal && renderAuthGate()}
 
     </div>
     </div>
