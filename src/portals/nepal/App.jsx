@@ -110,7 +110,7 @@ function App() {
   }, [currentRoute]);
 
   const handleLogin = (email, password) => {
-    const user = (db.users || []).find(u => u.email.toLowerCase() === email.toLowerCase() && u.password === password);
+    const user = (db.users || []).find(u => u.email.trim().toLowerCase() === email.trim().toLowerCase() && u.password === password);
     if (!user) {
       window.alert("Invalid email or password!");
       return false;
@@ -171,7 +171,7 @@ function App() {
   };
 
   const handleSignup = (email, password, role, profileData) => {
-    const exists = (db.users || []).some(u => u.email.toLowerCase() === email.toLowerCase());
+    const exists = (db.users || []).some(u => u.email.trim().toLowerCase() === email.trim().toLowerCase());
     if (exists) {
       window.alert("An account with this email already exists!");
       return false;
