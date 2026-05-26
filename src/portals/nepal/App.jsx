@@ -7361,9 +7361,38 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                         <div className="flex flex-wrap items-center gap-2 bg-white p-2.5 rounded-xl border border-slate-200">
                         {globalRouteStops.filter(Boolean).map((stop, idx) => (
                         <React.Fragment key={idx}>
-                        {idx > 0 && <span className="text-slate-400 font-bold text-xs mx-0.5">➔</span>}
-                        <div className="flex items-center gap-1.5 bg-orange-55 text-orange-900 px-2.5 py-1 rounded-lg border border-orange-100 text-xs font-bold shadow-sm">
-                        <span>{stop}</span>
+                        {idx > 0 && (
+                        <div className="flex items-center gap-1 mx-1">
+                        <span className="text-slate-300 font-bold text-xs">➔</span>
+                        <button
+                        type="button"
+                        onClick={() => {
+                        const newStops = [...globalRouteStops];
+                        newStops.splice(idx, 0, db.cities?.[0] || 'Kathmandu');
+                        setGlobalRouteStops(newStops);
+                        }}
+                        className="w-4.5 h-4.5 flex items-center justify-center bg-orange-100 hover:bg-orange-600 text-orange-600 hover:text-white rounded-full text-[10px] font-extrabold transition cursor-pointer shadow-sm"
+                        title="Insert Stop in Between"
+                        >
+                        +
+                        </button>
+                        <span className="text-slate-300 font-bold text-xs">➔</span>
+                        </div>
+                        )}
+                        <div className="flex items-center bg-orange-55 border border-orange-100 rounded-lg px-2.5 py-1 shadow-sm">
+                        <select
+                        value={stop}
+                        onChange={(e) => {
+                        const newStops = [...globalRouteStops];
+                        newStops[idx] = e.target.value;
+                        setGlobalRouteStops(newStops);
+                        }}
+                        className="bg-transparent text-xs font-bold text-orange-900 focus:outline-none cursor-pointer pr-1"
+                        >
+                        {(db.cities || []).filter(Boolean).map(city => (
+                        <option key={city} value={city}>{city}</option>
+                        ))}
+                        </select>
                         {globalRouteStops.filter(Boolean).length > 2 && (
                         <button
                         type="button"
@@ -7379,21 +7408,13 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                         ))}
                         <div className="flex items-center gap-1.5 ml-1">
                         <span className="text-slate-300 font-bold text-xs">➔</span>
-                        <select
-                        value=""
-                        onChange={(e) => {
-                        const val = e.target.value;
-                        if (val) {
-                        setGlobalRouteStops(prev => [...prev, val]);
-                        }
-                        }}
-                        className="px-2 py-1 text-[11px] bg-slate-50 border border-slate-200 rounded-lg font-semibold text-slate-600 focus:outline-none focus:ring-1 focus:ring-orange-500 cursor-pointer"
+                        <button
+                        type="button"
+                        onClick={() => setGlobalRouteStops(prev => [...prev, db.cities?.[0] || 'Kathmandu'])}
+                        className="px-2.5 py-1 text-xs bg-slate-50 hover:bg-orange-600 hover:text-white border border-slate-205 text-slate-700 rounded-lg font-bold transition cursor-pointer shadow-sm"
                         >
-                        <option value="" disabled>+ Add Stop</option>
-                        {(db.cities || []).filter(Boolean).map(city => (
-                        <option key={city} value={city}>{city}</option>
-                        ))}
-                        </select>
+                        + Add Stop to End
+                        </button>
                         </div>
                         </div>
                         <p className="text-[10px] text-slate-505 font-bold italic">
@@ -7635,9 +7656,38 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                               <div className="flex flex-wrap items-center gap-2 bg-white p-2 rounded-xl border border-slate-200">
                               {localRouteStops.filter(Boolean).map((stop, idx) => (
                               <React.Fragment key={idx}>
-                              {idx > 0 && <span className="text-slate-400 font-bold text-xs mx-0.5">➔</span>}
-                              <div className="flex items-center gap-1.5 bg-orange-55 text-orange-900 px-2 py-0.5 rounded-lg border border-orange-100 text-xs font-bold shadow-sm">
-                              <span>{stop}</span>
+                              {idx > 0 && (
+                              <div className="flex items-center gap-1 mx-1">
+                              <span className="text-slate-300 font-bold text-xs">➔</span>
+                              <button
+                              type="button"
+                              onClick={() => {
+                              const newStops = [...localRouteStops];
+                              newStops.splice(idx, 0, db.cities?.[0] || 'Kathmandu');
+                              setLocalRouteStops(newStops);
+                              }}
+                              className="w-4.5 h-4.5 flex items-center justify-center bg-orange-100 hover:bg-orange-600 text-orange-600 hover:text-white rounded-full text-[10px] font-extrabold transition cursor-pointer shadow-sm"
+                              title="Insert Stop in Between"
+                              >
+                              +
+                              </button>
+                              <span className="text-slate-300 font-bold text-xs">➔</span>
+                              </div>
+                              )}
+                              <div className="flex items-center bg-orange-55 border border-orange-100 rounded-lg px-2 py-0.5 shadow-sm">
+                              <select
+                              value={stop}
+                              onChange={(e) => {
+                              const newStops = [...localRouteStops];
+                              newStops[idx] = e.target.value;
+                              setLocalRouteStops(newStops);
+                              }}
+                              className="bg-transparent text-xs font-bold text-orange-900 focus:outline-none cursor-pointer pr-1"
+                              >
+                              {(db.cities || []).filter(Boolean).map(city => (
+                              <option key={city} value={city}>{city}</option>
+                              ))}
+                              </select>
                               {localRouteStops.filter(Boolean).length > 2 && (
                               <button
                               type="button"
@@ -7653,21 +7703,13 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                               ))}
                               <div className="flex items-center gap-1.5 ml-1">
                               <span className="text-slate-300 font-bold text-xs">➔</span>
-                              <select
-                              value=""
-                              onChange={(e) => {
-                              const val = e.target.value;
-                              if (val) {
-                              setLocalRouteStops(prev => [...prev, val]);
-                              }
-                              }}
-                              className="px-2 py-0.5 text-[10px] bg-slate-50 border border-slate-200 rounded-lg font-semibold text-slate-600 focus:outline-none focus:ring-1 focus:ring-orange-500 cursor-pointer"
+                              <button
+                              type="button"
+                              onClick={() => setLocalRouteStops(prev => [...prev, db.cities?.[0] || 'Kathmandu'])}
+                              className="px-2.5 py-1 text-xs bg-slate-50 hover:bg-orange-600 hover:text-white border border-slate-205 text-slate-700 rounded-lg font-bold transition cursor-pointer shadow-sm"
                               >
-                              <option value="" disabled>+ Add Stop</option>
-                              {(db.cities || []).filter(Boolean).map(city => (
-                              <option key={city} value={city}>{city}</option>
-                              ))}
-                              </select>
+                              + Add Stop to End
+                              </button>
                               </div>
                               </div>
                               <p className="text-[9px] text-slate-550 font-bold italic">
