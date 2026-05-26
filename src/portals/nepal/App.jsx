@@ -481,6 +481,8 @@ function App() {
   const [routesEditState, setRoutesEditState] = useState([]);
   const [newInlineRoute, setNewInlineRoute] = useState({ fromCity: 'Kathmandu', toCity: 'Pokhara', price: 0 });
   const [globalRouteForm, setGlobalRouteForm] = useState({ fromCity: 'Kathmandu', toCity: 'Pokhara', prices: {} });
+  const [globalRouteStops, setGlobalRouteStops] = useState(['Kathmandu', 'Pokhara']);
+  const [localRouteStops, setLocalRouteStops] = useState(['Kathmandu', 'Pokhara']);
   const [showAddVehicleModal, setShowAddVehicleModal] = useState(false);
   const [newVehicleForm, setNewVehicleForm] = useState({ name: '', description: '', capacity: 4, copyFromId: '' });
   const [b2cMarkupInput, setB2cMarkupInput] = useState(15);
@@ -2294,6 +2296,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     setVehicleEditState(JSON.parse(JSON.stringify(v)));
     setRoutesEditState(JSON.parse(JSON.stringify(db.routes || [])));
     setNewInlineRoute({ fromCity: db.cities?.[0] || 'Kathmandu', toCity: db.cities?.[1] || 'Pokhara', price: 0 });
+    setLocalRouteStops([db.cities?.[0] || 'Kathmandu', db.cities?.[1] || 'Pokhara']);
   };
 
   const handleSaveVehicleEdit = () => {
@@ -2354,17 +2357,14 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   };
 
   const handleInlineRouteAdd = () => {
-    if (!newInlineRoute.fromCity || !newInlineRoute.toCity) {
-      alert("Please select both from and to cities.");
+    if (!localRouteStops || localRouteStops.length < 2) {
+      alert("Please configure at least 2 city stops for the route.");
       return;
     }
     
-    const from = newInlineRoute.fromCity.trim();
-    const to = newInlineRoute.toCity.trim();
-    const routeName = `${from} to ${to}`;
-    
-    const routeKey = `${from.toLowerCase()}_to_${to.toLowerCase()}`
-      .replace(/[^a-z0-9_]+/g, '');
+    const routeName = localRouteStops.join(' to ');
+    const routeKey = localRouteStops.map(s => s.trim().toLowerCase().replace(/[^a-z0-9]+/g, ''))
+      .join('_to_');
       
     if (routesEditState.some(r => r.key === routeKey)) {
       alert("A transfer route with this name or code already exists.");
@@ -2386,22 +2386,20 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       }
     }));
     
+    setLocalRouteStops([db.cities?.[0] || 'Kathmandu', db.cities?.[1] || 'Pokhara']);
     setNewInlineRoute({ fromCity: db.cities?.[0] || 'Kathmandu', toCity: db.cities?.[1] || 'Pokhara', price: 0 });
   };
 
   const handleGlobalRouteAdd = (e) => {
     e.preventDefault();
-    if (!globalRouteForm.fromCity || !globalRouteForm.toCity) {
-      alert("Please select both from and to cities.");
+    if (!globalRouteStops || globalRouteStops.length < 2) {
+      alert("Please configure at least 2 city stops for the global route.");
       return;
     }
     
-    const from = globalRouteForm.fromCity.trim();
-    const to = globalRouteForm.toCity.trim();
-    const routeName = `${from} to ${to}`;
-    
-    const routeKey = `${from.toLowerCase()}_to_${to.toLowerCase()}`
-      .replace(/[^a-z0-9_]+/g, '');
+    const routeName = globalRouteStops.join(' to ');
+    const routeKey = globalRouteStops.map(s => s.trim().toLowerCase().replace(/[^a-z0-9]+/g, ''))
+      .join('_to_');
       
     if (db.routes.some(r => r.key === routeKey)) {
       alert("A transfer route with this name or code already exists globally.");
@@ -2431,6 +2429,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       vehicles: updatedVehicles
     });
 
+    setGlobalRouteStops([db.cities?.[0] || 'Kathmandu', db.cities?.[1] || 'Pokhara']);
     setGlobalRouteForm({ fromCity: db.cities?.[0] || 'Kathmandu', toCity: db.cities?.[1] || 'Pokhara', prices: {} });
   };
 
@@ -7356,27 +7355,47 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                         <h6 className="text-xs font-extrabold uppercase text-orange-800 tracking-wider flex items-center gap-1.5">
                           <Plus size={14} className="text-orange-600" /> Add New Transfer Route Globally
                         </h6>
-                        <div className="flex gap-4">
-                          <div className="flex-1">
-                            <label className="block text-[9px] uppercase font-bold text-slate-400 mb-1">From City</label>
-                            <select 
-                              value={globalRouteForm.fromCity}
-                              onChange={(e) => setGlobalRouteForm({ ...globalRouteForm, fromCity: e.target.value })}
-                              className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-orange-500 font-semibold text-slate-800"
-                            >
-                              {(db.cities || []).map(city => <option key={city} value={city}>{city}</option>)}
-                            </select>
-                          </div>
-                          <div className="flex-1">
-                            <label className="block text-[9px] uppercase font-bold text-slate-400 mb-1">To City</label>
-                            <select 
-                              value={globalRouteForm.toCity}
-                              onChange={(e) => setGlobalRouteForm({ ...globalRouteForm, toCity: e.target.value })}
-                              className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-orange-500 font-semibold text-slate-800"
-                            >
-                              {(db.cities || []).map(city => <option key={city} value={city}>{city}</option>)}
-                            </select>
-                          </div>
+                        {/* Dynamic Multi-stop Sequence UI */}
+                        <div className="space-y-2">
+                        <label className="block text-[9px] uppercase font-bold text-slate-400">Route City Stops Sequence</label>
+                        <div className="flex flex-wrap items-center gap-2 bg-white p-2.5 rounded-xl border border-slate-200">
+                        {globalRouteStops.map((stop, idx) => (
+                        <div key={idx} className="flex items-center gap-1.5 bg-orange-50 text-orange-850 px-2.5 py-1 rounded-lg border border-orange-100 text-xs font-bold shadow-sm">
+                        <span>{stop}</span>
+                        {globalRouteStops.length > 2 && (
+                        <button
+                        type="button"
+                        onClick={() => setGlobalRouteStops(prev => prev.filter((_, i) => i !== idx))}
+                        className="text-orange-400 hover:text-red-650 transition font-extrabold text-[10px] cursor-pointer"
+                        title="Remove Stop"
+                        >
+                        ✕
+                        </button>
+                        )}
+                        </div>
+                        ))}
+                        <div className="flex items-center gap-1">
+                        <span className="text-slate-300 font-bold text-xs">➔</span>
+                        <select
+                        onChange={(e) => {
+                        if (e.target.value) {
+                        setGlobalRouteStops(prev => [...prev, e.target.value]);
+                        e.target.value = '';
+                        }
+                        }}
+                        className="px-2 py-1 text-[11px] bg-slate-50 border border-slate-200 rounded-lg font-semibold text-slate-600 focus:outline-none focus:ring-1 focus:ring-orange-500 cursor-pointer"
+                        defaultValue=""
+                        >
+                        <option value="" disabled>+ Add Stop</option>
+                        {(db.cities || []).map(city => (
+                        <option key={city} value={city}>{city}</option>
+                        ))}
+                        </select>
+                        </div>
+                        </div>
+                        <p className="text-[10px] text-slate-500 font-semibold italic">
+                        Preview: <span className="text-orange-700 font-bold">{globalRouteStops.join(' ➔ ')}</span>
+                        </p>
                         </div>
                         {/* Prices for each vehicle */}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-2 border-t border-orange-100">
@@ -7603,52 +7622,73 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
                               {/* Add New Route Inline Form */}
                               <div className="p-4 bg-orange-50/40 border border-orange-100 rounded-2xl flex flex-col gap-3 mt-2 shadow-sm">
-                                <h6 className="text-[10px] font-extrabold uppercase text-orange-850 tracking-wider flex items-center gap-1.5">
-                                  <Plus size={13} className="text-orange-600" /> Add Route for this Vehicle
-                                </h6>
-                                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
-                                  <div>
-                                    <label className="block text-[9px] uppercase font-bold text-slate-400 mb-1">From City</label>
-                                    <select 
-                                      value={newInlineRoute.fromCity}
-                                      onChange={(e) => setNewInlineRoute({ ...newInlineRoute, fromCity: e.target.value })}
-                                      className="form-select w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-orange-500 transition-all font-semibold text-slate-800"
-                                    >
-                                      {(db.cities || []).map(city => (
-                                        <option key={city} value={city}>{city}</option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                  <div>
-                                    <label className="block text-[9px] uppercase font-bold text-slate-400 mb-1">To City</label>
-                                    <select 
-                                      value={newInlineRoute.toCity}
-                                      onChange={(e) => setNewInlineRoute({ ...newInlineRoute, toCity: e.target.value })}
-                                      className="form-select w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-orange-500 transition-all font-semibold text-slate-800"
-                                    >
-                                      {(db.cities || []).map(city => (
-                                        <option key={city} value={city}>{city}</option>
-                                      ))}
-                                    </select>
-                                  </div>
-                                  <div>
-                                    <label className="block text-[9px] uppercase font-bold text-slate-400 mb-1">Price (₹) for {v.name}</label>
-                                    <input 
-                                      type="number"
-                                      value={newInlineRoute.price}
-                                      onChange={(e) => setNewInlineRoute({ ...newInlineRoute, price: Number(e.target.value) })}
-                                      className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-orange-500 transition-all text-center"
-                                      min="0"
-                                    />
-                                  </div>
-                                  <button
-                                    type="button"
-                                    onClick={handleInlineRouteAdd}
-                                    className="bg-orange-600 hover:bg-orange-700 text-white font-extrabold text-[10px] uppercase tracking-wider py-2 px-4 rounded-lg shadow transition"
-                                  >
-                                    Add Route Option
-                                  </button>
-                                </div>
+                              <h6 className="text-[10px] font-extrabold uppercase text-orange-850 tracking-wider flex items-center gap-1.5">
+                              <Plus size={13} className="text-orange-600" /> Add Route for this Vehicle
+                              </h6>
+                              <div className="flex flex-col gap-3">
+                              {/* Multi-stop Sequence UI */}
+                              <div className="space-y-1.5">
+                              <label className="block text-[9px] uppercase font-bold text-slate-400">Route City Stops Sequence</label>
+                              <div className="flex flex-wrap items-center gap-2 bg-white p-2 rounded-xl border border-slate-200">
+                              {localRouteStops.map((stop, idx) => (
+                              <div key={idx} className="flex items-center gap-1 bg-orange-50 text-orange-850 px-2 py-0.5 rounded-lg border border-orange-100 text-xs font-bold shadow-sm">
+                              <span>{stop}</span>
+                              {localRouteStops.length > 2 && (
+                              <button
+                              type="button"
+                              onClick={() => setLocalRouteStops(prev => prev.filter((_, i) => i !== idx))}
+                              className="text-orange-400 hover:text-red-650 transition font-extrabold text-[10px] cursor-pointer"
+                              title="Remove Stop"
+                              >
+                              ✕
+                              </button>
+                              )}
+                              </div>
+                              ))}
+                              <div className="flex items-center gap-1">
+                              <span className="text-slate-300 font-bold text-xs">➔</span>
+                              <select
+                              onChange={(e) => {
+                              if (e.target.value) {
+                              setLocalRouteStops(prev => [...prev, e.target.value]);
+                              e.target.value = '';
+                              }
+                              }}
+                              className="px-2 py-0.5 text-[10px] bg-slate-50 border border-slate-200 rounded-lg font-semibold text-slate-600 focus:outline-none focus:ring-1 focus:ring-orange-500 cursor-pointer"
+                              defaultValue=""
+                              >
+                              <option value="" disabled>+ Add Stop</option>
+                              {(db.cities || []).map(city => (
+                              <option key={city} value={city}>{city}</option>
+                              ))}
+                              </select>
+                              </div>
+                              </div>
+                              <p className="text-[9px] text-slate-500 font-semibold italic">
+                              Preview: <span className="text-orange-700 font-bold">{localRouteStops.join(' ➔ ')}</span>
+                              </p>
+                              </div>
+
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end">
+                              <div>
+                              <label className="block text-[9px] uppercase font-bold text-slate-400 mb-1">Price (₹) for {v.name}</label>
+                              <input
+                              type="number"
+                              value={newInlineRoute.price}
+                              onChange={(e) => setNewInlineRoute({ ...newInlineRoute, price: Number(e.target.value) })}
+                              className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-orange-500 transition-all text-center"
+                              min="0"
+                              />
+                              </div>
+                              <button
+                              type="button"
+                              onClick={handleInlineRouteAdd}
+                              className="bg-orange-600 hover:bg-orange-700 text-white font-extrabold text-[10px] uppercase tracking-wider py-2 px-4 rounded-lg shadow transition"
+                              >
+                              Add Route Option
+                              </button>
+                              </div>
+                              </div>
                               </div>
                             </div>
                           )}
