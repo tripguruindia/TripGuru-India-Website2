@@ -2179,6 +2179,12 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     setEditingHotelId(null);
   };
 
+  const handleDeleteHotel = (hotelId) => {
+    if (!window.confirm("Are you sure you want to delete this hotel?")) return;
+    const updatedHotels = db.hotels.filter(h => h.id !== hotelId);
+    updateDBState({ ...db, hotels: updatedHotels });
+  };
+
   const handleNestedHotelRateChange = (paxCategory, mealPlan, val) => {
     setHotelEditState(prev => {
       const updatedRates = { ...prev.rates };
@@ -7032,12 +7038,21 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                     </button>
                                   </div>
                                 ) : (
-                                  <button 
-                                    onClick={() => handleStartEditHotel(h)}
-                                    className="bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-extrabold text-xs uppercase tracking-wider py-2 px-4 rounded-xl shadow-sm transition hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-1.5"
-                                  >
-                                    <Edit3 size={13} className="text-indigo-600" /> <span>Edit Rate Matrix</span>
-                                  </button>
+                                  <div className="flex items-center gap-2">
+                                    <button 
+                                      onClick={() => handleStartEditHotel(h)}
+                                      className="bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-extrabold text-xs uppercase tracking-wider py-2 px-4 rounded-xl shadow-sm transition hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-1.5"
+                                    >
+                                      <Edit3 size={13} className="text-indigo-600" /> <span>Edit Rate Matrix</span>
+                                    </button>
+                                    <button 
+                                      onClick={() => handleDeleteHotel(h.id)}
+                                      className="bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 font-extrabold text-xs uppercase tracking-wider py-2.5 px-3 rounded-xl transition hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center"
+                                      title="Delete Hotel"
+                                    >
+                                      <Trash2 size={13} />
+                                    </button>
+                                  </div>
                                 )}
                               </div>
                             </div>
