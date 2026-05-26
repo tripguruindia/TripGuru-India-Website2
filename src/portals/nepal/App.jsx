@@ -7008,18 +7008,57 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                             
                             {/* Hotel Header Block */}
                             <div className="px-6 py-5 border-b border-slate-100 bg-slate-50/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                              <div>
-                                <div className="flex items-center gap-2.5">
-                                  <h4 className="text-base font-extrabold text-slate-800 tracking-tight font-heading">{h.name}</h4>
-                                  <span className="bg-blue-50 text-blue-700 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border border-blue-100 uppercase tracking-wider">
-                                    {h.category}
-                                  </span>
-                                  <span className="bg-indigo-50 text-indigo-700 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border border-indigo-100 uppercase tracking-wider">
-                                    {h.city}
-                                  </span>
+                              {isEditing ? (
+                                <div className="flex-1 space-y-2.5">
+                                  <div className="flex flex-wrap items-center gap-2.5">
+                                    <input 
+                                      type="text" 
+                                      value={hotelEditState.name} 
+                                      onChange={(e) => setHotelEditState(prev => ({ ...prev, name: e.target.value }))} 
+                                      className="form-input text-xs font-bold py-1.5 px-3 border border-slate-300 rounded-xl w-[220px] focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" 
+                                      placeholder="Hotel Name"
+                                    />
+                                    <select 
+                                      value={hotelEditState.category} 
+                                      onChange={(e) => setHotelEditState(prev => ({ ...prev, category: e.target.value }))} 
+                                      className="py-1.5 px-3 text-xs border border-slate-300 rounded-xl bg-white font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                                    >
+                                      <option value="3-Star">3-Star</option>
+                                      <option value="4-Star">4-Star</option>
+                                      <option value="5-Star">5-Star</option>
+                                    </select>
+                                    <select 
+                                      value={hotelEditState.city} 
+                                      onChange={(e) => setHotelEditState(prev => ({ ...prev, city: e.target.value }))} 
+                                      className="py-1.5 px-3 text-xs border border-slate-300 rounded-xl bg-white font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                                    >
+                                      {(db.cities || []).map(city => (
+                                        <option key={city} value={city}>{city}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                  <textarea 
+                                    value={hotelEditState.description} 
+                                    onChange={(e) => setHotelEditState(prev => ({ ...prev, description: e.target.value }))} 
+                                    className="form-input text-xs py-1.5 px-3 border border-slate-300 rounded-xl w-full resize-y min-h-[40px] focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none" 
+                                    rows={1} 
+                                    placeholder="Hotel Description"
+                                  />
                                 </div>
-                                <p className="text-xs text-slate-500 mt-1 leading-relaxed">{h.description}</p>
-                              </div>
+                              ) : (
+                                <div>
+                                  <div className="flex items-center gap-2.5">
+                                    <h4 className="text-base font-extrabold text-slate-800 tracking-tight font-heading">{h.name}</h4>
+                                    <span className="bg-blue-50 text-blue-700 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border border-blue-100 uppercase tracking-wider">
+                                      {h.category}
+                                    </span>
+                                    <span className="bg-indigo-50 text-indigo-700 text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border border-indigo-100 uppercase tracking-wider">
+                                      {h.city}
+                                    </span>
+                                  </div>
+                                  <p className="text-xs text-slate-500 mt-1 leading-relaxed">{h.description}</p>
+                                </div>
+                              )}
                               
                               <div className="shrink-0">
                                 {isEditing ? (
@@ -7028,7 +7067,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                       onClick={handleSaveHotelEdit}
                                       className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs uppercase tracking-wider py-2 px-4 rounded-xl shadow-md transition hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-1.5"
                                     >
-                                      <Save size={13} /> <span>Save Matrix</span>
+                                      <Save size={13} /> <span>Save Hotel</span>
                                     </button>
                                     <button 
                                       onClick={() => setEditingHotelId(null)}
@@ -7043,7 +7082,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                       onClick={() => handleStartEditHotel(h)}
                                       className="bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-extrabold text-xs uppercase tracking-wider py-2 px-4 rounded-xl shadow-sm transition hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-1.5"
                                     >
-                                      <Edit3 size={13} className="text-indigo-600" /> <span>Edit Rate Matrix</span>
+                                      <Edit3 size={13} className="text-indigo-600" /> <span>Edit Details & Rates</span>
                                     </button>
                                     <button 
                                       onClick={() => handleDeleteHotel(h.id)}
