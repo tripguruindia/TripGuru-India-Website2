@@ -7406,16 +7406,6 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                         </div>
                         </React.Fragment>
                         ))}
-                        <div className="flex items-center gap-1.5 ml-1">
-                        <span className="text-slate-300 font-bold text-xs">➔</span>
-                        <button
-                        type="button"
-                        onClick={() => setGlobalRouteStops(prev => [...prev, db.cities?.[0] || 'Kathmandu'])}
-                        className="px-2.5 py-1 text-xs bg-slate-50 hover:bg-orange-600 hover:text-white border border-slate-205 text-slate-700 rounded-lg font-bold transition cursor-pointer shadow-sm"
-                        >
-                        + Add Stop to End
-                        </button>
-                        </div>
                         </div>
                         <p className="text-[10px] text-slate-505 font-bold italic">
                         Preview: <span className="text-orange-700 font-extrabold">{globalRouteStops.filter(Boolean).join(' ➔ ')}</span>
@@ -7701,16 +7691,6 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                               </div>
                               </React.Fragment>
                               ))}
-                              <div className="flex items-center gap-1.5 ml-1">
-                              <span className="text-slate-300 font-bold text-xs">➔</span>
-                              <button
-                              type="button"
-                              onClick={() => setLocalRouteStops(prev => [...prev, db.cities?.[0] || 'Kathmandu'])}
-                              className="px-2.5 py-1 text-xs bg-slate-50 hover:bg-orange-600 hover:text-white border border-slate-205 text-slate-700 rounded-lg font-bold transition cursor-pointer shadow-sm"
-                              >
-                              + Add Stop to End
-                              </button>
-                              </div>
                               </div>
                               <p className="text-[9px] text-slate-550 font-bold italic">
                               Preview: <span className="text-orange-700 font-extrabold">{localRouteStops.filter(Boolean).join(' ➔ ')}</span>
