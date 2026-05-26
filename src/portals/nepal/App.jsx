@@ -7359,42 +7359,45 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                         <div className="space-y-2">
                         <label className="block text-[9px] uppercase font-bold text-slate-400">Route City Stops Sequence</label>
                         <div className="flex flex-wrap items-center gap-2 bg-white p-2.5 rounded-xl border border-slate-200">
-                        {globalRouteStops.map((stop, idx) => (
-                        <div key={idx} className="flex items-center gap-1.5 bg-orange-50 text-orange-850 px-2.5 py-1 rounded-lg border border-orange-100 text-xs font-bold shadow-sm">
+                        {globalRouteStops.filter(Boolean).map((stop, idx) => (
+                        <React.Fragment key={idx}>
+                        {idx > 0 && <span className="text-slate-400 font-bold text-xs mx-0.5">➔</span>}
+                        <div className="flex items-center gap-1.5 bg-orange-55 text-orange-900 px-2.5 py-1 rounded-lg border border-orange-100 text-xs font-bold shadow-sm">
                         <span>{stop}</span>
-                        {globalRouteStops.length > 2 && (
+                        {globalRouteStops.filter(Boolean).length > 2 && (
                         <button
                         type="button"
                         onClick={() => setGlobalRouteStops(prev => prev.filter((_, i) => i !== idx))}
-                        className="text-orange-400 hover:text-red-650 transition font-extrabold text-[10px] cursor-pointer"
+                        className="text-orange-400 hover:text-red-655 transition font-extrabold text-[10px] cursor-pointer ml-1"
                         title="Remove Stop"
                         >
                         ✕
                         </button>
                         )}
                         </div>
+                        </React.Fragment>
                         ))}
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1.5 ml-1">
                         <span className="text-slate-300 font-bold text-xs">➔</span>
                         <select
+                        value=""
                         onChange={(e) => {
-                        if (e.target.value) {
-                        setGlobalRouteStops(prev => [...prev, e.target.value]);
-                        e.target.value = '';
+                        const val = e.target.value;
+                        if (val) {
+                        setGlobalRouteStops(prev => [...prev, val]);
                         }
                         }}
                         className="px-2 py-1 text-[11px] bg-slate-50 border border-slate-200 rounded-lg font-semibold text-slate-600 focus:outline-none focus:ring-1 focus:ring-orange-500 cursor-pointer"
-                        defaultValue=""
                         >
                         <option value="" disabled>+ Add Stop</option>
-                        {(db.cities || []).map(city => (
+                        {(db.cities || []).filter(Boolean).map(city => (
                         <option key={city} value={city}>{city}</option>
                         ))}
                         </select>
                         </div>
                         </div>
-                        <p className="text-[10px] text-slate-500 font-semibold italic">
-                        Preview: <span className="text-orange-700 font-bold">{globalRouteStops.join(' ➔ ')}</span>
+                        <p className="text-[10px] text-slate-505 font-bold italic">
+                        Preview: <span className="text-orange-700 font-extrabold">{globalRouteStops.filter(Boolean).join(' ➔ ')}</span>
                         </p>
                         </div>
                         {/* Prices for each vehicle */}
@@ -7630,42 +7633,45 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                               <div className="space-y-1.5">
                               <label className="block text-[9px] uppercase font-bold text-slate-400">Route City Stops Sequence</label>
                               <div className="flex flex-wrap items-center gap-2 bg-white p-2 rounded-xl border border-slate-200">
-                              {localRouteStops.map((stop, idx) => (
-                              <div key={idx} className="flex items-center gap-1 bg-orange-50 text-orange-850 px-2 py-0.5 rounded-lg border border-orange-100 text-xs font-bold shadow-sm">
+                              {localRouteStops.filter(Boolean).map((stop, idx) => (
+                              <React.Fragment key={idx}>
+                              {idx > 0 && <span className="text-slate-400 font-bold text-xs mx-0.5">➔</span>}
+                              <div className="flex items-center gap-1.5 bg-orange-55 text-orange-900 px-2 py-0.5 rounded-lg border border-orange-100 text-xs font-bold shadow-sm">
                               <span>{stop}</span>
-                              {localRouteStops.length > 2 && (
+                              {localRouteStops.filter(Boolean).length > 2 && (
                               <button
                               type="button"
                               onClick={() => setLocalRouteStops(prev => prev.filter((_, i) => i !== idx))}
-                              className="text-orange-400 hover:text-red-650 transition font-extrabold text-[10px] cursor-pointer"
+                              className="text-orange-400 hover:text-red-655 transition font-extrabold text-[10px] cursor-pointer ml-1"
                               title="Remove Stop"
                               >
                               ✕
                               </button>
                               )}
                               </div>
+                              </React.Fragment>
                               ))}
-                              <div className="flex items-center gap-1">
+                              <div className="flex items-center gap-1.5 ml-1">
                               <span className="text-slate-300 font-bold text-xs">➔</span>
                               <select
+                              value=""
                               onChange={(e) => {
-                              if (e.target.value) {
-                              setLocalRouteStops(prev => [...prev, e.target.value]);
-                              e.target.value = '';
+                              const val = e.target.value;
+                              if (val) {
+                              setLocalRouteStops(prev => [...prev, val]);
                               }
                               }}
                               className="px-2 py-0.5 text-[10px] bg-slate-50 border border-slate-200 rounded-lg font-semibold text-slate-600 focus:outline-none focus:ring-1 focus:ring-orange-500 cursor-pointer"
-                              defaultValue=""
                               >
                               <option value="" disabled>+ Add Stop</option>
-                              {(db.cities || []).map(city => (
+                              {(db.cities || []).filter(Boolean).map(city => (
                               <option key={city} value={city}>{city}</option>
                               ))}
                               </select>
                               </div>
                               </div>
-                              <p className="text-[9px] text-slate-500 font-semibold italic">
-                              Preview: <span className="text-orange-700 font-bold">{localRouteStops.join(' ➔ ')}</span>
+                              <p className="text-[9px] text-slate-550 font-bold italic">
+                              Preview: <span className="text-orange-700 font-extrabold">{localRouteStops.filter(Boolean).join(' ➔ ')}</span>
                               </p>
                               </div>
 
