@@ -2247,6 +2247,12 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     setEditingActivityId(null);
   };
 
+  const handleDeleteActivity = (activityId) => {
+    if (!window.confirm("Are you sure you want to delete this activity?")) return;
+    const updatedActs = db.activities.filter(a => a.id !== activityId);
+    updateDBState({ ...db, activities: updatedActs });
+  };
+
   const handleAddNewActivity = (e) => {
     e.preventDefault();
     const newId = `a-${newActivityForm.city.substring(0, 3).toLowerCase()}-${Date.now().toString().slice(-4)}`;
@@ -7243,7 +7249,17 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                         className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-800"
                                       />
                                     </td>
-                                    <td className="py-2.5 px-4 font-bold text-slate-600">{act.city}</td>
+                                    <td className="py-2.5 px-4">
+                                      <select 
+                                        value={activityEditState.city}
+                                        onChange={(e) => setActivityEditState({ ...activityEditState, city: e.target.value })}
+                                        className="py-1.5 px-3 text-xs border border-slate-300 rounded-xl bg-white font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none w-[130px]"
+                                      >
+                                        {(db.cities || []).map(city => (
+                                          <option key={city} value={city}>{city}</option>
+                                        ))}
+                                      </select>
+                                    </td>
                                     <td className="py-2.5 px-4">
                                       <input 
                                         type="number"
@@ -7293,13 +7309,22 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                     <td className="py-3.5 px-4 font-bold text-slate-850">₹{act.price_child.toLocaleString()}</td>
                                     <td className="py-3.5 px-6 text-xs text-slate-500 leading-relaxed">{act.description}</td>
                                     <td className="py-3.5 px-6 text-right">
-                                      <button 
-                                        onClick={() => handleStartEditActivity(act)} 
-                                        className="bg-white hover:bg-slate-50 border border-slate-200 text-slate-650 hover:text-indigo-650 py-1.5 px-3 rounded-lg shadow-sm transition inline-flex items-center gap-1" 
-                                        title="Edit Activity Prices"
-                                      >
-                                        <Edit3 size={12} /> <span>Edit</span>
-                                      </button>
+                                      <div className="flex gap-2 justify-end">
+                                        <button 
+                                          onClick={() => handleStartEditActivity(act)} 
+                                          className="bg-white hover:bg-slate-50 border border-slate-200 text-slate-650 hover:text-indigo-650 py-1.5 px-3 rounded-lg shadow-sm transition inline-flex items-center gap-1" 
+                                          title="Edit Activity Details"
+                                        >
+                                          <Edit3 size={12} /> <span>Edit</span>
+                                        </button>
+                                        <button 
+                                          onClick={() => handleDeleteActivity(act.id)}
+                                          className="bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 font-extrabold text-xs uppercase tracking-wider py-1.5 px-2.5 rounded-lg transition inline-flex items-center justify-center"
+                                          title="Delete Activity"
+                                        >
+                                          <Trash2 size={13} />
+                                        </button>
+                                      </div>
                                     </td>
                                   </>
                                 )}
