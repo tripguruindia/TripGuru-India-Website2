@@ -7443,37 +7443,79 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                         <div key={v.id} className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm hover:shadow-md transition duration-300">
                           
                           {/* Vehicle Header Block */}
-                          <div className="flex justify-between items-start border-b border-slate-100 pb-4 mb-5">
-                            <div>
-                              <h4 className="text-base font-extrabold text-slate-800 tracking-tight font-heading">{v.name}</h4>
-                              <p className="text-xs text-slate-500 mt-1">{v.description} | Max Capacity: <strong className="text-slate-700 font-semibold">{v.capacity} travelers</strong></p>
-                            </div>
-                            
-                            <div className="shrink-0">
-                              {isEditing ? (
-                                <div className="flex items-center gap-2">
-                                  <button 
-                                    onClick={handleSaveVehicleEdit} 
-                                    className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs uppercase tracking-wider py-2 px-4 rounded-xl shadow-md transition hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-1.5"
-                                  >
-                                    <Save size={13} /> Save Rates
-                                  </button>
-                                  <button 
-                                    onClick={() => setEditingVehicleId(null)} 
-                                    className="px-4 py-2 text-xs text-slate-500 hover:text-slate-700 bg-transparent font-bold transition"
-                                  >
-                                    Cancel
-                                  </button>
-                                </div>
-                              ) : (
-                                <button 
-                                  onClick={() => handleStartEditVehicle(v)} 
-                                  className="bg-white hover:bg-slate-50 border border-slate-200 text-slate-750 font-extrabold text-xs uppercase tracking-wider py-2 px-4 rounded-xl shadow-sm transition hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-1.5"
-                                >
-                                  <Edit3 size={13} className="text-indigo-600" /> Edit Route Rates
-                                </button>
-                              )}
-                            </div>
+                          <div className="flex justify-between items-start border-b border-slate-100 pb-4 mb-5 gap-4 w-full">
+                          {isEditing ? (
+                          <div className="flex-1 space-y-2.5">
+                          <div className="flex flex-wrap items-center gap-2.5">
+                          <input
+                          type="text"
+                          value={vehicleEditState.name}
+                          onChange={(e) => setVehicleEditState(prev => ({ ...prev, name: e.target.value }))}
+                          className="form-input text-xs font-bold py-1.5 px-3 border border-slate-300 rounded-xl w-[220px] focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                          placeholder="Vehicle Type Name"
+                          />
+                          <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                          <span>Max Capacity:</span>
+                          <input
+                          type="number"
+                          value={vehicleEditState.capacity}
+                          onChange={(e) => setVehicleEditState(prev => ({ ...prev, capacity: Number(e.target.value) }))}
+                          className="form-input text-xs font-bold py-1.5 px-3 border border-slate-300 rounded-xl w-[80px] focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                          min="1"
+                          placeholder="Pax"
+                          />
+                          <span>travelers</span>
+                          </div>
+                          </div>
+                          <input
+                          type="text"
+                          value={vehicleEditState.description}
+                          onChange={(e) => setVehicleEditState(prev => ({ ...prev, description: e.target.value }))}
+                          className="form-input text-xs py-1.5 px-3 border border-slate-300 rounded-xl w-full focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+                          placeholder="Vehicle Description"
+                          />
+                          </div>
+                          ) : (
+                          <div>
+                          <h4 className="text-base font-extrabold text-slate-800 tracking-tight font-heading">{v.name}</h4>
+                          <p className="text-xs text-slate-500 mt-1">{v.description} | Max Capacity: <strong className="text-slate-700 font-semibold">{v.capacity} travelers</strong></p>
+                          </div>
+                          )}
+                          
+                          <div className="shrink-0">
+                          {isEditing ? (
+                          <div className="flex items-center gap-2">
+                          <button
+                          onClick={handleSaveVehicleEdit}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs uppercase tracking-wider py-2 px-4 rounded-xl shadow-md transition hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-1.5"
+                          >
+                          <Save size={13} /> Save Vehicle
+                          </button>
+                          <button
+                          onClick={() => setEditingVehicleId(null)}
+                          className="px-4 py-2 text-xs text-slate-500 hover:text-slate-700 bg-transparent font-bold transition"
+                          >
+                          Cancel
+                          </button>
+                          </div>
+                          ) : (
+                          <div className="flex items-center gap-2">
+                          <button
+                          onClick={() => handleStartEditVehicle(v)}
+                          className="bg-white hover:bg-slate-50 border border-slate-200 text-slate-750 font-extrabold text-xs uppercase tracking-wider py-2 px-4 rounded-xl shadow-sm transition hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-1.5"
+                          >
+                          <Edit3 size={13} className="text-indigo-600" /> Edit Details & Rates
+                          </button>
+                          <button
+                          onClick={() => handleDeleteVehicle(v.id)}
+                          className="bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 font-extrabold text-xs uppercase tracking-wider py-2.5 px-3 rounded-xl transition hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center"
+                          title="Delete Vehicle Type"
+                          >
+                          <Trash2 size={13} />
+                          </button>
+                          </div>
+                          )}
+                          </div>
                           </div>
 
                           {/* Route prices grid */}
