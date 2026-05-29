@@ -773,3 +773,262 @@
 }
 
 
+/* ==========================================================================
+   B2B PARTNER PORTAL - LUXURY DARK GOLD THEME (COPIED FROM MAIN PUBLISHED SITE)
+   ========================================================================== */
+
+.nepal-portal-root.b2b-portal-theme {
+  --bg-main: #0D0B08;            /* Warm luxury dark base */
+  --bg-card: #1A1710;            /* Surface */
+  --bg-card-alt: #221E14;        /* Surface warm */
+  --bg-dark-sidebar: #121009;    /* Secondary background */
+  
+  --primary: #C9A84C;            /* Luxury gold */
+  --primary-light: #DFC479;      /* Luxury gold light */
+  --primary-dark: #0D0B08;       
+  --accent: #C9A84C;             /* Use gold instead of orange */
+  
+  --text-primary: #F0EAE0;       /* Text cream */
+  --text-muted: #9A9080;         /* Text secondary */
+  --text-light: #F0EAE0;
+  
+  --border-color: rgba(201, 168, 76, 0.2); /* Gold border */
+  
+  background-color: var(--bg-main) !important;
+  color: var(--text-primary) !important;
+  font-family: "DM Sans", ui-sans-serif, system-ui, sans-serif !important;
+}
+
+/* Cormorant Garamond Heading Overrides */
+.b2b-portal-theme :where(h1, h2, h3, h4, h5, h6),
+.b2b-portal-theme .font-heading,
+.b2b-portal-theme .brand-name {
+  font-family: "Cormorant Garamond", serif !important;
+}
+
+/* Sidebar Styling overrides */
+.b2b-portal-theme .sidebar {
+  background-color: var(--bg-dark-sidebar) !important;
+  border-right: 1px solid var(--border-color) !important;
+  box-shadow: 4px 0 25px rgba(0, 0, 0, 0.5) !important;
+}
+
+.b2b-portal-theme .sidebar-header {
+  border-bottom: 1px solid var(--border-color) !important;
+}
+
+.b2b-portal-theme .logo-icon {
+  background: var(--primary) !important;
+  color: #0D0B08 !important;
+  font-weight: 900 !important;
+}
+
+.b2b-portal-theme .brand-sub {
+  color: var(--primary) !important;
+}
+
+.b2b-portal-theme .sidebar button {
+  transition: all 0.2s ease !important;
+}
+
+.b2b-portal-theme .sidebar button.bg-emerald-700 {
+  background-color: var(--primary) !important;
+  color: #0D0B08 !important;
+  font-weight: 700 !important;
+}
+
+.b2b-portal-theme .sidebar button:not(.bg-emerald-700):hover {
+  background-color: rgba(201, 168, 76, 0.1) !important;
+  color: var(--primary-light) !important;
+}
+
+/* Top Nav Overrides */
+.b2b-portal-theme .top-nav {
+  background-color: var(--bg-card) !important;
+  border-bottom: 1px solid var(--border-color) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Cards & Sections Layout */
+.b2b-portal-theme .bg-white,
+.b2b-portal-theme .premium-card {
+  background-color: var(--bg-card) !important;
+  border: 1px solid var(--border-color) !important;
+  color: var(--text-primary) !important;
+}
+
+.b2b-portal-theme .premium-card:hover {
+  border-color: var(--primary) !important;
+  box-shadow: 0 10px 25px -5px rgba(201, 168, 76, 0.15) !important;
+}
+
+.b2b-portal-theme .border-slate-100,
+.b2b-portal-theme .border-slate-200,
+.b2b-portal-theme .border-slate-250,
+.b2b-portal-theme .border-slate-200\/80 {
+  border-color: var(--border-color) !important;
+}
+
+/* Metric / KPI Cards styling */
+.b2b-portal-theme .bg-emerald-100,
+.b2b-portal-theme .bg-blue-100,
+.b2b-portal-theme .bg-indigo-100,
+.b2b-portal-theme .bg-purple-100 {
+  background-color: rgba(201, 168, 76, 0.1) !important;
+  color: var(--primary) !important;
+}
+
+.b2b-portal-theme .text-slate-800,
+.b2b-portal-theme .text-slate-700,
+.b2b-portal-theme .text-slate-750,
+.b2b-portal-theme .text-slate-650 {
+  color: var(--text-primary) !important;
+}
+
+.b2b-portal-theme .text-slate-500,
+.b2b-portal-theme .text-slate-400,
+.b2b-portal-theme .text-slate-450 {
+  color: var(--text-muted) !important;
+}
+
+/* B2B Welcome Section Banner Card override */
+.b2b-portal-theme .bg-gradient-to-r.from-emerald-800.to-indigo-950 {
+  background: linear-gradient(135deg, #1A1710 0%, #221E14 50%, #121009 100%) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+.b2b-portal-theme .bg-gradient-to-r.from-emerald-800.to-indigo-950 * {
+  color: var(--text-primary) !important;
+}
+
+.b2b-portal-theme .bg-gradient-to-r.from-emerald-800.to-indigo-950 .bg-emerald-600 {
+  background-color: var(--primary) !important;
+  color: #0D0B08 !important;
+}
+
+/* Quick Action Cards gradient styling override */
+.b2b-portal-theme .from-emerald-50.to-teal-50\/50,
+.b2b-portal-theme .from-indigo-50.to-blue-50\/50 {
+  background: linear-gradient(135deg, rgba(201, 168, 76, 0.05) 0%, rgba(201, 168, 76, 0.01) 100%) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+.b2b-portal-theme .from-emerald-50.to-teal-50\/50:hover,
+.b2b-portal-theme .from-indigo-50.to-blue-50\/50:hover {
+  border-color: var(--primary) !important;
+  background: linear-gradient(135deg, rgba(201, 168, 76, 0.08) 0%, rgba(201, 168, 76, 0.03) 100%) !important;
+}
+
+.b2b-portal-theme .bg-emerald-600,
+.b2b-portal-theme .bg-indigo-600 {
+  background-color: var(--primary) !important;
+  color: #0D0B08 !important;
+}
+
+.b2b-portal-theme .text-emerald-600,
+.b2b-portal-theme .text-indigo-600 {
+  color: var(--primary-light) !important;
+}
+
+/* Form inputs & Select Elements */
+.b2b-portal-theme .form-input,
+.b2b-portal-theme .form-select,
+.b2b-portal-theme .form-textarea,
+.b2b-portal-theme input[type="text"],
+.b2b-portal-theme input[type="number"],
+.b2b-portal-theme input[type="date"],
+.b2b-portal-theme select,
+.b2b-portal-theme textarea {
+  background-color: var(--bg-main) !important;
+  color: var(--text-primary) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+.b2b-portal-theme select option {
+  background-color: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+}
+
+.b2b-portal-theme .form-input:focus,
+.b2b-portal-theme .form-select:focus,
+.b2b-portal-theme .form-textarea:focus,
+.b2b-portal-theme input:focus,
+.b2b-portal-theme select:focus,
+.b2b-portal-theme textarea:focus {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 3px rgba(201, 168, 76, 0.25) !important;
+}
+
+/* Table Override Styles */
+.b2b-portal-theme table {
+  background-color: var(--bg-card) !important;
+}
+
+.b2b-portal-theme thead tr {
+  background-color: var(--bg-card-alt) !important;
+  border-bottom: 2px solid var(--border-color) !important;
+}
+
+.b2b-portal-theme th {
+  color: var(--primary) !important;
+  border-bottom: 1px solid var(--border-color) !important;
+}
+
+.b2b-portal-theme td {
+  border-bottom: 1px solid var(--border-color) !important;
+  color: var(--text-primary) !important;
+}
+
+.b2b-portal-theme tr:hover {
+  background-color: rgba(201, 168, 76, 0.04) !important;
+}
+
+.b2b-portal-theme .bg-slate-50,
+.b2b-portal-theme .bg-slate-50\/50,
+.b2b-portal-theme .bg-slate-50\/60,
+.b2b-portal-theme .bg-slate-100,
+.b2b-portal-theme .bg-slate-100\/80 {
+  background-color: var(--bg-card-alt) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Buttons style overrides */
+.b2b-portal-theme .btn-primary {
+  background-color: var(--primary) !important;
+  color: #0D0B08 !important;
+}
+
+.b2b-portal-theme .btn-primary:hover {
+  background-color: var(--primary-light) !important;
+  box-shadow: 0 4px 15px rgba(201, 168, 76, 0.3) !important;
+}
+
+.b2b-portal-theme .btn-secondary {
+  background-color: var(--bg-card) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border-color) !important;
+}
+
+.b2b-portal-theme .btn-secondary:hover {
+  background-color: var(--bg-card-alt) !important;
+  border-color: var(--primary) !important;
+}
+
+/* Modal and dialog boxes overrides */
+.b2b-portal-theme .modal-content {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border-color) !important;
+  color: var(--text-primary) !important;
+}
+
+.b2b-portal-theme .modal-header,
+.b2b-portal-theme .modal-footer {
+  border-color: var(--border-color) !important;
+}
+
+.b2b-portal-theme .modal-overlay {
+  background-color: rgba(0, 0, 0, 0.75) !important;
+}
+
+
+
