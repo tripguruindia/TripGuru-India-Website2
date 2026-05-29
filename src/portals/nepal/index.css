@@ -1235,5 +1235,42 @@
   border: 1px solid var(--border-color) !important;
 }
 
+/* Blue-900 text overrides (such as + Add Another City button) */
+.nepal-portal-root .text-blue-900 {
+  color: var(--primary) !important;
+}
+
+.nepal-portal-root .hover\:text-blue-950:hover {
+  color: var(--primary-light) !important;
+}
+
+.nepal-portal-root .hover\:bg-slate-50:hover {
+  background-color: var(--bg-card-alt) !important;
+}
+
+/* Pax Counter Styling inside nepal-portal-root */
+.nepal-portal-root .pax-counter {
+  background-color: var(--bg-main) !important;
+  border-color: var(--border-color) !important;
+  background: var(--bg-main) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+.nepal-portal-root .pax-btn {
+  color: var(--text-primary) !important;
+}
+
+.nepal-portal-root .pax-btn:hover:not(:disabled) {
+  background-color: var(--bg-card-alt) !important;
+}
+
+.nepal-portal-root .pax-btn:disabled {
+  opacity: 0.25 !important;
+}
+
+.nepal-portal-root .pax-value {
+  color: var(--text-primary) !important;
+}
+
 
 
