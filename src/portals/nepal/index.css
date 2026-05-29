@@ -3,42 +3,42 @@
 /* index.css - Modern Design System for Nepal Travel Quote Builder */
 
 :root {
-  /* Color Palette */
-  --primary: #0f2942;       /* Slate Navy */
-  --primary-light: #2563eb; /* Royal Blue */
-  --primary-dark: #09131e;  /* Deep Night Slate */
-  --accent: #f97316;        /* Bright Orange */
-  --heritage: #dc2626;      /* Nepal Crimson */
-  --success: #16a34a;       /* Grass Green */
-  --warning: #ca8a04;       /* Mustard Yellow */
-  --error: #dc2626;         /* Crimson Red */
+  /* Warm luxury dark base branding */
+  --primary: #C9A84C;       /* Luxury gold */
+  --primary-light: #DFC479; /* Luxury gold light */
+  --primary-dark: #0D0B08;  
+  --accent: #C9A84C;        /* Use gold instead of orange */
+  --heritage: #CC5A14;      /* Luxury warm orange */
+  --success: #16a34a;       
+  --warning: #ca8a04;       
+  --error: #dc2626;         
   
   /* Backgrounds */
-  --bg-main: #f8fafc;       /* Light Slate Canvas */
-  --bg-card: #ffffff;
-  --bg-card-alt: #f8fafc;
-  --bg-dark-sidebar: #0f172a; /* Midnight Blue Sidebar */
+  --bg-main: #0D0B08;       /* Warm luxury dark base */
+  --bg-card: #1A1710;       /* Surface */
+  --bg-card-alt: #221E14;   /* Surface warm */
+  --bg-dark-sidebar: #121009; /* Secondary background */
   
   /* Text */
-  --text-primary: #1e293b;
-  --text-muted: #64748b;
-  --text-light: #f8fafc;
+  --text-primary: #F0EAE0;  /* Cream */
+  --text-muted: #9A9080;     /* Secondary warm grey */
+  --text-light: #F0EAE0;
   
   /* Borders */
-  --border-color: #e2e8f0;
+  --border-color: rgba(201, 168, 76, 0.2); /* Gold border */
   --radius-sm: 8px;
   --radius-md: 14px;
   --radius-lg: 24px;
   
   /* Shadows */
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.04), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
-  --shadow-premium: 0 20px 25px -5px rgba(15, 41, 66, 0.05), 0 8px 10px -6px rgba(15, 41, 66, 0.03);
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.3), 0 2px 4px -2px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.4), 0 4px 6px -4px rgba(0, 0, 0, 0.4);
+  --shadow-premium: 0 20px 25px -5px rgba(201, 168, 76, 0.05), 0 8px 10px -6px rgba(201, 168, 76, 0.03);
   
-  --font-body: 'Plus Jakarta Sans', sans-serif;
-  --font-heading: 'Plus Jakarta Sans', sans-serif;
-  --font-display: 'Playfair Display', serif;
+  --font-body: 'DM Sans', ui-sans-serif, system-ui, sans-serif;
+  --font-heading: 'Cormorant Garamond', serif;
+  --font-display: 'Cormorant Garamond', serif;
 }
 
 /* Scoped Reset & Base Styles for Nepal Quote Creator Sub-App */
@@ -777,7 +777,7 @@
    B2B PARTNER PORTAL - LUXURY DARK GOLD THEME (COPIED FROM MAIN PUBLISHED SITE)
    ========================================================================== */
 
-.nepal-portal-root.b2b-portal-theme {
+.nepal-portal-root {
   --bg-main: #0D0B08;            /* Warm luxury dark base */
   --bg-card: #1A1710;            /* Surface */
   --bg-card-alt: #221E14;        /* Surface warm */
@@ -800,233 +800,233 @@
 }
 
 /* Cormorant Garamond Heading Overrides */
-.b2b-portal-theme :where(h1, h2, h3, h4, h5, h6),
-.b2b-portal-theme .font-heading,
-.b2b-portal-theme .brand-name {
+.nepal-portal-root :where(h1, h2, h3, h4, h5, h6),
+.nepal-portal-root .font-heading,
+.nepal-portal-root .brand-name {
   font-family: "Cormorant Garamond", serif !important;
 }
 
 /* Sidebar Styling overrides */
-.b2b-portal-theme .sidebar {
+.nepal-portal-root .sidebar {
   background-color: var(--bg-dark-sidebar) !important;
   border-right: 1px solid var(--border-color) !important;
   box-shadow: 4px 0 25px rgba(0, 0, 0, 0.5) !important;
 }
 
-.b2b-portal-theme .sidebar-header {
+.nepal-portal-root .sidebar-header {
   border-bottom: 1px solid var(--border-color) !important;
 }
 
-.b2b-portal-theme .logo-icon {
+.nepal-portal-root .logo-icon {
   background: var(--primary) !important;
   color: #0D0B08 !important;
   font-weight: 900 !important;
 }
 
-.b2b-portal-theme .brand-sub {
+.nepal-portal-root .brand-sub {
   color: var(--primary) !important;
 }
 
-.b2b-portal-theme .sidebar button {
+.nepal-portal-root .sidebar button {
   transition: all 0.2s ease !important;
 }
 
-.b2b-portal-theme .sidebar button.bg-emerald-700 {
+.nepal-portal-root .sidebar button.bg-emerald-700 {
   background-color: var(--primary) !important;
   color: #0D0B08 !important;
   font-weight: 700 !important;
 }
 
-.b2b-portal-theme .sidebar button:not(.bg-emerald-700):hover {
+.nepal-portal-root .sidebar button:not(.bg-emerald-700):hover {
   background-color: rgba(201, 168, 76, 0.1) !important;
   color: var(--primary-light) !important;
 }
 
 /* Top Nav Overrides */
-.b2b-portal-theme .top-nav {
+.nepal-portal-root .top-nav {
   background-color: var(--bg-card) !important;
   border-bottom: 1px solid var(--border-color) !important;
   color: var(--text-primary) !important;
 }
 
 /* Cards & Sections Layout */
-.b2b-portal-theme .bg-white,
-.b2b-portal-theme .premium-card {
+.nepal-portal-root .bg-white,
+.nepal-portal-root .premium-card {
   background-color: var(--bg-card) !important;
   border: 1px solid var(--border-color) !important;
   color: var(--text-primary) !important;
 }
 
-.b2b-portal-theme .premium-card:hover {
+.nepal-portal-root .premium-card:hover {
   border-color: var(--primary) !important;
   box-shadow: 0 10px 25px -5px rgba(201, 168, 76, 0.15) !important;
 }
 
-.b2b-portal-theme .border-slate-100,
-.b2b-portal-theme .border-slate-200,
-.b2b-portal-theme .border-slate-250,
-.b2b-portal-theme .border-slate-200\/80 {
+.nepal-portal-root .border-slate-100,
+.nepal-portal-root .border-slate-200,
+.nepal-portal-root .border-slate-250,
+.nepal-portal-root .border-slate-200\/80 {
   border-color: var(--border-color) !important;
 }
 
 /* Metric / KPI Cards styling */
-.b2b-portal-theme .bg-emerald-100,
-.b2b-portal-theme .bg-blue-100,
-.b2b-portal-theme .bg-indigo-100,
-.b2b-portal-theme .bg-purple-100 {
+.nepal-portal-root .bg-emerald-100,
+.nepal-portal-root .bg-blue-100,
+.nepal-portal-root .bg-indigo-100,
+.nepal-portal-root .bg-purple-100 {
   background-color: rgba(201, 168, 76, 0.1) !important;
   color: var(--primary) !important;
 }
 
-.b2b-portal-theme .text-slate-800,
-.b2b-portal-theme .text-slate-700,
-.b2b-portal-theme .text-slate-750,
-.b2b-portal-theme .text-slate-650 {
+.nepal-portal-root .text-slate-800,
+.nepal-portal-root .text-slate-700,
+.nepal-portal-root .text-slate-750,
+.nepal-portal-root .text-slate-650 {
   color: var(--text-primary) !important;
 }
 
-.b2b-portal-theme .text-slate-500,
-.b2b-portal-theme .text-slate-400,
-.b2b-portal-theme .text-slate-450 {
+.nepal-portal-root .text-slate-500,
+.nepal-portal-root .text-slate-400,
+.nepal-portal-root .text-slate-450 {
   color: var(--text-muted) !important;
 }
 
 /* B2B Welcome Section Banner Card override */
-.b2b-portal-theme .bg-gradient-to-r.from-emerald-800.to-indigo-950 {
+.nepal-portal-root .bg-gradient-to-r.from-emerald-800.to-indigo-950 {
   background: linear-gradient(135deg, #1A1710 0%, #221E14 50%, #121009 100%) !important;
   border: 1px solid var(--border-color) !important;
 }
 
-.b2b-portal-theme .bg-gradient-to-r.from-emerald-800.to-indigo-950 * {
+.nepal-portal-root .bg-gradient-to-r.from-emerald-800.to-indigo-950 * {
   color: var(--text-primary) !important;
 }
 
-.b2b-portal-theme .bg-gradient-to-r.from-emerald-800.to-indigo-950 .bg-emerald-600 {
+.nepal-portal-root .bg-gradient-to-r.from-emerald-800.to-indigo-950 .bg-emerald-600 {
   background-color: var(--primary) !important;
   color: #0D0B08 !important;
 }
 
 /* Quick Action Cards gradient styling override */
-.b2b-portal-theme .from-emerald-50.to-teal-50\/50,
-.b2b-portal-theme .from-indigo-50.to-blue-50\/50 {
+.nepal-portal-root .from-emerald-50.to-teal-50\/50,
+.nepal-portal-root .from-indigo-50.to-blue-50\/50 {
   background: linear-gradient(135deg, rgba(201, 168, 76, 0.05) 0%, rgba(201, 168, 76, 0.01) 100%) !important;
   border: 1px solid var(--border-color) !important;
 }
 
-.b2b-portal-theme .from-emerald-50.to-teal-50\/50:hover,
-.b2b-portal-theme .from-indigo-50.to-blue-50\/50:hover {
+.nepal-portal-root .from-emerald-50.to-teal-50\/50:hover,
+.nepal-portal-root .from-indigo-50.to-blue-50\/50:hover {
   border-color: var(--primary) !important;
   background: linear-gradient(135deg, rgba(201, 168, 76, 0.08) 0%, rgba(201, 168, 76, 0.03) 100%) !important;
 }
 
-.b2b-portal-theme .bg-emerald-600,
-.b2b-portal-theme .bg-indigo-600 {
+.nepal-portal-root .btn-primary, .nepal-portal-root .bg-emerald-600, .nepal-portal-root .bg-orange-600,
+.nepal-portal-root .bg-indigo-600 {
   background-color: var(--primary) !important;
   color: #0D0B08 !important;
 }
 
-.b2b-portal-theme .text-emerald-600,
-.b2b-portal-theme .text-indigo-600 {
+.nepal-portal-root .text-emerald-600,
+.nepal-portal-root .text-indigo-600 {
   color: var(--primary-light) !important;
 }
 
 /* Form inputs & Select Elements */
-.b2b-portal-theme .form-input,
-.b2b-portal-theme .form-select,
-.b2b-portal-theme .form-textarea,
-.b2b-portal-theme input[type="text"],
-.b2b-portal-theme input[type="number"],
-.b2b-portal-theme input[type="date"],
-.b2b-portal-theme select,
-.b2b-portal-theme textarea {
+.nepal-portal-root .form-input,
+.nepal-portal-root .form-select,
+.nepal-portal-root .form-textarea,
+.nepal-portal-root input[type="text"],
+.nepal-portal-root input[type="number"],
+.nepal-portal-root input[type="date"],
+.nepal-portal-root select,
+.nepal-portal-root textarea {
   background-color: var(--bg-main) !important;
   color: var(--text-primary) !important;
   border: 1px solid var(--border-color) !important;
 }
 
-.b2b-portal-theme select option {
+.nepal-portal-root select option {
   background-color: var(--bg-card) !important;
   color: var(--text-primary) !important;
 }
 
-.b2b-portal-theme .form-input:focus,
-.b2b-portal-theme .form-select:focus,
-.b2b-portal-theme .form-textarea:focus,
-.b2b-portal-theme input:focus,
-.b2b-portal-theme select:focus,
-.b2b-portal-theme textarea:focus {
+.nepal-portal-root .form-input:focus,
+.nepal-portal-root .form-select:focus,
+.nepal-portal-root .form-textarea:focus,
+.nepal-portal-root input:focus,
+.nepal-portal-root select:focus,
+.nepal-portal-root textarea:focus {
   border-color: var(--primary) !important;
   box-shadow: 0 0 0 3px rgba(201, 168, 76, 0.25) !important;
 }
 
 /* Table Override Styles */
-.b2b-portal-theme table {
+.nepal-portal-root table {
   background-color: var(--bg-card) !important;
 }
 
-.b2b-portal-theme thead tr {
+.nepal-portal-root thead tr {
   background-color: var(--bg-card-alt) !important;
   border-bottom: 2px solid var(--border-color) !important;
 }
 
-.b2b-portal-theme th {
+.nepal-portal-root th {
   color: var(--primary) !important;
   border-bottom: 1px solid var(--border-color) !important;
 }
 
-.b2b-portal-theme td {
+.nepal-portal-root td {
   border-bottom: 1px solid var(--border-color) !important;
   color: var(--text-primary) !important;
 }
 
-.b2b-portal-theme tr:hover {
+.nepal-portal-root tr:hover {
   background-color: rgba(201, 168, 76, 0.04) !important;
 }
 
-.b2b-portal-theme .bg-slate-50,
-.b2b-portal-theme .bg-slate-50\/50,
-.b2b-portal-theme .bg-slate-50\/60,
-.b2b-portal-theme .bg-slate-100,
-.b2b-portal-theme .bg-slate-100\/80 {
+.nepal-portal-root .bg-slate-50,
+.nepal-portal-root .bg-slate-50\/50,
+.nepal-portal-root .bg-slate-50\/60,
+.nepal-portal-root .bg-slate-100,
+.nepal-portal-root .bg-slate-100\/80 {
   background-color: var(--bg-card-alt) !important;
   color: var(--text-primary) !important;
 }
 
 /* Buttons style overrides */
-.b2b-portal-theme .btn-primary {
+.nepal-portal-root .btn-primary {
   background-color: var(--primary) !important;
   color: #0D0B08 !important;
 }
 
-.b2b-portal-theme .btn-primary:hover {
+.nepal-portal-root .btn-primary:hover {
   background-color: var(--primary-light) !important;
   box-shadow: 0 4px 15px rgba(201, 168, 76, 0.3) !important;
 }
 
-.b2b-portal-theme .btn-secondary {
+.nepal-portal-root .btn-secondary {
   background-color: var(--bg-card) !important;
   color: var(--text-primary) !important;
   border-color: var(--border-color) !important;
 }
 
-.b2b-portal-theme .btn-secondary:hover {
+.nepal-portal-root .btn-secondary:hover {
   background-color: var(--bg-card-alt) !important;
   border-color: var(--primary) !important;
 }
 
 /* Modal and dialog boxes overrides */
-.b2b-portal-theme .modal-content {
+.nepal-portal-root .modal-content {
   background: var(--bg-card) !important;
   border: 1px solid var(--border-color) !important;
   color: var(--text-primary) !important;
 }
 
-.b2b-portal-theme .modal-header,
-.b2b-portal-theme .modal-footer {
+.nepal-portal-root .modal-header,
+.nepal-portal-root .modal-footer {
   border-color: var(--border-color) !important;
 }
 
-.b2b-portal-theme .modal-overlay {
+.nepal-portal-root .modal-overlay {
   background-color: rgba(0, 0, 0, 0.75) !important;
 }
 

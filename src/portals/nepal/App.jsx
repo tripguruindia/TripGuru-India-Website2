@@ -4044,7 +4044,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   if (!isAuthorizedForRoute()) return renderAuthGate();
 
   return (
-    <div className={`nepal-portal-root ${view === 'b2b' ? 'b2b-portal-theme' : ''}`}>
+    <div className="nepal-portal-root">
       <div className="app-container">
       {/* Sidebar Navigation */}
       {view !== 'b2c' && (
