@@ -1030,5 +1030,170 @@
   background-color: rgba(0, 0, 0, 0.75) !important;
 }
 
+/* -------------------------------------------------------------
+   GLOBAL B2C & ADMIN LUXURY BRANDING OVERRIDES
+   Overrides dynamic themeColor elements (orange, indigo, blue) 
+   and maps them to the luxury gold dark/light system.
+------------------------------------------------------------- */
+
+/* Active Sidebar Navigation Tabs for B2C & Admin (Orange) and B2B (Emerald) */
+.nepal-portal-root .sidebar button.bg-orange-700,
+.nepal-portal-root .sidebar button.bg-emerald-700 {
+  background: var(--primary) !important;
+  color: #0D0B08 !important;
+  font-weight: 700 !important;
+}
+
+.nepal-portal-root .sidebar button:not(.bg-orange-700):not(.bg-emerald-700):hover {
+  background-color: rgba(201, 168, 76, 0.1) !important;
+  color: var(--primary-light) !important;
+}
+
+/* Primary Button Highlights (B2C orange & Admin indigo buttons) */
+.nepal-portal-root .bg-orange-500,
+.nepal-portal-root .bg-orange-600,
+.nepal-portal-root .bg-orange-650,
+.nepal-portal-root .bg-orange-655,
+.nepal-portal-root .bg-indigo-600,
+.nepal-portal-root .bg-indigo-700,
+.nepal-portal-root .bg-indigo-500,
+.nepal-portal-root .btn-primary {
+  background-color: var(--primary) !important;
+  color: #0D0B08 !important;
+}
+
+.nepal-portal-root .bg-orange-500:hover,
+.nepal-portal-root .bg-orange-600:hover,
+.nepal-portal-root .bg-orange-650:hover,
+.nepal-portal-root .bg-orange-655:hover,
+.nepal-portal-root .bg-indigo-600:hover,
+.nepal-portal-root .bg-indigo-700:hover,
+.nepal-portal-root .bg-indigo-500:hover,
+.nepal-portal-root .btn-primary:hover {
+  background-color: var(--primary-light) !important;
+  box-shadow: 0 4px 15px rgba(201, 168, 76, 0.3) !important;
+  color: #0D0B08 !important;
+}
+
+/* Light/Medium Accent Text classes */
+.nepal-portal-root .text-orange-300,
+.nepal-portal-root .text-orange-400,
+.nepal-portal-root .text-orange-500,
+.nepal-portal-root .text-orange-600,
+.nepal-portal-root .text-orange-700,
+.nepal-portal-root .text-orange-800,
+.nepal-portal-root .text-orange-850,
+.nepal-portal-root .text-orange-900,
+.nepal-portal-root .text-indigo-300,
+.nepal-portal-root .text-indigo-400,
+.nepal-portal-root .text-indigo-500,
+.nepal-portal-root .text-indigo-600,
+.nepal-portal-root .text-indigo-700,
+.nepal-portal-root .text-indigo-750,
+.nepal-portal-root .text-emerald-300,
+.nepal-portal-root .text-emerald-400,
+.nepal-portal-root .text-emerald-650,
+.nepal-portal-root .text-emerald-600,
+.nepal-portal-root .text-emerald-700,
+.nepal-portal-root .text-emerald-800 {
+  color: var(--primary-light) !important;
+}
+
+.nepal-portal-root .text-orange-100,
+.nepal-portal-root .text-orange-200,
+.nepal-portal-root .text-indigo-100,
+.nepal-portal-root .text-indigo-200,
+.nepal-portal-root .text-emerald-100,
+.nepal-portal-root .text-emerald-200 {
+  color: var(--text-primary) !important;
+}
+
+/* Accent Badges / Pill backgrounds & warnings */
+.nepal-portal-root .bg-orange-50,
+.nepal-portal-root .bg-orange-55,
+.nepal-portal-root .bg-orange-100,
+.nepal-portal-root .bg-orange-500\/10,
+.nepal-portal-root .bg-orange-950\/40,
+.nepal-portal-root .bg-indigo-50,
+.nepal-portal-root .bg-indigo-50\/50,
+.nepal-portal-root .bg-indigo-100,
+.nepal-portal-root .bg-indigo-100\/50,
+.nepal-portal-root .bg-emerald-50,
+.nepal-portal-root .bg-emerald-100,
+.nepal-portal-root .bg-emerald-105,
+.nepal-portal-root .bg-emerald-950\/40,
+.nepal-portal-root .bg-emerald-500\/10 {
+  background-color: rgba(201, 168, 76, 0.1) !important;
+  color: var(--primary) !important;
+}
+
+/* Fix text colors inside these colored containers to be readable */
+.nepal-portal-root .bg-orange-50 *,
+.nepal-portal-root .bg-orange-55 *,
+.nepal-portal-root .bg-orange-100 *,
+.nepal-portal-root .bg-indigo-50 *,
+.nepal-portal-root .bg-indigo-100 *,
+.nepal-portal-root .bg-emerald-50 *,
+.nepal-portal-root .bg-emerald-100 * {
+  color: var(--primary-light) !important;
+}
+
+/* Accent borders & inputs focus border */
+.nepal-portal-root .border-orange-100,
+.nepal-portal-root .border-orange-200\/50,
+.nepal-portal-root .border-orange-500\/20,
+.nepal-portal-root .border-orange-800\/40,
+.nepal-portal-root .border-indigo-100,
+.nepal-portal-root .border-indigo-100\/50,
+.nepal-portal-root .border-indigo-200,
+.nepal-portal-root .border-emerald-700,
+.nepal-portal-root .border-emerald-800\/40,
+.nepal-portal-root .border-slate-800\/40,
+.nepal-portal-root .border-slate-850\/50,
+.nepal-portal-root .focus\:border-orange-400:focus,
+.nepal-portal-root .focus\:border-orange-500:focus,
+.nepal-portal-root .focus\:border-indigo-500:focus,
+.nepal-portal-root .focus\:ring-indigo-500:focus {
+  border-color: var(--border-color) !important;
+}
+
+/* Specific elements & custom sections styling */
+.nepal-portal-root .border-dashed.border-slate-300:hover {
+  border-color: var(--primary) !important;
+  background-color: rgba(201, 168, 76, 0.08) !important;
+  color: var(--primary-light) !important;
+}
+
+/* Admin Custom Quick Forms & Detail Editor Overrides */
+.nepal-portal-root .bg-orange-50\/40,
+.nepal-portal-root .bg-indigo-50\/50 {
+  background-color: var(--bg-card-alt) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+/* Input Fields inside Admin form fields that might be styled as white */
+.nepal-portal-root .bg-white.border.border-slate-200,
+.nepal-portal-root input.bg-white,
+.nepal-portal-root select.bg-white,
+.nepal-portal-root textarea.bg-white {
+  background-color: var(--bg-main) !important;
+  border-color: var(--border-color) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Lock icons & warnings */
+.nepal-portal-root .text-orange-500,
+.nepal-portal-root .text-orange-600 {
+  color: var(--primary) !important;
+}
+
+/* Specific header auth status background overrides */
+.nepal-portal-root .bg-emerald-100.text-emerald-800,
+.nepal-portal-root .bg-orange-100.text-orange-800 {
+  background-color: var(--bg-card-alt) !important;
+  color: var(--primary) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
 
 
