@@ -1195,5 +1195,44 @@
   border: 1px solid var(--border-color) !important;
 }
 
+/* Custom class overrides for Tailwind arbitrary values like [#0f2942] */
+.nepal-portal-root .text-\[\#0f2942\] {
+  color: var(--text-primary) !important;
+}
+
+.nepal-portal-root h1.text-\[\#0f2942\],
+.nepal-portal-root h2.text-\[\#0f2942\],
+.nepal-portal-root h3.text-\[\#0f2942\],
+.nepal-portal-root h4.text-\[\#0f2942\],
+.nepal-portal-root h5.text-\[\#0f2942\],
+.nepal-portal-root h6.text-\[\#0f2942\],
+.nepal-portal-root strong.text-\[\#0f2942\],
+.nepal-portal-root span.text-\[\#0f2942\] {
+  color: var(--primary) !important;
+}
+
+.nepal-portal-root .bg-\[\#0f2942\] {
+  background-color: var(--primary) !important;
+  color: #0D0B08 !important;
+}
+
+.nepal-portal-root .bg-\[\#0f2942\] * {
+  color: #0D0B08 !important;
+}
+
+.nepal-portal-root .hover\:text-\[\#0f2942\]:hover {
+  color: var(--primary-light) !important;
+}
+
+.nepal-portal-root .hover\:border-\[\#0f2942\]:hover {
+  border-color: var(--primary) !important;
+}
+
+/* Gradient banner overrides for from-slate-900 via-[#132c44] to-[#0f2942] */
+.nepal-portal-root .bg-gradient-to-r.from-slate-900.via-\[\#132c44\].to-\[\#0f2942\] {
+  background: linear-gradient(135deg, #1A1710 0%, #221E14 50%, #121009 100%) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
 
 
