@@ -1272,5 +1272,34 @@
   color: var(--text-primary) !important;
 }
 
+/* Metric cards container styling overrides */
+.nepal-portal-root .bg-blue-50\/60,
+.nepal-portal-root .bg-emerald-50\/60,
+.nepal-portal-root .bg-amber-50\/60,
+.nepal-portal-root .bg-indigo-50\/60,
+.nepal-portal-root .bg-orange-50\/60 {
+  background-color: var(--bg-card) !important;
+  border-color: var(--border-color) !important;
+}
+
+/* Metric cards icon backgrounds and colors */
+.nepal-portal-root .bg-blue-600\/10,
+.nepal-portal-root .bg-emerald-600\/10,
+.nepal-portal-root .bg-amber-600\/10,
+.nepal-portal-root .bg-indigo-600\/10,
+.nepal-portal-root .bg-orange-600\/10 {
+  background-color: rgba(201, 168, 76, 0.1) !important;
+  color: var(--primary) !important;
+}
+
+/* Metric card borders */
+.nepal-portal-root .border-blue-100,
+.nepal-portal-root .border-emerald-100,
+.nepal-portal-root .border-amber-100,
+.nepal-portal-root .border-indigo-100,
+.nepal-portal-root .border-orange-100 {
+  border-color: var(--border-color) !important;
+}
+
 
 
