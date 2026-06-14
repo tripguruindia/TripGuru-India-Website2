@@ -226,6 +226,23 @@ function getSeoConfig(pathname: string): SeoConfig {
     }
   }
 
+  if (normalizedPath === '/privacy-policy') {
+    return {
+      title: 'Privacy Policy | TripGuru India',
+      description: 'Read the Privacy Policy of TripGuru India to understand how we collect, protect, and use your personal information during travel planning.',
+      keywords: 'privacy policy, tripguru, tripguru india, data protection, travel agency policy',
+      canonical: `${BASE_URL}/privacy-policy`,
+      ogImage: LOGO_URL,
+      structuredData: {
+        '@context': 'https://schema.org',
+        '@type': 'WebPage',
+        name: 'Privacy Policy - TripGuru India',
+        description: 'Privacy policy and data protection details of TripGuru India.',
+        publisher: getDefaultStructuredData(),
+      },
+    };
+  }
+
   return {
     title: DEFAULT_TITLE,
     description: DEFAULT_DESCRIPTION,

@@ -18,6 +18,7 @@ import { MobileStickyCTA } from './components/common/MobileStickyCTA';
 import { PromotionPopup } from './components/modals/PromotionPopup';
 import { Reviews } from './components/sections/Reviews';
 import { TravelAgencyCityPage } from './components/pages/TravelAgencyCityPage';
+import { PrivacyPolicyPage } from './components/pages/PrivacyPolicyPage';
 import { SeoManager } from './components/seo/SeoManager';
 import { cityLandingPageMap, cityLandingPages } from './cityLandingPages';
 import { DESTINATIONS } from './constants';
@@ -166,6 +167,7 @@ function AppContent() {
 
   const normalizedPath = location.pathname.replace(/\/+$/, '') || '/';
   const isNepalRoute = normalizedPath === '/nepal';
+  const isPrivacyPolicyRoute = normalizedPath === '/privacy-policy';
 
   if (isNepalRoute) {
     return <NepalApp />;
@@ -186,6 +188,7 @@ function AppContent() {
           </React.Fragment>
         ))}
         <Route path="/nepal" element={null} />
+        <Route path="/privacy-policy" element={null} />
         <Route path="/:section" element={null} />
         <Route path="/" element={null} />
         {/* Catch-all redirect to home */}
@@ -201,6 +204,8 @@ function AppContent() {
           <Navbar onOpenConcierge={handleOpenConcierge} />
           {cityLandingPage ? (
             <TravelAgencyCityPage config={cityLandingPage} onOpenConcierge={handleOpenConcierge} />
+          ) : isPrivacyPolicyRoute ? (
+            <PrivacyPolicyPage />
           ) : (
             <main className="bg-gradient-to-b from-bg via-surface/20 to-bg pb-24 md:pb-0">
               <Hero onOpenConcierge={handleOpenConcierge} />
