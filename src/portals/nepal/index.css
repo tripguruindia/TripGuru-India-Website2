@@ -1037,7 +1037,15 @@
    and maps them to the luxury gold dark/light system.
 ------------------------------------------------------------- */
 
-/* Active Sidebar Navigation Tabs for B2C & Admin (Orange) and B2B (Emerald) */
+/* ==========================================================================
+   GLOBAL BRANDING AND COLOR LEGIBILITY OVERRIDES
+   Scopes visual overrides under the sub-app root selector (.nepal-portal-root)
+   to translate B2C (orange), B2B (emerald), and Admin (indigo/blue/navy) layouts
+   into the luxury dark gold design system from the main published website.
+   ========================================================================== */
+
+/* 1. SIDEBAR AND TABS NAVIGATION */
+/* Matches active sidebar selection tabs across B2C/Admin (orange) and B2B (emerald) */
 .nepal-portal-root .sidebar button.bg-orange-700,
 .nepal-portal-root .sidebar button.bg-emerald-700 {
   background: var(--primary) !important;
@@ -1045,44 +1053,49 @@
   font-weight: 700 !important;
 }
 
+/* Hover highlights for unselected sidebar navigation items */
 .nepal-portal-root .sidebar button:not(.bg-orange-700):not(.bg-emerald-700):hover {
   background-color: rgba(201, 168, 76, 0.1) !important;
   color: var(--primary-light) !important;
 }
 
-/* Primary Button Highlights (B2C orange & Admin indigo buttons) */
+
+/* 2. PRIMARY BUTTON HIGHLIGHTS */
+/* Maps primary accent background buttons globally to the luxury gold theme */
 .nepal-portal-root .bg-orange-500,
 .nepal-portal-root .bg-orange-600,
 .nepal-portal-root .bg-orange-650,
 .nepal-portal-root .bg-orange-655,
+.nepal-portal-root .bg-indigo-500,
 .nepal-portal-root .bg-indigo-600,
 .nepal-portal-root .bg-indigo-700,
-.nepal-portal-root .bg-indigo-500,
 .nepal-portal-root .btn-primary {
   background-color: var(--primary) !important;
   color: #0D0B08 !important;
 }
 
+/* Shimmer, scale, and hover effects for primary buttons */
 .nepal-portal-root .bg-orange-500:hover,
 .nepal-portal-root .bg-orange-600:hover,
 .nepal-portal-root .bg-orange-650:hover,
 .nepal-portal-root .bg-orange-655:hover,
+.nepal-portal-root .bg-indigo-500:hover,
 .nepal-portal-root .bg-indigo-600:hover,
 .nepal-portal-root .bg-indigo-700:hover,
-.nepal-portal-root .bg-indigo-500:hover,
 .nepal-portal-root .btn-primary:hover {
   background-color: var(--primary-light) !important;
   box-shadow: 0 4px 15px rgba(201, 168, 76, 0.3) !important;
   color: #0D0B08 !important;
 }
 
-/* Light/Medium Accent Text classes */
+
+/* 3. BRAND ACCENT TEXT COLORS */
+/* Overrides standard accent color texts (orange, indigo, emerald) with luxury gold light text */
 .nepal-portal-root .text-orange-300,
 .nepal-portal-root .text-orange-400,
 .nepal-portal-root .text-orange-500,
 .nepal-portal-root .text-orange-600,
 .nepal-portal-root .text-orange-700,
-.nepal-portal-root .text-orange-800,
 .nepal-portal-root .text-orange-850,
 .nepal-portal-root .text-orange-900,
 .nepal-portal-root .text-indigo-300,
@@ -1093,13 +1106,15 @@
 .nepal-portal-root .text-indigo-750,
 .nepal-portal-root .text-emerald-300,
 .nepal-portal-root .text-emerald-400,
-.nepal-portal-root .text-emerald-650,
 .nepal-portal-root .text-emerald-600,
+.nepal-portal-root .text-emerald-650,
 .nepal-portal-root .text-emerald-700,
-.nepal-portal-root .text-emerald-800 {
+.nepal-portal-root .text-emerald-800,
+.nepal-portal-root .text-blue-900 {
   color: var(--primary-light) !important;
 }
 
+/* Ensures high contrast texts inside dark theme blocks remain fully readable */
 .nepal-portal-root .text-orange-100,
 .nepal-portal-root .text-orange-200,
 .nepal-portal-root .text-indigo-100,
@@ -1109,7 +1124,18 @@
   color: var(--text-primary) !important;
 }
 
-/* Accent Badges / Pill backgrounds & warnings */
+/* Hover effects for customizer links/buttons (e.g. + Add Another City button) */
+.nepal-portal-root .hover\:text-blue-950:hover {
+  color: var(--primary-light) !important;
+}
+
+.nepal-portal-root .hover\:bg-slate-50:hover {
+  background-color: var(--bg-card-alt) !important;
+}
+
+
+/* 4. ACCENT BADGES AND PILL CONTAINER BACKGROUNDS */
+/* Maps light/pastel badges, pill layouts, and panels to translucent gold elements */
 .nepal-portal-root .bg-orange-50,
 .nepal-portal-root .bg-orange-55,
 .nepal-portal-root .bg-orange-100,
@@ -1128,7 +1154,7 @@
   color: var(--primary) !important;
 }
 
-/* Fix text colors inside these colored containers to be readable */
+/* Enforces readable gold light text for child items nested inside these badges */
 .nepal-portal-root .bg-orange-50 *,
 .nepal-portal-root .bg-orange-55 *,
 .nepal-portal-root .bg-orange-100 *,
@@ -1139,7 +1165,9 @@
   color: var(--primary-light) !important;
 }
 
-/* Accent borders & inputs focus border */
+
+/* 5. ACCENT BORDERS AND INPUT FOCUS FIELDS */
+/* Standardizes borders and focus rings to match subtle luxury gold outlines */
 .nepal-portal-root .border-orange-100,
 .nepal-portal-root .border-orange-200\/50,
 .nepal-portal-root .border-orange-500\/20,
@@ -1158,21 +1186,23 @@
   border-color: var(--border-color) !important;
 }
 
-/* Specific elements & custom sections styling */
+/* Hover outline styling inside the day-wise itinerary cards */
 .nepal-portal-root .border-dashed.border-slate-300:hover {
   border-color: var(--primary) !important;
   background-color: rgba(201, 168, 76, 0.08) !important;
   color: var(--primary-light) !important;
 }
 
-/* Admin Custom Quick Forms & Detail Editor Overrides */
+
+/* 6. ADMIN SHEETS AND FORM OVERRIDES */
+/* Skins quick forms and editor sections with deep dark gold elements */
 .nepal-portal-root .bg-orange-50\/40,
 .nepal-portal-root .bg-indigo-50\/50 {
   background-color: var(--bg-card-alt) !important;
   border: 1px solid var(--border-color) !important;
 }
 
-/* Input Fields inside Admin form fields that might be styled as white */
+/* Corrects input boxes, selects, and textareas from light backgrounds into dark surfaces */
 .nepal-portal-root .bg-white.border.border-slate-200,
 .nepal-portal-root input.bg-white,
 .nepal-portal-root select.bg-white,
@@ -1182,13 +1212,13 @@
   color: var(--text-primary) !important;
 }
 
-/* Lock icons & warnings */
+/* Warnings and locking icons */
 .nepal-portal-root .text-orange-500,
 .nepal-portal-root .text-orange-600 {
   color: var(--primary) !important;
 }
 
-/* Specific header auth status background overrides */
+/* Header dynamic connection status indicators */
 .nepal-portal-root .bg-emerald-100.text-emerald-800,
 .nepal-portal-root .bg-orange-100.text-orange-800 {
   background-color: var(--bg-card-alt) !important;
@@ -1196,11 +1226,14 @@
   border: 1px solid var(--border-color) !important;
 }
 
-/* Custom class overrides for Tailwind arbitrary values like [#0f2942] */
+
+/* 7. TAILWIND ARBITRARY COLOR OVERRIDES (NAVY VALUE [#0f2942]) */
+/* Re-skins compiled navy text selectors to cream text */
 .nepal-portal-root .text-\[\#0f2942\] {
   color: var(--text-primary) !important;
 }
 
+/* Re-skins compiled navy headings/labels to luxury gold text */
 .nepal-portal-root h1.text-\[\#0f2942\],
 .nepal-portal-root h2.text-\[\#0f2942\],
 .nepal-portal-root h3.text-\[\#0f2942\],
@@ -1212,11 +1245,13 @@
   color: var(--primary) !important;
 }
 
+/* Re-skins compiled navy backgrounds to gold accent buttons/pills */
 .nepal-portal-root .bg-\[\#0f2942\] {
   background-color: var(--primary) !important;
   color: #0D0B08 !important;
 }
 
+/* Forces inner items nested inside gold backgrounds to display in dark contrast */
 .nepal-portal-root .bg-\[\#0f2942\] * {
   color: #0D0B08 !important;
 }
@@ -1229,29 +1264,16 @@
   border-color: var(--primary) !important;
 }
 
-/* Gradient banner overrides for from-slate-900 via-[#132c44] to-[#0f2942] */
+/* Gradient banner blocks overrides (e.g. B2C customizer welcome card) */
 .nepal-portal-root .bg-gradient-to-r.from-slate-900.via-\[\#132c44\].to-\[\#0f2942\] {
   background: linear-gradient(135deg, #1A1710 0%, #221E14 50%, #121009 100%) !important;
   border: 1px solid var(--border-color) !important;
 }
 
-/* Blue-900 text overrides (such as + Add Another City button) */
-.nepal-portal-root .text-blue-900 {
-  color: var(--primary) !important;
-}
 
-.nepal-portal-root .hover\:text-blue-950:hover {
-  color: var(--primary-light) !important;
-}
-
-.nepal-portal-root .hover\:bg-slate-50:hover {
-  background-color: var(--bg-card-alt) !important;
-}
-
-/* Pax Counter Styling inside nepal-portal-root */
+/* 8. ROOM SELECTION PAX COUNTERS */
+/* Styles B2C room configurator pax counter widgets in dark surfaces and gold borders */
 .nepal-portal-root .pax-counter {
-  background-color: var(--bg-main) !important;
-  border-color: var(--border-color) !important;
   background: var(--bg-main) !important;
   border: 1px solid var(--border-color) !important;
 }
@@ -1272,7 +1294,9 @@
   color: var(--text-primary) !important;
 }
 
-/* Metric cards container styling overrides */
+
+/* 9. ADMIN DASHBOARD METRICS CARDS */
+/* Converts compiled background opacity metrics cards to dark cards */
 .nepal-portal-root .bg-blue-50\/60,
 .nepal-portal-root .bg-emerald-50\/60,
 .nepal-portal-root .bg-amber-50\/60,
@@ -1282,7 +1306,7 @@
   border-color: var(--border-color) !important;
 }
 
-/* Metric cards icon backgrounds and colors */
+/* Styles icon background containers to translucent gold-dim */
 .nepal-portal-root .bg-blue-600\/10,
 .nepal-portal-root .bg-emerald-600\/10,
 .nepal-portal-root .bg-amber-600\/10,
@@ -1292,7 +1316,7 @@
   color: var(--primary) !important;
 }
 
-/* Metric card borders */
+/* Maps metric card light borders to custom gold borders */
 .nepal-portal-root .border-blue-100,
 .nepal-portal-root .border-emerald-100,
 .nepal-portal-root .border-amber-100,
