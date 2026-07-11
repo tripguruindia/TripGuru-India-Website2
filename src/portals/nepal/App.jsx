@@ -62,6 +62,28 @@ function App() {
   const [showB2bLoginPortal, setShowB2bLoginPortal] = useState(false);
   const [showB2cLoginPortal, setShowB2cLoginPortal] = useState(false);
 
+  // ── Admin Passcode Gate (session-scoped; clears when tab closes) ──────────────
+  const [adminPasscodeVerified, setAdminPasscodeVerified] = useState(() => {
+    return sessionStorage.getItem('nepal_admin_passcode_ok') === 'true';
+  });
+  const [passcodeInput, setPasscodeInput] = useState('');
+  const [passcodeError, setPasscodeError] = useState('');
+  const [passcodeShake, setPasscodeShake] = useState(false);
+  // The admin passcode (change as needed)
+  const ADMIN_PASSCODE = '2024';
+
+  // ── Theme: 'dark' | 'light' — persisted in localStorage ──────────────────────
+  const [themeMode, setThemeMode] = useState(() => {
+    return localStorage.getItem('nepal_theme_mode') || 'dark';
+  });
+  const toggleTheme = () => {
+    setThemeMode(prev => {
+      const next = prev === 'dark' ? 'light' : 'dark';
+      localStorage.setItem('nepal_theme_mode', next);
+      return next;
+    });
+  };
+
   useEffect(() => {
     const handleHashChange = () => {
       const route = getRouteFromHash();
@@ -3751,7 +3773,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       : "fixed inset-0 w-full h-full flex items-center justify-center bg-gradient-to-br from-indigo-950 via-slate-900 to-[#0c1a30] z-[9999] overflow-y-auto px-4 py-8";
 
     return (
-      <div className="nepal-portal-root">
+      <div className="nepal-portal-root" data-theme={themeMode}>
         <div className={backdropClass}>
           <div className="bg-slate-950/90 border border-slate-800/80 backdrop-blur-xl rounded-3xl shadow-2xl p-6 sm:p-8 max-w-md w-full flex flex-col my-auto relative transition-all duration-300">
             {/* Close button for public users */}
@@ -3766,6 +3788,19 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
               >
                 ✕
               </button>
+            )}
+            {/* Theme toggle — top-left corner for admin login */}
+            {!isPopup && (
+              <div className="absolute top-4 left-4">
+                <button
+                  type="button"
+                  onClick={toggleTheme}
+                  title={themeMode === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                  className="w-8 h-8 rounded-full flex items-center justify-center text-sm border border-amber-700/40 bg-[#1A1710]/80 text-amber-300 hover:bg-[#221E14] hover:border-amber-500 transition-all duration-300 shadow-md"
+                >
+                  {themeMode === 'dark' ? '☀️' : '🌙'}
+                </button>
+              </div>
             )}
           
           {/* Brand Header */}
@@ -4033,6 +4068,128 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     );
   };
 
+  // ── Admin Passcode Page ───────────────────────────────────────────────────────
+  const renderPasscodePage = () => {
+    const handlePasscodeDigit = (digit) => {
+      if (passcodeInput.length >= ADMIN_PASSCODE.length) return;
+      const next = passcodeInput + digit;
+      setPasscodeInput(next);
+      setPasscodeError('');
+      if (next.length === ADMIN_PASSCODE.length) {
+        if (next === ADMIN_PASSCODE) {
+          sessionStorage.setItem('nepal_admin_passcode_ok', 'true');
+          setAdminPasscodeVerified(true);
+          setPasscodeInput('');
+        } else {
+          setPasscodeShake(true);
+          setTimeout(() => {
+            setPasscodeInput('');
+            setPasscodeError('Incorrect passcode. Please try again.');
+            setPasscodeShake(false);
+          }, 500);
+        }
+      }
+    };
+    const handleClear = () => { setPasscodeInput(''); setPasscodeError(''); };
+    const isDark = themeMode === 'dark';
+    return (
+      <div className="nepal-portal-root" data-theme={themeMode}>
+        <div className={`fixed inset-0 flex flex-col items-center justify-center ${
+          isDark
+            ? 'bg-gradient-to-br from-[#0D0B08] via-[#1A1710] to-[#0c1a0a]'
+            : 'bg-gradient-to-br from-[#f5f0e8] via-[#ede8dc] to-[#ddd8cc]'
+        } z-[9999] px-4`}>
+          {/* Theme toggle top-right */}
+          <button
+            type="button"
+            onClick={toggleTheme}
+            title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+            className={`absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center text-lg border transition-all duration-300 ${
+              isDark
+                ? 'bg-[#1A1710] border-amber-700/40 text-amber-300 hover:bg-[#221E14] hover:border-amber-500'
+                : 'bg-white border-amber-300 text-amber-600 hover:bg-amber-50 hover:border-amber-500'
+            } shadow-lg`}
+          >
+            {isDark ? '☀️' : '🌙'}
+          </button>
+
+          {/* Card */}
+          <div className={`rounded-3xl shadow-2xl p-8 max-w-sm w-full flex flex-col items-center gap-6 border ${
+            isDark
+              ? 'bg-[#1A1710]/95 border-amber-800/30'
+              : 'bg-white/95 border-amber-200'
+          }`}>
+            {/* Brand */}
+            <div className="text-center">
+              <span className="text-5xl mb-3 block select-none">🇳🇵</span>
+              <h2 className={`text-2xl font-black tracking-wider uppercase mb-1 ${
+                isDark ? 'text-amber-300' : 'text-amber-700'
+              }`}>Admin Portal</h2>
+              <p className={`text-[10px] font-bold uppercase tracking-widest ${
+                isDark ? 'text-amber-600/60' : 'text-amber-500'
+              }`}>Enter Access Passcode</p>
+            </div>
+
+            {/* PIN dots */}
+            <div className={`flex gap-3 ${
+              passcodeShake ? 'animate-[shake_0.5s_ease-in-out]' : ''
+            }`}>
+              {Array.from({ length: ADMIN_PASSCODE.length }).map((_, i) => (
+                <div
+                  key={i}
+                  className={`w-4 h-4 rounded-full border-2 transition-all duration-200 ${
+                    i < passcodeInput.length
+                      ? isDark ? 'bg-amber-400 border-amber-400' : 'bg-amber-600 border-amber-600'
+                      : isDark ? 'bg-transparent border-amber-700/50' : 'bg-transparent border-amber-300'
+                  }`}
+                />
+              ))}
+            </div>
+
+            {/* Error */}
+            {passcodeError && (
+              <p className="text-red-400 text-xs font-semibold text-center -mt-2">{passcodeError}</p>
+            )}
+
+            {/* Number pad */}
+            <div className="grid grid-cols-3 gap-3 w-full max-w-[220px]">
+              {['1','2','3','4','5','6','7','8','9','','0','⌫'].map((digit, idx) => (
+                digit === '' ? (
+                  <div key={idx} />
+                ) : (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => digit === '⌫' ? handleClear() : handlePasscodeDigit(digit)}
+                    className={`aspect-square rounded-2xl text-lg font-bold transition-all duration-150 active:scale-95 ${
+                      digit === '⌫'
+                        ? isDark
+                          ? 'bg-red-900/40 border border-red-700/30 text-red-300 hover:bg-red-800/60'
+                          : 'bg-red-50 border border-red-200 text-red-500 hover:bg-red-100'
+                        : isDark
+                          ? 'bg-[#221E14] border border-amber-800/30 text-amber-100 hover:bg-[#2d2819] hover:border-amber-600/40'
+                          : 'bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 hover:border-amber-400'
+                    } shadow-md`}
+                  >
+                    {digit}
+                  </button>
+                )
+              ))}
+            </div>
+
+            {/* Hint */}
+            <p className={`text-[9px] uppercase tracking-widest font-bold ${
+              isDark ? 'text-amber-900/60' : 'text-amber-400'
+            }`}>
+              Contact system admin for access
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ── Route Authorization ───────────────────────────────────────────────────────
   const isAuthorizedForRoute = () => {
     if (currentRoute === 'b2c') return true; // B2C is public layout, auth gate is modal
     if (currentRoute === 'b2b') return true; // B2B is public layout, auth gate is modal
@@ -4041,22 +4198,44 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     return currentUser.role === currentRoute;
   };
 
+  // Show admin passcode gate FIRST before login
+  if (currentRoute === 'admin' && !adminPasscodeVerified) return renderPasscodePage();
   if (!isAuthorizedForRoute()) return renderAuthGate();
 
+  // ── Theme Toggle Button (reusable) ──────────────────────────────────────────
+  const ThemeToggle = ({ className = '' }) => (
+    <button
+      type="button"
+      onClick={toggleTheme}
+      title={themeMode === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+      className={`w-9 h-9 rounded-full flex items-center justify-center text-base border transition-all duration-300 ${
+        themeMode === 'dark'
+          ? 'bg-[#221E14] border-amber-700/40 text-amber-300 hover:bg-[#2d2819] hover:border-amber-500'
+          : 'bg-white border-amber-300 text-amber-600 hover:bg-amber-50 hover:border-amber-500'
+      } shadow-md ${className}`}
+    >
+      {themeMode === 'dark' ? '☀️' : '🌙'}
+    </button>
+  );
+
   return (
-    <div className="nepal-portal-root">
+    <div className="nepal-portal-root" data-theme={themeMode}>
       <div className="app-container">
       {/* Sidebar Navigation */}
       {view !== 'b2c' && (
         <aside className="sidebar no-print">
-        <div className="sidebar-header">
-          <div className="logo-icon">🇳🇵</div>
-          <div>
-            <h1 className="brand-name">NEPAL TOUR</h1>
-            <div className="brand-sub font-semibold tracking-wider">
-              {view === 'admin' ? 'Admin Backend' : view === 'b2b' ? 'B2B Partner' : 'Traveler Portal'}
+        <div className="sidebar-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div className="logo-icon">🇳🇵</div>
+            <div>
+              <h1 className="brand-name">NEPAL TOUR</h1>
+              <div className="brand-sub font-semibold tracking-wider">
+                {view === 'admin' ? 'Admin Backend' : view === 'b2b' ? 'B2B Partner' : 'Traveler Portal'}
+              </div>
             </div>
           </div>
+          {/* Dark / Light theme toggle */}
+          <ThemeToggle />
         </div>
 
         {view === 'b2c' && (
