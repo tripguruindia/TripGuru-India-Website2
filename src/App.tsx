@@ -69,6 +69,22 @@ const ScrollToSection = () => {
   return null;
 };
 
+// Fires a GA4 page_view on every client-side route change (SPA tracking)
+const GoogleAnalyticsTracker = () => {
+  const { pathname } = useLocation();
+
+  useEffect(() => {
+    if (typeof (window as any).gtag === 'function') {
+      (window as any).gtag('event', 'page_view', {
+        page_path: pathname,
+        page_title: document.title,
+      });
+    }
+  }, [pathname]);
+
+  return null;
+};
+
 const DestinationDeepLink = ({ onOpenDetail }: { onOpenDetail: (dest: Destination) => void }) => {
   const { slug } = useParams();
   const navigate = useNavigate();
@@ -182,6 +198,7 @@ function AppContent() {
     <div className="min-h-screen font-sans selection:bg-gold selection:text-bg overflow-x-hidden">
       <SeoManager />
       <ScrollToSection />
+      <GoogleAnalyticsTracker />
       <Routes>
         <Route path="/destinations/:slug" element={<DestinationDeepLink onOpenDetail={openDetail} />} />
         {cityLandingPages.map((page) => (
