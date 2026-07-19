@@ -19,6 +19,7 @@ import { PromotionPopup } from './components/modals/PromotionPopup';
 import { Reviews } from './components/sections/Reviews';
 import { TravelAgencyCityPage } from './components/pages/TravelAgencyCityPage';
 import { PrivacyPolicyPage } from './components/pages/PrivacyPolicyPage';
+import { ThankYouPage } from './components/pages/ThankYouPage';
 import { SeoManager } from './components/seo/SeoManager';
 import { cityLandingPageMap, cityLandingPages } from './cityLandingPages';
 import { DESTINATIONS } from './constants';
@@ -168,6 +169,7 @@ function AppContent() {
   const normalizedPath = location.pathname.replace(/\/+$/, '') || '/';
   const isNepalRoute = normalizedPath === '/nepal';
   const isPrivacyPolicyRoute = normalizedPath === '/privacy-policy';
+  const isThankYouRoute = normalizedPath === '/thank-you';
 
   if (isNepalRoute) {
     return <NepalApp />;
@@ -189,6 +191,7 @@ function AppContent() {
         ))}
         <Route path="/nepal" element={null} />
         <Route path="/privacy-policy" element={null} />
+        <Route path="/thank-you" element={null} />
         <Route path="/:section" element={null} />
         <Route path="/" element={null} />
         {/* Catch-all redirect to home */}
@@ -206,6 +209,8 @@ function AppContent() {
             <TravelAgencyCityPage config={cityLandingPage} onOpenConcierge={handleOpenConcierge} />
           ) : isPrivacyPolicyRoute ? (
             <PrivacyPolicyPage />
+          ) : isThankYouRoute ? (
+            <ThankYouPage />
           ) : (
             <main className="bg-gradient-to-b from-bg via-surface/20 to-bg pb-24 md:pb-0">
               <Hero onOpenConcierge={handleOpenConcierge} />

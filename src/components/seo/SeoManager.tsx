@@ -19,6 +19,7 @@ type SeoConfig = {
   geoRegion?: string;
   geoPlacename?: string;
   geoPosition?: string;
+  robots?: string;
   structuredData: Record<string, unknown> | Array<Record<string, unknown>>;
 };
 
@@ -243,6 +244,24 @@ function getSeoConfig(pathname: string): SeoConfig {
     };
   }
 
+  if (normalizedPath === '/thank-you') {
+    return {
+      title: 'Thank You | TripGuru India',
+      description: 'Your quote request has been successfully received.',
+      keywords: '',
+      canonical: `${BASE_URL}/thank-you`,
+      ogImage: LOGO_URL,
+      robots: 'noindex, nofollow',
+      structuredData: {
+        '@context': 'https://schema.org',
+        '@type': 'WebPage',
+        name: 'Thank You - TripGuru India',
+        description: 'Thank you page for conversion tracking.',
+        publisher: getDefaultStructuredData(),
+      },
+    };
+  }
+
   return {
     title: DEFAULT_TITLE,
     description: DEFAULT_DESCRIPTION,
@@ -271,7 +290,7 @@ export const SeoManager = () => {
     setMeta('meta[name="description"]', { name: 'description' }, seo.description);
     setMeta('meta[name="keywords"]', { name: 'keywords' }, seo.keywords);
     setMeta('meta[name="author"]', { name: 'author' }, 'TripGuru');
-    setMeta('meta[name="robots"]', { name: 'robots' }, 'index, follow');
+    setMeta('meta[name="robots"]', { name: 'robots' }, seo.robots || 'index, follow');
     setMeta('meta[name="geo.region"]', { name: 'geo.region' }, seo.geoRegion || 'IN');
     setMeta('meta[name="geo.placename"]', { name: 'geo.placename' }, seo.geoPlacename || 'India');
     setMeta('meta[name="geo.position"]', { name: 'geo.position' }, seo.geoPosition || DEFAULT_GEO_POSITION);

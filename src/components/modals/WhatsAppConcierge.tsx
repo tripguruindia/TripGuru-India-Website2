@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { 
   X, 
@@ -63,6 +64,7 @@ function getLeadSourcePayload(sourceSection: string) {
 }
 
 export const WhatsAppConcierge: React.FC<WhatsAppConciergeProps> = ({ isOpen, onClose, initialDestination }) => {
+  const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
     fullName: "",
@@ -272,6 +274,7 @@ export const WhatsAppConcierge: React.FC<WhatsAppConciergeProps> = ({ isOpen, on
 
     setIsSending(false);
     onClose();
+    navigate('/thank-you');
   };
 
   const isStepValid = () => {
