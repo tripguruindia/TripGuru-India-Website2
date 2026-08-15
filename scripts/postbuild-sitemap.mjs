@@ -32,7 +32,13 @@ function buildSitemapXml(routes) {
 
   for (const route of uniqueRoutes) {
     const loc = route === '/' ? BASE_URL : `${BASE_URL}${route}`;
-    const priority = route === '/' ? '1.0' : route.startsWith('/travel-agency-in-') ? '0.9' : '0.8';
+    const priority = route === '/'
+      ? '1.0'
+      : route.startsWith('/travel-agency-in-')
+        ? '0.9'
+        : route === '/privacy-policy'
+          ? '0.3'
+          : '0.8';
     lines.push(
       '  <url>',
       `    <loc>${loc}</loc>`,
@@ -60,6 +66,7 @@ function main() {
     '/services',
     '/contact',
     '/destinations',
+    '/privacy-policy',
     ...cityPaths,
     ...destinationSlugs.map((slug) => `/destinations/${slug}`),
   ];
