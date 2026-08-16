@@ -8,6 +8,8 @@ const cors = require('cors');
 
 const authRoutes = require('./routes/auth');
 const adminRoutes = require('./routes/admin');
+const publicRoutes = require('./routes/public');
+const bookingsRoutes = require('./routes/bookings');
 
 if (!process.env.JWT_SECRET) {
   // Fail fast rather than silently signing tokens with `undefined`.
@@ -37,6 +39,8 @@ app.get('/health', (req, res) => res.json({ ok: true }));
 
 app.use('/api/nepal/auth', authRoutes);
 app.use('/api/nepal/admin', adminRoutes);
+app.use('/api/nepal/public', publicRoutes);
+app.use('/api/nepal/bookings', bookingsRoutes);
 
 // Centralized error handler -- catches thrown/rejected errors from routes
 // above (e.g. Prisma errors) so a bug never leaks a stack trace to the client.

@@ -107,6 +107,7 @@ function serializeBooking(b) {
     itinerary: parseJSON(b.itinerary, []),
     rooms: parseJSON(b.rooms, []),
     b2b_white_label: parseJSON(b.b2b_white_label, null),
+    user_id: b.user_id,
   };
 }
 
