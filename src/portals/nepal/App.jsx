@@ -2,12 +2,22 @@ import React, { useState, useEffect } from 'react';
 import { 
   Plus, Minus, Trash2, Edit3, Save, Settings, Layers, Calendar, Users, 
   MapPin, TrendingUp, Briefcase, Compass, FileText, CheckCircle, Clock, 
-  Printer, ArrowLeft, ArrowRight, RefreshCw, Hotel, Car, Coffee, ShieldCheck, Check, Info, AlertTriangle,
+  Printer, ArrowLeft, ArrowRight, Hotel, Car, Coffee, ShieldCheck, Check, Info, AlertTriangle,
   Download, Upload, Lock, Unlock, Image, User, Mail, Phone, Globe, X, MessageSquare, LogOut
 } from 'lucide-react';
-import { fetchSheetDB, syncUserToSheet, syncLeadToSheet, syncBookingToSheet } from './utils/dbSync';
-import { initializeDB, saveDB, resetDB, INITIAL_ROUTES } from './data/seedData';
+import { syncUserToSheet, syncLeadToSheet, syncBookingToSheet } from './utils/dbSync';
+import { initializeDB, saveDB, INITIAL_ROUTES } from './data/seedData';
 import { calculateQuote, validateRoomCapacity, deriveFromRooms } from './utils/calculator';
+import {
+  apiLogin,
+  apiLogoutLocal,
+  isAdminSession,
+  getAdminDb,
+  createUser,
+  updateUser,
+  deleteUser,
+  resetUserPassword,
+} from './utils/apiClient';
 import './App.css';
 import './index.css';
 
@@ -61,16 +71,6 @@ function App() {
   const [b2bSubView, setB2bSubView] = useState('dashboard');
   const [showB2bLoginPortal, setShowB2bLoginPortal] = useState(false);
   const [showB2cLoginPortal, setShowB2cLoginPortal] = useState(false);
-
-  // ── Admin Passcode Gate (session-scoped; clears when tab closes) ──────────────
-  const [adminPasscodeVerified, setAdminPasscodeVerified] = useState(() => {
-    return sessionStorage.getItem('nepal_admin_passcode_ok') === 'true';
-  });
-  const [passcodeInput, setPasscodeInput] = useState('');
-  const [passcodeError, setPasscodeError] = useState('');
-  const [passcodeShake, setPasscodeShake] = useState(false);
-  // The admin passcode (change as needed)
-  const ADMIN_PASSCODE = '2024';
 
   // ── Theme: 'dark' | 'light' — persisted in localStorage ──────────────────────
   const [themeMode, setThemeMode] = useState(() => {
@@ -128,88 +128,33 @@ function App() {
   }, [currentUser, currentRoute]);
 
 
-  // Sync B2C Leads, Users, and Bookings from Google Sheets Database
+  // Admin sessions are backed by the real API now (see utils/apiClient.js),
+  // not localStorage. Load fresh master data from the server whenever we
+  // land on the admin route already authenticated as admin -- this covers
+  // both a fresh login (handleLogin sets currentUser, which retriggers this
+  // effect) and a hard refresh while already logged in (currentUser is
+  // restored from localStorage on mount, see the useState below).
+  // B2C/B2B stay entirely on the original localStorage-backed `db` --
+  // untouched by this effect.
   useEffect(() => {
-    async function syncWithGoogleSheets() {
-      const sheetData = await fetchSheetDB();
-      if (sheetData) {
-        setDb(prevDb => {
-          // Merge Users
-          const localUsers = prevDb.users || [];
-          const sheetUsers = (sheetData.users || []).map(function(u) {
-            var detailsObj = {};
-            if (u.Details) {
-              try { detailsObj = JSON.parse(u.Details); } catch(e) {}
-            }
-            return Object.assign({
-              id: u.ID,
-              email: u.Email,
-              role: u.Role,
-              fullName: u.FullName,
-              phone: u.Phone,
-              created_at: u.CreatedAt
-            }, detailsObj);
-          });
-          const mergedUsers = localUsers.slice();
-          sheetUsers.forEach(function(su) {
-            if (!mergedUsers.some(function(mu) { return mu.id === su.id; })) {
-              mergedUsers.push(su);
-            }
-          });
-
-          // Merge Leads
-          const localLeads = prevDb.leads || [];
-          const sheetLeads = (sheetData.leads || []).map(function(l) {
-            return {
-              id: l.ID,
-              name: l.Name,
-              email: l.Email,
-              phone: l.Phone,
-              created_at: l.CreatedAt,
-              source: l.Source
-            };
-          });
-          const mergedLeads = localLeads.slice();
-          sheetLeads.forEach(function(sl) {
-            if (!mergedLeads.some(function(ml) { return ml.id === sl.id; })) {
-              mergedLeads.push(sl);
-            }
-          });
-
-          // Merge Bookings
-          const localBookings = prevDb.bookings || [];
-          const sheetBookings = (sheetData.bookings || []).map(function(b) {
-            return {
-              id: b.ID,
-              client_name: b.ClientName,
-              email: b.Email,
-              phone: b.Phone,
-              travel_date: b.TravelDate,
-              itinerary_summary: b.ItinerarySummary,
-              total_price: Number(b.TotalPrice) || 0,
-              status: b.Status,
-              created_at: b.CreatedAt
-            };
-          });
-          const mergedBookings = localBookings.slice();
-          sheetBookings.forEach(function(sb) {
-            if (!mergedBookings.some(function(mb) { return mb.id === sb.id; })) {
-              mergedBookings.push(sb);
-            }
-          });
-
-          const newDb = Object.assign({}, prevDb, {
-            users: mergedUsers,
-            leads: mergedLeads,
-            bookings: mergedBookings
-          });
-          saveDB(newDb);
-          return newDb;
-        });
-      }
+    if (currentRoute !== 'admin' || !currentUser || currentUser.role !== 'admin' || !isAdminSession()) {
+      return;
     }
-    syncWithGoogleSheets();
-  }, []);
+    let cancelled = false;
+    getAdminDb()
+      .then((fresh) => {
+        if (!cancelled) setDb(fresh);
+      })
+      .catch((err) => {
+        console.error('Failed to load admin data from the server', err);
+        if (!cancelled) {
+          window.alert('Could not load data from the server. Please log in again.');
+          apiLogoutLocal();
+          setCurrentUser(null);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [currentRoute, currentUser]);
 
   // Sync active user when shifting between portal URLs (hash links)
   useEffect(() => {
@@ -217,7 +162,29 @@ function App() {
     setCurrentUser(saved ? JSON.parse(saved) : null);
   }, [currentRoute]);
 
-  const handleLogin = (email, password) => {
+  const handleLogin = async (email, password) => {
+    // Admin auth goes through the real backend (see utils/apiClient.js) --
+    // no more localStorage user lookup, no more PIN gate.
+    if (currentRoute === 'admin') {
+      try {
+        const result = await apiLogin(email, password);
+        if (result.user.role !== 'admin') {
+          apiLogoutLocal();
+          window.alert("Access Denied: You must use an Admin account to access the Admin Panel.");
+          return false;
+        }
+        setCurrentUser(result.user);
+        setIsLeadCaptured(true);
+        setView('admin');
+        setActiveAdminTab('dashboard');
+        return true;
+      } catch (err) {
+        window.alert(err.message || "Invalid email or password!");
+        return false;
+      }
+    }
+
+    // B2C / B2B: unchanged localStorage-backed lookup (Phase 0 scope).
     const user = (db.users || []).find(u => u.email.trim().toLowerCase() === email.trim().toLowerCase() && u.password === password);
     if (!user) {
       window.alert("Invalid email or password!");
@@ -225,10 +192,6 @@ function App() {
     }
 
     // Role-route enforcement
-    if (currentRoute === 'admin' && user.role !== 'admin') {
-      window.alert("Access Denied: You must use an Admin account to access the Admin Panel.");
-      return false;
-    }
     if (currentRoute === 'b2b' && user.role !== 'b2b') {
       window.alert("Access Denied: You must use a B2B Partner Agent account to access the B2B Portal.");
       return false;
@@ -240,12 +203,9 @@ function App() {
 
     setCurrentUser(user);
     setIsLeadCaptured(true);
-    
+
     // Redirect view based on user role
-    if (user.role === 'admin') {
-      setView('admin');
-      setActiveAdminTab('dashboard');
-    } else if (user.role === 'b2b') {
+    if (user.role === 'b2b') {
       setView('b2b');
       setB2bSubView('dashboard');
       setShowB2bLoginPortal(false);
@@ -323,7 +283,8 @@ function App() {
     const activeRole = currentUser ? currentUser.role : currentRoute;
     localStorage.removeItem('nepal_quote_user_' + activeRole);
     localStorage.removeItem('nepal_quote_current_user');
-    
+    apiLogoutLocal(); // clears the bearer token/role if this was an admin session (no-op otherwise)
+
     setCurrentUser(null);
     setShowB2bLoginPortal(false);
     setShowB2cLoginPortal(false);
@@ -574,10 +535,11 @@ function App() {
       created_at: new Date().toISOString()
     };
 
+    const oldDb = db;
     const updatedLeads = [...(db.leads || []), newLead];
     const newDb = { ...db, leads: updatedLeads };
     setDb(newDb);
-    saveDB(newDb);
+    saveDB(newDb, oldDb);
 
     // Sync Lead to Google Sheets
     syncLeadToSheet(newLead);
@@ -628,17 +590,19 @@ function App() {
 
   const handleDeleteLead = (id) => {
     if (!window.confirm("Are you sure you want to delete this B2C lead?")) return;
+    const oldDb = db;
     const updatedLeads = (db.leads || []).filter(l => l.id !== id);
     const newDb = { ...db, leads: updatedLeads };
     setDb(newDb);
-    saveDB(newDb);
+    saveDB(newDb, oldDb);
   };
 
   const handleClearAllLeads = () => {
     if (!window.confirm("WARNING: Are you sure you want to delete ALL B2C leads? This cannot be undone.")) return;
+    const oldDb = db;
     const newDb = { ...db, leads: [] };
     setDb(newDb);
-    saveDB(newDb);
+    saveDB(newDb, oldDb);
   };
 
   const [showTransferModal, setShowTransferModal] = useState({ open: false, dayIndex: null });
@@ -655,8 +619,9 @@ function App() {
 
   // Sync state with LocalStorage
   const updateDBState = (newDb) => {
+    const oldDb = db;
     setDb(newDb);
-    saveDB(newDb);
+    saveDB(newDb, oldDb);
   };
 
   const handleStartEditPackage = (pkg) => {
@@ -1825,14 +1790,6 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       }
     });
     alert("System settings and defaults updated!");
-  };
-
-  const handleResetDatabase = () => {
-    if (confirm("Are you sure you want to reset all rates and booking histories to defaults? This will erase modifications.")) {
-      const clearedDb = resetDB();
-      setDb(clearedDb);
-      alert("Database successfully reset to standard rates.");
-    }
   };
 
   const handleDeleteBooking = (id) => {
@@ -3462,22 +3419,29 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     );
   };
 
-  // Admin User Management handlers
-  const handleDeleteUser = (userId) => {
+  // Admin User Management handlers -- these always run in an admin session
+  // (Platform Users Master is an admin-only tab), so they call the real
+  // backend directly rather than routing through updateDBState/saveDB.
+  // Passwords are never stored or displayed client-side anymore; see
+  // handleResetUserPassword for the dedicated reset-password action.
+  const handleDeleteUser = async (userId) => {
     if (userId === currentUser?.id) {
       window.alert("You cannot delete your own logged-in administrator account!");
       return;
     }
     if (!window.confirm("Are you sure you want to delete this user account?")) return;
-    const updatedUsers = (db.users || []).filter(u => u.id !== userId);
-    const updatedDb = { ...db, users: updatedUsers };
-    setDb(updatedDb);
-    saveDB(updatedDb);
+    try {
+      await deleteUser(userId);
+      const updatedUsers = (db.users || []).filter(u => u.id !== userId);
+      setDb({ ...db, users: updatedUsers });
+    } catch (err) {
+      window.alert("Failed to delete user: " + (err.message || "Unknown error"));
+    }
   };
 
-  const handleEditUserSave = (updatedUser) => {
-    if (!updatedUser.fullName || !updatedUser.email || !updatedUser.password) {
-      window.alert("Name, Email/Login ID, and Password are required fields.");
+  const handleEditUserSave = async (updatedUser) => {
+    if (!updatedUser.fullName || !updatedUser.email) {
+      window.alert("Name and Email/Login ID are required fields.");
       return;
     }
     const exists = (db.users || []).some(u => u.id !== updatedUser.id && u.email.toLowerCase() === updatedUser.email.toLowerCase());
@@ -3485,15 +3449,31 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       window.alert("Another account with this email/Login ID already exists!");
       return;
     }
-    
-    const updatedUsers = (db.users || []).map(u => u.id === updatedUser.id ? updatedUser : u);
-    const updatedDb = { ...db, users: updatedUsers };
-    setDb(updatedDb);
-    saveDB(updatedDb);
-    setEditingUser(null);
+
+    try {
+      const savedUser = await updateUser(updatedUser.id, updatedUser);
+      const updatedUsers = (db.users || []).map(u => u.id === updatedUser.id ? savedUser : u);
+      setDb({ ...db, users: updatedUsers });
+      setEditingUser(null);
+    } catch (err) {
+      window.alert("Failed to save user: " + (err.message || "Unknown error"));
+    }
   };
 
-  const handleAddUserSubmit = (e) => {
+  const handleResetUserPassword = async (user) => {
+    const newPassword = window.prompt(
+      `Enter a new password for ${user.fullName || user.email} (min 6 characters, at least one letter and one number):`
+    );
+    if (!newPassword) return;
+    try {
+      await resetUserPassword(user.id, newPassword);
+      window.alert("Password reset successfully.");
+    } catch (err) {
+      window.alert("Failed to reset password: " + (err.message || "Unknown error"));
+    }
+  };
+
+  const handleAddUserSubmit = async (e) => {
     if (e) e.preventDefault();
     if (!newUserForm.fullName || !newUserForm.email || !newUserForm.password) {
       window.alert("Name, Email/Login ID, and Password are required.");
@@ -3505,9 +3485,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       window.alert("An account with this email/Login ID already exists!");
       return;
     }
-    
-    const newUserObj = {
-      id: 'usr-' + Date.now(),
+
+    const newUserPayload = {
       email: emailLower,
       password: newUserForm.password,
       role: newUserForm.role,
@@ -3521,23 +3500,25 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
         walletBalance: 0
       } : {})
     };
-    
-    const updatedUsers = [...(db.users || []), newUserObj];
-    const updatedDb = { ...db, users: updatedUsers };
-    setDb(updatedDb);
-    saveDB(updatedDb);
-    setShowAddUserModal(false);
-    setNewUserForm({
-      fullName: '',
-      email: '',
-      password: '',
-      role: 'b2c',
-      phone: '',
-      countryCode: '+91',
-      agencyName: '',
-      agencyAddress: '',
-      agencyWebsite: ''
-    });
+
+    try {
+      const createdUser = await createUser(newUserPayload);
+      setDb({ ...db, users: [...(db.users || []), createdUser] });
+      setShowAddUserModal(false);
+      setNewUserForm({
+        fullName: '',
+        email: '',
+        password: '',
+        role: 'b2c',
+        phone: '',
+        countryCode: '+91',
+        agencyName: '',
+        agencyAddress: '',
+        agencyWebsite: ''
+      });
+    } catch (err) {
+      window.alert("Failed to create user: " + (err.message || "Unknown error"));
+    }
   };
 
   const renderUsersMaster = () => {
@@ -3617,7 +3598,16 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                     <td className="py-3.5 px-6 text-xs text-slate-450 font-bold text-center">{idx + 1}</td>
                     <td className="py-3.5 px-6 text-xs font-bold text-slate-800">{user.fullName}</td>
                     <td className="py-3.5 px-6 text-xs text-indigo-650 font-semibold">{user.email}</td>
-                    <td className="py-3.5 px-6 text-xs text-slate-700 font-mono font-bold bg-slate-50/50 select-all">{user.password}</td>
+                    <td className="py-3.5 px-6 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => handleResetUserPassword(user)}
+                        className="text-[10px] font-bold uppercase tracking-wide text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 hover:bg-amber-100 transition"
+                        title="Set a new password for this user"
+                      >
+                        Reset Password
+                      </button>
+                    </td>
                     <td className="py-3.5 px-6 text-xs">
                       {user.role === 'admin' && (
                         <span className="inline-block px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-700 border border-indigo-200">
@@ -3686,14 +3676,14 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       setAuthForm(prev => ({ ...prev, [field]: val }));
     };
 
-    const handleFormSubmit = (e) => {
+    const handleFormSubmit = async (e) => {
       if (e) e.preventDefault();
       if (authTab === 'login') {
         if (!authForm.email || !authForm.password) {
           window.alert("Please enter both email and password.");
           return;
         }
-        handleLogin(authForm.email, authForm.password);
+        await handleLogin(authForm.email, authForm.password);
       } else if (authTab === 'forgot_password') {
         if (!authForm.email) {
           window.alert("Please enter your email address.");
@@ -4068,127 +4058,6 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     );
   };
 
-  // ── Admin Passcode Page ───────────────────────────────────────────────────────
-  const renderPasscodePage = () => {
-    const handlePasscodeDigit = (digit) => {
-      if (passcodeInput.length >= ADMIN_PASSCODE.length) return;
-      const next = passcodeInput + digit;
-      setPasscodeInput(next);
-      setPasscodeError('');
-      if (next.length === ADMIN_PASSCODE.length) {
-        if (next === ADMIN_PASSCODE) {
-          sessionStorage.setItem('nepal_admin_passcode_ok', 'true');
-          setAdminPasscodeVerified(true);
-          setPasscodeInput('');
-        } else {
-          setPasscodeShake(true);
-          setTimeout(() => {
-            setPasscodeInput('');
-            setPasscodeError('Incorrect passcode. Please try again.');
-            setPasscodeShake(false);
-          }, 500);
-        }
-      }
-    };
-    const handleClear = () => { setPasscodeInput(''); setPasscodeError(''); };
-    const isDark = themeMode === 'dark';
-    return (
-      <div className="nepal-portal-root" data-theme={themeMode}>
-        <div className={`fixed inset-0 flex flex-col items-center justify-center ${
-          isDark
-            ? 'bg-gradient-to-br from-[#0D0B08] via-[#1A1710] to-[#0c1a0a]'
-            : 'bg-gradient-to-br from-[#f5f0e8] via-[#ede8dc] to-[#ddd8cc]'
-        } z-[9999] px-4`}>
-          {/* Theme toggle top-right */}
-          <button
-            type="button"
-            onClick={toggleTheme}
-            title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-            className={`absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center text-lg border transition-all duration-300 ${
-              isDark
-                ? 'bg-[#1A1710] border-amber-700/40 text-amber-300 hover:bg-[#221E14] hover:border-amber-500'
-                : 'bg-white border-amber-300 text-amber-600 hover:bg-amber-50 hover:border-amber-500'
-            } shadow-lg`}
-          >
-            {isDark ? '☀️' : '🌙'}
-          </button>
-
-          {/* Card */}
-          <div className={`rounded-3xl shadow-2xl p-8 max-w-sm w-full flex flex-col items-center gap-6 border ${
-            isDark
-              ? 'bg-[#1A1710]/95 border-amber-800/30'
-              : 'bg-white/95 border-amber-200'
-          }`}>
-            {/* Brand */}
-            <div className="text-center">
-              <span className="text-5xl mb-3 block select-none">🇳🇵</span>
-              <h2 className={`text-2xl font-black tracking-wider uppercase mb-1 ${
-                isDark ? 'text-amber-300' : 'text-amber-700'
-              }`}>Admin Portal</h2>
-              <p className={`text-[10px] font-bold uppercase tracking-widest ${
-                isDark ? 'text-amber-600/60' : 'text-amber-500'
-              }`}>Enter Access Passcode</p>
-            </div>
-
-            {/* PIN dots */}
-            <div className={`flex gap-3 ${
-              passcodeShake ? 'animate-[shake_0.5s_ease-in-out]' : ''
-            }`}>
-              {Array.from({ length: ADMIN_PASSCODE.length }).map((_, i) => (
-                <div
-                  key={i}
-                  className={`w-4 h-4 rounded-full border-2 transition-all duration-200 ${
-                    i < passcodeInput.length
-                      ? isDark ? 'bg-amber-400 border-amber-400' : 'bg-amber-600 border-amber-600'
-                      : isDark ? 'bg-transparent border-amber-700/50' : 'bg-transparent border-amber-300'
-                  }`}
-                />
-              ))}
-            </div>
-
-            {/* Error */}
-            {passcodeError && (
-              <p className="text-red-400 text-xs font-semibold text-center -mt-2">{passcodeError}</p>
-            )}
-
-            {/* Number pad */}
-            <div className="grid grid-cols-3 gap-3 w-full max-w-[220px]">
-              {['1','2','3','4','5','6','7','8','9','','0','⌫'].map((digit, idx) => (
-                digit === '' ? (
-                  <div key={idx} />
-                ) : (
-                  <button
-                    key={idx}
-                    type="button"
-                    onClick={() => digit === '⌫' ? handleClear() : handlePasscodeDigit(digit)}
-                    className={`aspect-square rounded-2xl text-lg font-bold transition-all duration-150 active:scale-95 ${
-                      digit === '⌫'
-                        ? isDark
-                          ? 'bg-red-900/40 border border-red-700/30 text-red-300 hover:bg-red-800/60'
-                          : 'bg-red-50 border border-red-200 text-red-500 hover:bg-red-100'
-                        : isDark
-                          ? 'bg-[#221E14] border border-amber-800/30 text-amber-100 hover:bg-[#2d2819] hover:border-amber-600/40'
-                          : 'bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 hover:border-amber-400'
-                    } shadow-md`}
-                  >
-                    {digit}
-                  </button>
-                )
-              ))}
-            </div>
-
-            {/* Hint */}
-            <p className={`text-[9px] uppercase tracking-widest font-bold ${
-              isDark ? 'text-amber-900/60' : 'text-amber-400'
-            }`}>
-              Contact system admin for access
-            </p>
-          </div>
-        </div>
-      </div>
-    );
-  };
-
   // ── Route Authorization ───────────────────────────────────────────────────────
   const isAuthorizedForRoute = () => {
     if (currentRoute === 'b2c') return true; // B2C is public layout, auth gate is modal
@@ -4198,8 +4067,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     return currentUser.role === currentRoute;
   };
 
-  // Show admin passcode gate FIRST before login
-  if (currentRoute === 'admin' && !adminPasscodeVerified) return renderPasscodePage();
+  // Real admin auth (see handleLogin) is now the only gate before the
+  // Admin Panel -- the old hardcoded 4-digit PIN screen has been removed.
   if (!isAuthorizedForRoute()) return renderAuthGate();
 
   // ── Theme Toggle Button (reusable) ──────────────────────────────────────────
@@ -4550,13 +4419,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
               </div>
               
               <div className="flex items-center gap-4">
-                {view === 'admin' ? (
-                  <div className="flex items-center gap-3">
-                    <button onClick={handleResetDatabase} className="btn btn-secondary btn-sm flex items-center gap-1.5 text-red-650 hover:bg-red-50">
-                      <RefreshCw size={13} /> Reset Master Database
-                    </button>
-                  </div>
-                ) : (
+                {view === 'admin' ? null : (
                   view === 'b2b' ? (
                     <div className="flex items-center gap-3">
                       {!currentUser ? (
@@ -9344,44 +9207,36 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
         <div className="modal-overlay">
           <div className="modal-content max-w-md">
             <div className="modal-header">
-              <h3 className="text-sm font-black uppercase tracking-wider font-heading text-slate-800">Edit User Credentials & Reset Password</h3>
+              <h3 className="text-sm font-black uppercase tracking-wider font-heading text-slate-800">Edit User Profile</h3>
               <button onClick={() => setEditingUser(null)} className="text-slate-400 hover:text-slate-600">✕</button>
             </div>
             <form onSubmit={(e) => { e.preventDefault(); handleEditUserSave(editingUser); }}>
               <div className="modal-body flex flex-col gap-4 text-left">
                 <div className="form-group mb-0">
                   <label className="form-label text-[10px]">Full Name</label>
-                  <input 
-                    type="text" 
-                    required 
-                    value={editingUser.fullName} 
-                    onChange={(e) => setEditingUser({ ...editingUser, fullName: e.target.value })} 
+                  <input
+                    type="text"
+                    required
+                    value={editingUser.fullName}
+                    onChange={(e) => setEditingUser({ ...editingUser, fullName: e.target.value })}
                     className="form-input text-xs"
                   />
                 </div>
 
                 <div className="form-group mb-0">
                   <label className="form-label text-[10px]">Login ID (Email Address)</label>
-                  <input 
-                    type="email" 
-                    required 
-                    value={editingUser.email} 
-                    onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })} 
+                  <input
+                    type="email"
+                    required
+                    value={editingUser.email}
+                    onChange={(e) => setEditingUser({ ...editingUser, email: e.target.value })}
                     className="form-input text-xs"
                   />
                 </div>
 
-                <div className="form-group mb-0">
-                  <label className="form-label text-[10px]">Password (System Admin Overwrite)</label>
-                  <input 
-                    type="text" 
-                    required 
-                    value={editingUser.password} 
-                    onChange={(e) => setEditingUser({ ...editingUser, password: e.target.value })} 
-                    className="form-input text-xs bg-amber-50 border-amber-200"
-                    placeholder="New password value"
-                  />
-                </div>
+                <p className="text-[10px] text-slate-450 -mt-1">
+                  To change this user's password, use the "Reset Password" action in the Users table instead.
+                </p>
 
                 <div className="form-group mb-0">
                   <label className="form-label text-[10px]">Phone Number</label>

@@ -1,5 +1,7 @@
 // seedData.js - Updated database in Indian Rupees (INR / ₹) with 5x3 Hotel Master Matrix
 
+import { isAdminSession, syncAdminDb } from '../utils/apiClient';
+
 export const INITIAL_CITIES = ['Kathmandu', 'Pokhara', 'Chitwan', 'Nagarkot', 'Lumbini'];
 
 export const INITIAL_HOTELS = [
@@ -667,8 +669,16 @@ export function initializeDB() {
   };
 }
 
-export function saveDB(db) {
+// `oldDb` (the db state before this change) is optional but required for
+// admin sessions to sync efficiently -- see syncAdminDb() in apiClient.js,
+// which diffs newDb against oldDb per top-level key so only what actually
+// changed is PUT/POST/DELETEd to the server. Every top-level mutation in
+// App.jsx funnels through updateDBState(), which supplies it.
+export function saveDB(db, oldDb) {
   if (typeof window === "undefined") return;
+  // Always mirror to localStorage -- this keeps the local cache a valid
+  // fallback for b2c/b2b (still localStorage-backed in Phase 0) and for
+  // the next page load before an admin session re-authenticates.
   localStorage.setItem("nepal_quote_cities_v2", JSON.stringify(db.cities));
   localStorage.setItem("nepal_quote_hotels_v2", JSON.stringify(db.hotels));
   localStorage.setItem("nepal_quote_vehicles_v2", JSON.stringify(db.vehicles));
@@ -679,19 +689,19 @@ export function saveDB(db) {
   localStorage.setItem("nepal_quote_bookings_v2", JSON.stringify(db.bookings));
   localStorage.setItem("nepal_quote_leads_v2", JSON.stringify(db.leads || []));
   localStorage.setItem("nepal_quote_users_v2", JSON.stringify(db.users || []));
-}
 
-export function resetDB() {
-  if (typeof window === "undefined") return;
-  localStorage.removeItem("nepal_quote_cities_v2");
-  localStorage.removeItem("nepal_quote_hotels_v2");
-  localStorage.removeItem("nepal_quote_vehicles_v2");
-  localStorage.removeItem("nepal_quote_routes_v2");
-  localStorage.removeItem("nepal_quote_activities_v2");
-  localStorage.removeItem("nepal_quote_packages_v2");
-  localStorage.removeItem("nepal_quote_settings_v2");
-  localStorage.removeItem("nepal_quote_bookings_v2");
-  localStorage.removeItem("nepal_quote_leads_v2");
-  localStorage.removeItem("nepal_quote_users_v2");
-  return initializeDB();
+  // Admin sessions additionally push whatever changed to the real backend.
+  // Fire-and-forget from the caller's point of view; failures are surfaced
+  // via an alert since there's no toast system in this app yet.
+  if (isAdminSession()) {
+    syncAdminDb(oldDb, db).catch((err) => {
+      console.error('Failed to sync admin changes to the server', err);
+      if (typeof window.alert === 'function') {
+        window.alert(
+          'Failed to save changes to the server: ' + (err.message || 'Unknown error') +
+          '\nPlease check your connection and try again.'
+        );
+      }
+    });
+  }
 }
