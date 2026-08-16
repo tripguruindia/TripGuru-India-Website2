@@ -36,4 +36,21 @@ function requireRole(...roles) {
   };
 }
 
-module.exports = { signToken, requireAuth, requireRole };
+// Like requireAuth, but never rejects -- attaches req.user if a valid
+// bearer token is present, otherwise leaves it undefined and continues.
+// For routes that serve both logged-in users and anonymous visitors (e.g.
+// B2C guest checkout, which has never required an account).
+function optionalAuth(req, res, next) {
+  const header = req.headers.authorization || '';
+  const token = header.startsWith('Bearer ') ? header.slice(7) : null;
+  if (!token) return next();
+  try {
+    req.user = jwt.verify(token, JWT_SECRET);
+  } catch (err) {
+    // Invalid/expired token on an optional-auth route: treat as anonymous
+    // rather than rejecting the request.
+  }
+  next();
+}
+
+module.exports = { signToken, requireAuth, requireRole, optionalAuth };

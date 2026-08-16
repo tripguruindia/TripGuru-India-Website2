@@ -10,9 +10,14 @@ import { initializeDB, saveDB, INITIAL_ROUTES } from './data/seedData';
 import { calculateQuote, validateRoomCapacity, deriveFromRooms } from './utils/calculator';
 import {
   apiLogin,
+  apiSignup,
   apiLogoutLocal,
   isAdminSession,
+  isApiSession,
   getAdminDb,
+  getPublicDb,
+  createBooking,
+  getMyBookings,
   createUser,
   updateUser,
   deleteUser,
@@ -156,60 +161,69 @@ function App() {
     return () => { cancelled = true; };
   }, [currentRoute, currentUser]);
 
+  // B2C/B2B: load real, admin-managed master data (cities/hotels/vehicles/
+  // routes/activities/packages/settings) from the public API on mount and
+  // whenever the route switches to b2c/b2b -- no login required, matching
+  // the existing "browsing is public" UX (lead capture, not an account,
+  // gates pricing visibility). Only overwrites those specific `db` keys;
+  // bookings/users/leads are untouched here (bookings are fetched
+  // separately once logged in, see the my-bookings effect below).
+  useEffect(() => {
+    if (currentRoute !== 'b2c' && currentRoute !== 'b2b') return;
+    let cancelled = false;
+    getPublicDb()
+      .then((fresh) => {
+        if (cancelled) return;
+        setDb((prev) => ({
+          ...prev,
+          cities: fresh.cities,
+          hotels: fresh.hotels,
+          vehicles: fresh.vehicles,
+          routes: fresh.routes,
+          activities: fresh.activities,
+          packages: fresh.packages,
+          settings: fresh.settings,
+        }));
+      })
+      .catch((err) => {
+        // Non-fatal: keep whatever localStorage-cached fixtures are already
+        // in `db` (e.g. the visitor is offline) rather than blocking the page.
+        console.error('Failed to load live master data from the server', err);
+      });
+    return () => { cancelled = true; };
+  }, [currentRoute]);
+
+  // B2C/B2B "My Bookings": once logged in via the real API, fetch the
+  // caller's own bookings (scoped server-side by agent_id/user_id).
+  const [myBookings, setMyBookings] = useState([]);
+  useEffect(() => {
+    if ((currentRoute !== 'b2c' && currentRoute !== 'b2b') || !isApiSession()) {
+      setMyBookings([]);
+      return;
+    }
+    let cancelled = false;
+    getMyBookings()
+      .then((rows) => { if (!cancelled) setMyBookings(rows); })
+      .catch((err) => console.error('Failed to load my bookings', err));
+    return () => { cancelled = true; };
+  }, [currentRoute, currentUser]);
+
   // Sync active user when shifting between portal URLs (hash links)
   useEffect(() => {
     const saved = localStorage.getItem('nepal_quote_user_' + currentRoute);
     setCurrentUser(saved ? JSON.parse(saved) : null);
   }, [currentRoute]);
 
-  const handleLogin = async (email, password) => {
-    // Admin auth goes through the real backend (see utils/apiClient.js) --
-    // no more localStorage user lookup, no more PIN gate.
-    if (currentRoute === 'admin') {
-      try {
-        const result = await apiLogin(email, password);
-        if (result.user.role !== 'admin') {
-          apiLogoutLocal();
-          window.alert("Access Denied: You must use an Admin account to access the Admin Panel.");
-          return false;
-        }
-        setCurrentUser(result.user);
-        setIsLeadCaptured(true);
-        setView('admin');
-        setActiveAdminTab('dashboard');
-        return true;
-      } catch (err) {
-        window.alert(err.message || "Invalid email or password!");
-        return false;
-      }
-    }
-
-    // B2C / B2B: unchanged localStorage-backed lookup (Phase 0 scope).
-    const user = (db.users || []).find(u => u.email.trim().toLowerCase() === email.trim().toLowerCase() && u.password === password);
-    if (!user) {
-      window.alert("Invalid email or password!");
-      return false;
-    }
-
-    // Role-route enforcement
-    if (currentRoute === 'b2b' && user.role !== 'b2b') {
-      window.alert("Access Denied: You must use a B2B Partner Agent account to access the B2B Portal.");
-      return false;
-    }
-    if (currentRoute === 'b2c' && user.role !== 'b2c') {
-      window.alert("Access Denied: You must use a Traveler account to access the B2C Portal.");
-      return false;
-    }
-
+  // Shared post-login redirect + profile sync, used by both a fresh login
+  // and an auto-login right after signup, for b2b/b2c.
+  const enterPortalAsUser = (user) => {
     setCurrentUser(user);
     setIsLeadCaptured(true);
 
-    // Redirect view based on user role
     if (user.role === 'b2b') {
       setView('b2b');
       setB2bSubView('dashboard');
       setShowB2bLoginPortal(false);
-      // Sync B2B Profile
       setB2bProfile({
         agentName: user.fullName || 'B2B Partner',
         email: user.email,
@@ -227,7 +241,6 @@ function App() {
       setView('b2c');
       setB2cSubView('packages');
       setShowB2cLoginPortal(false);
-      // Sync B2C Profile
       setB2cProfile({
         fullName: user.fullName || '',
         email: user.email,
@@ -236,47 +249,47 @@ function App() {
         address: user.address || ''
       });
     }
-    return true;
   };
 
-  const handleSignup = (email, password, role, profileData) => {
-    const exists = (db.users || []).some(u => u.email.trim().toLowerCase() === email.trim().toLowerCase());
-    if (exists) {
-      window.alert("An account with this email already exists!");
+  // Admin, B2B, and B2C all go through the same real backend now (see
+  // utils/apiClient.js) -- no more localStorage user lookup for any role.
+  const handleLogin = async (email, password) => {
+    try {
+      const result = await apiLogin(email, password);
+      const expectedRole = currentRoute; // 'admin' | 'b2b' | 'b2c'
+      if (result.user.role !== expectedRole) {
+        apiLogoutLocal();
+        const label = expectedRole === 'admin' ? 'an Admin' : expectedRole === 'b2b' ? 'a B2B Partner Agent' : 'a Traveler';
+        window.alert(`Access Denied: You must use ${label} account to access this portal.`);
+        return false;
+      }
+      if (currentRoute === 'admin') {
+        setCurrentUser(result.user);
+        setIsLeadCaptured(true);
+        setView('admin');
+        setActiveAdminTab('dashboard');
+      } else {
+        enterPortalAsUser(result.user);
+      }
+      return true;
+    } catch (err) {
+      window.alert(err.message || "Invalid email or password!");
       return false;
     }
+  };
 
-    // Password strength validation rules
-    if (password.length < 6) {
-      window.alert("Password security rule violation:\nPassword must be at least 6 characters long.");
+  const handleSignup = async (email, password, role, profileData) => {
+    try {
+      const result = await apiSignup({ email: email.trim(), password, role, ...profileData });
+      // Sync the real (password-free) server user to the Google Sheet CRM,
+      // same as before -- syncUserToSheet never touches the password field.
+      syncUserToSheet(result.user);
+      enterPortalAsUser(result.user);
+      return true;
+    } catch (err) {
+      window.alert(err.message || "Could not create your account. Please try again.");
       return false;
     }
-    if (!/[a-zA-Z]/.test(password) || !/[0-9]/.test(password)) {
-      window.alert("Password security rule violation:\nPassword must contain at least one letter and one number.");
-      return false;
-    }
-    
-    const newUser = {
-      id: 'usr-' + Date.now(),
-      email: email.trim(),
-      password: password,
-      role: role,
-      fullName: profileData.fullName.trim(),
-      phone: profileData.phone.trim(),
-      countryCode: profileData.countryCode,
-      ...profileData
-    };
-    
-    const updatedUsers = [...(db.users || []), newUser];
-    const updatedDb = { ...db, users: updatedUsers };
-    // Sync User to Google Sheets
-    syncUserToSheet(newUser);
-    setDb(updatedDb);
-    saveDB(updatedDb);
-    
-    // Auto log in after signup
-    handleLogin(email, password);
-    return true;
   };
 
   const handleLogout = () => {
@@ -1642,7 +1655,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   const b2bDisplayFactor = view === 'b2b' ? (1 + b2bMarkupInput / 100) : 1;
 
   // Handle Checkout submission
-  const handleConfirmCheckout = (e) => {
+  const handleConfirmCheckout = async (e) => {
     e.preventDefault();
     if (!checkoutForm.clientName || !checkoutForm.email || !checkoutForm.phone) {
       window.alert("Please fill in all mandatory fields (Name, Email, and Mobile Number).");
@@ -1655,13 +1668,21 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       return;
     }
 
+    // B2B bookings require a real logged-in agent -- the server rejects an
+    // unauthenticated/non-b2b POST, so check here too for a clear message
+    // instead of a confusing failed-request alert.
+    const isB2B = view === 'b2b';
+    if (isB2B && (!currentUser || currentUser.role !== 'b2b')) {
+      window.alert("Please log in with your B2B Partner Agent account before confirming a booking.");
+      return;
+    }
+
     const fullPhoneNumber = `${checkoutForm.countryCode} ${checkoutForm.phone}`;
 
     // eslint-disable-next-line
     const newId = `qt-${Date.now().toString().slice(-4)}`;
-    const isB2B = view === 'b2b';
     const totalPrice = Math.round(quoteCalculation.totals.total);
-    const newBooking = {
+    let newBooking = {
       id: newId,
       client_name: checkoutForm.clientName,
       email: checkoutForm.email,
@@ -1677,7 +1698,10 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       itinerary_summary: `${customItinerary.length} Nights, ${travelers.adults} Adults, ${travelers.cwb} CWB, ${travelers.cnb} CNB, ${selectedHotelCategory} Hotels.`,
       passengers: Array.from({ length: travelers.adults }).map((_, i) => ({ name: `${checkoutForm.clientName} (Pax ${i+1})`, type: 'Adult' })),
       type: isB2B ? 'B2B' : 'B2C',
-      ...(isB2B ? { agent_id: 'AGT-9021', agent_commission: Math.round(totalPrice * 0.1) } : {}),
+      // agent_id/agent_commission are assigned server-side, from the real
+      // logged-in agent -- never trusted from the client (fixes the old
+      // hardcoded 'AGT-9021' bug). Left off here; filled in below from the
+      // server's response once the booking is actually persisted.
       itinerary: customItinerary,
       vehicleId: selectedVehicleId,
       hotelCategory: selectedHotelCategory,
@@ -1690,12 +1714,30 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       b2b_white_label: isB2B ? { ...b2bProfile } : null
     };
 
+    try {
+      // Persist to the real backend (Turso) -- this is what makes a
+      // booking permanent instead of living only in this browser's
+      // localStorage. Sending our own `id` keeps it in sync with the
+      // optimistic local state below.
+      const serverBooking = await createBooking(newBooking);
+      newBooking = { ...newBooking, ...serverBooking };
+    } catch (err) {
+      console.error('Failed to save booking to the server', err);
+      window.alert(
+        (err && err.message) ||
+        "Could not reach the server to save this booking. It has been recorded locally only -- please retry when back online."
+      );
+      // Fall through and still record it locally so the traveler/agent
+      // isn't blocked -- matches pre-existing offline-friendly behavior.
+    }
+
     const updatedBookings = [newBooking, ...db.bookings];
     updateDBState({ ...db, bookings: updatedBookings });
+    setMyBookings((prev) => [newBooking, ...prev]);
     // Sync Booking to Google Sheets
     syncBookingToSheet(newBooking);
 
-    setLastBookingId(newId);
+    setLastBookingId(newBooking.id);
     setShowCheckoutModal(false);
     if (isB2B) {
       setB2bSubView('invoice');
@@ -2673,7 +2715,14 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   };
 
   const renderB2bDashboard = () => {
-    const b2bBookings = db.bookings.filter(b => b.type === 'B2B');
+    // Server-scoped to the logged-in agent's own bookings (GET /bookings/mine
+    // filters by agent_id) -- previously read db.bookings.filter(type==='B2B'),
+    // which showed every agent's bookings once any admin session had loaded
+    // the full bookings table into shared app state. Fall back to a locally
+    // filtered view only if the API list hasn't loaded yet (e.g. offline).
+    const b2bBookings = isApiSession()
+      ? myBookings
+      : db.bookings.filter(b => b.type === 'B2B' && b.agent_id === currentUser?.id);
     const totalSales = b2bBookings.reduce((sum, b) => sum + (b.total_price || 0), 0);
     const totalCommission = b2bBookings.reduce((sum, b) => sum + (b.agent_commission || 0), 0);
 
@@ -2693,7 +2742,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           <div className="flex flex-wrap gap-4 mt-6 border-t border-emerald-700/50 pt-6 text-xs text-slate-300">
             <div>Agency: <strong className="text-white font-semibold">{b2bProfile.agencyName || "Horizon Travel Partners"}</strong></div>
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 self-center"></div>
-            <div>Agent ID: <strong className="text-white font-semibold">AGT-9021</strong></div>
+            <div>Agent ID: <strong className="text-white font-semibold">{currentUser?.id}</strong></div>
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 self-center"></div>
             <div>Partner Status: <strong className="text-emerald-400 font-semibold">Gold Tier (10% Comm.)</strong></div>
           </div>
@@ -2836,6 +2885,103 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                       </td>
                       <td className="p-4 text-right font-bold text-emerald-600">
                         ₹{(booking.agent_commission || Math.round(booking.total_price * 0.1)).toLocaleString()}
+                      </td>
+                      <td className="p-4 text-center">
+                        <span className="bg-green-50 text-green-700 text-[10px] font-bold px-2 py-0.5 rounded-full border border-green-200">
+                          {booking.status}
+                        </span>
+                      </td>
+                      <td className="p-4 text-center">
+                        <button
+                          onClick={() => handleViewVoucher(booking)}
+                          className="btn btn-secondary py-1 px-3 text-[10px] rounded flex items-center justify-center gap-1 mx-auto"
+                        >
+                          <FileText size={11} /> View Voucher
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // B2C "My Bookings" -- lists the logged-in traveler's own past bookings
+  // (fetched server-side via GET /bookings/mine, scoped by user_id). Gated
+  // behind login since anonymous/guest checkout has no account to scope to.
+  const renderB2cMyBookings = () => {
+    if (!currentUser) {
+      return (
+        <div className="max-w-xl mx-auto py-16 text-center">
+          <div className="bg-orange-100 text-orange-600 p-4 rounded-2xl inline-flex mb-4">
+            <FileText size={28} />
+          </div>
+          <h2 className="text-xl font-extrabold text-slate-800 font-heading mb-2">Log in to see your bookings</h2>
+          <p className="text-xs text-slate-500 mb-6 max-w-sm mx-auto">
+            Sign in to your traveler account to view your past quotes and confirmed bookings, or check out as a guest to get started.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setShowB2cLoginPortal(true);
+              setAuthRole('b2c');
+              setAuthTab('login');
+            }}
+            className="text-xs bg-orange-600 hover:bg-orange-700 text-white font-extrabold px-4 py-2 rounded-xl border border-orange-700 shadow-sm transition active:scale-95"
+          >
+            Sign In / Register
+          </button>
+        </div>
+      );
+    }
+
+    return (
+      <div className="max-w-6xl mx-auto py-6">
+        <div className="bg-white border border-slate-100 rounded-3xl shadow-sm overflow-hidden">
+          <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+            <h3 className="font-extrabold text-base text-slate-805 font-heading flex items-center gap-2">
+              <FileText className="text-orange-600" size={18} />
+              My Bookings & Quotes
+            </h3>
+            <span className="text-xs bg-slate-100 text-slate-600 font-semibold px-3 py-1 rounded-full">
+              {myBookings.length} bookings found
+            </span>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs">
+              <thead>
+                <tr className="bg-slate-100/80 border-b border-slate-200 text-slate-500 font-bold uppercase text-[9px] tracking-wider">
+                  <th className="p-4">Reference</th>
+                  <th className="p-4">Package & Duration</th>
+                  <th className="p-4">Travel Date</th>
+                  <th className="p-4 text-right">Total (INR)</th>
+                  <th className="p-4 text-center">Status</th>
+                  <th className="p-4 text-center">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {myBookings.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="p-8 text-center text-slate-400">
+                      No bookings yet. Browse our packages or build a custom itinerary to get started.
+                    </td>
+                  </tr>
+                ) : (
+                  myBookings.map(booking => (
+                    <tr key={booking.id} className="hover:bg-slate-50/50 transition">
+                      <td className="p-4 font-bold text-slate-800">{booking.id}</td>
+                      <td className="p-4">
+                        <div className="font-medium text-slate-800">{booking.package_name}</div>
+                        <div className="text-[10px] text-slate-500">{booking.itinerary_summary}</div>
+                      </td>
+                      <td className="p-4 text-slate-600">{booking.travel_date}</td>
+                      <td className="p-4 text-right font-semibold text-slate-800">
+                        ₹{(booking.total_price || 0).toLocaleString()}
                       </td>
                       <td className="p-4 text-center">
                         <span className="bg-green-50 text-green-700 text-[10px] font-bold px-2 py-0.5 rounded-full border border-green-200">
@@ -3091,7 +3237,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                 <div className="grid grid-cols-2 gap-4 text-xs">
                   <div>
                     <span className="text-slate-500">Agent ID:</span>
-                    <strong className="block text-slate-800 font-extrabold mt-0.5">AGT-9021</strong>
+                    <strong className="block text-slate-800 font-extrabold mt-0.5">{currentUser?.id}</strong>
                   </div>
                   <div>
                     <span className="text-slate-500">Partner Status:</span>
@@ -3689,13 +3835,12 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           window.alert("Please enter your email address.");
           return;
         }
-        const user = (db.users || []).find(u => u.email.toLowerCase() === authForm.email.toLowerCase().trim());
-        if (user) {
-          window.alert(`Your password reset request has been received. Please contact the System Administrator to retrieve your password, or reset it directly from the Users Master tab.`);
-          setAuthTab('login');
-        } else {
-          window.alert("No account found with this email address!");
-        }
+        // Real accounts now live on the server (see utils/apiClient.js),
+        // not in local `db.users` -- there's no public "does this email
+        // exist" check, so this stays a generic message rather than
+        // falsely claiming an account doesn't exist.
+        window.alert(`Your password reset request has been received. Please contact the System Administrator to retrieve your password, or reset it directly from the Users Master tab.`);
+        setAuthTab('login');
       } else {
         // Sign up
         if (!authForm.fullName || !authForm.email || !authForm.password || !authForm.phone) {
@@ -3721,7 +3866,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           } : {})
         };
         
-        handleSignup(authForm.email, authForm.password, authRole, profileData);
+        await handleSignup(authForm.email, authForm.password, authRole, profileData);
       }
     };
 
@@ -4319,9 +4464,23 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                 )}
                 
                 {currentUser && (
+                  <button
+                    type="button"
+                    onClick={() => setB2cSubView('bookings')}
+                    className={`hidden sm:flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl border transition ${
+                      b2cSubView === 'bookings'
+                        ? 'bg-orange-50 border-orange-200 text-orange-700 shadow-inner'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <FileText size={12} /> My Bookings
+                  </button>
+                )}
+
+                {currentUser && (
                   <div className="flex items-center gap-2 bg-slate-50 border border-slate-200/65 p-1 rounded-xl pr-3">
                     {/* Clickable Profile Badge */}
-                    <div 
+                    <div
                       onClick={() => setB2cSubView('profile')}
                       className={`flex items-center gap-2 p-0.5 rounded-lg transition cursor-pointer select-none ${
                         b2cSubView === 'profile'
@@ -6588,6 +6747,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
               })()}
 
               {currentSubView === 'profile' && (isB2B ? renderB2bProfile() : renderB2cProfile())}
+
+              {isB2C && currentSubView === 'bookings' && renderB2cMyBookings()}
 
               </div>
             );

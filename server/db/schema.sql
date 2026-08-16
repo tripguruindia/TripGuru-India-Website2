@@ -70,7 +70,9 @@ CREATE TABLE IF NOT EXISTS settings (
   popup_poster_active       INTEGER NOT NULL DEFAULT 0
 );
 
--- Read-only via the admin API in Phase 0; write path lands with B2C/B2B wiring.
+-- Bookings are created server-side via POST /api/nepal/bookings (Phase 2:
+-- B2C/B2B wiring). agent_id is set by the server from the authenticated
+-- B2B agent's own user id -- never trust a client-supplied agent_id.
 CREATE TABLE IF NOT EXISTS bookings (
   id                        TEXT PRIMARY KEY,
   client_name               TEXT NOT NULL,
@@ -86,9 +88,7 @@ CREATE TABLE IF NOT EXISTS bookings (
   created_at                TEXT NOT NULL,
   itinerary_summary         TEXT,
   type                      TEXT NOT NULL,
-  -- Real FK to users.id once bookings are created server-side (Phase 2).
-  -- The legacy client hardcodes a fake agent id today -- see server/README.md.
-  agent_id                  TEXT,
+  agent_id                  TEXT, -- FK to users.id, set server-side for B2B bookings
   agent_commission          REAL,
   vehicle_id                TEXT,
   hotel_category             TEXT,
@@ -100,7 +100,13 @@ CREATE TABLE IF NOT EXISTS bookings (
   passengers                 TEXT, -- JSON
   itinerary                  TEXT, -- JSON
   rooms                      TEXT, -- JSON
-  b2b_white_label            TEXT  -- JSON
+  b2b_white_label            TEXT, -- JSON
+  -- FK to users.id, set server-side when a logged-in B2C traveler checks
+  -- out. Nullable -- anonymous/guest B2C checkout (no account) still
+  -- works and just leaves this null, matching pre-Phase-2 behavior.
+  -- Added via an additive ALTER TABLE in migrate.js for databases that
+  -- already had a `bookings` table before this column existed.
+  user_id                    TEXT
 );
 
 CREATE TABLE IF NOT EXISTS leads (

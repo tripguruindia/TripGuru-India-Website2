@@ -3,9 +3,11 @@
 // main site's InTravWeb integration: a VITE_*_API_BASE env var with a
 // sensible fallback.
 //
-// Phase 0 scope: only the ADMIN side of the app is wired to this API.
-// B2C/B2B keep using the original localStorage-backed data (see
-// data/seedData.js) until those portals get their own backend wiring.
+// Phase 0 wired up ADMIN. Phase 2 (this file's current state) wires up
+// B2C/B2B too: real signup/login (same /auth/* endpoints, just no longer
+// admin-only), real booking persistence, and public read-only master data
+// (getPublicDb) so admin-managed cities/hotels/pricing reach travelers and
+// agents instead of a static fixtures file.
 
 const viteEnv = (typeof import.meta !== 'undefined' && import.meta.env) || {};
 const API_BASE = (viteEnv.VITE_NEPAL_API_BASE || 'https://tripguru-nepal-api.onrender.com')
@@ -40,6 +42,12 @@ export function clearSession() {
 // this is what seedData.js checks to decide localStorage vs API.
 export function isAdminSession() {
   return !!getToken() && getStoredRole() === 'admin';
+}
+
+// True for any real backend session (admin, b2b, or b2c) -- used where the
+// caller just needs "is this a real logged-in account", not a specific role.
+export function isApiSession() {
+  return !!getToken();
 }
 
 async function apiFetch(path, { method = 'GET', body, auth = true } = {}) {
@@ -184,4 +192,30 @@ export async function resetUserPassword(id, newPassword) {
     method: 'POST',
     body: { newPassword },
   });
+}
+
+// ---------------------------------------------------------------------------
+// Public master data -- no auth. Cities/hotels/vehicles/routes/activities/
+// packages/settings, same shape as getAdminDb() but without bookings/leads/
+// users. Used by B2C/B2B to browse real, admin-managed data instead of the
+// static fixtures in data/seedData.js.
+// ---------------------------------------------------------------------------
+export async function getPublicDb() {
+  return apiFetch('/public/db', { auth: false });
+}
+
+// ---------------------------------------------------------------------------
+// Bookings -- B2C/B2B wiring. POST works both logged-in and anonymous for
+// B2C (guest checkout has never required an account); B2B bookings require
+// a real b2b session (enforced server-side -- agent_id/commission are never
+// taken from the client).
+// ---------------------------------------------------------------------------
+export async function createBooking(payload) {
+  // auth:true (the default) is fine even for anonymous B2C checkout --
+  // apiFetch only attaches the Authorization header when a token exists.
+  return apiFetch('/bookings', { method: 'POST', body: payload });
+}
+
+export async function getMyBookings() {
+  return apiFetch('/bookings/mine');
 }
