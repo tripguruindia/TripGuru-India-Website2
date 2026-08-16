@@ -115,9 +115,20 @@ function App() {
   });
 
   // Authentication State
+  //
+  // Each portal (admin/b2b/b2c) is its own independent login session --
+  // deliberately no fallback to a shared/legacy key here. An earlier version
+  // fell back to a single shared `nepal_quote_current_user` key when the
+  // route-specific one was empty, which leaked whichever portal was logged
+  // into last across all three: e.g. loading #/admin fresh (no admin login
+  // in this browser) would still show "logged in as System Admin" in the
+  // header because a B2B or B2C login elsewhere had populated the shared
+  // key. Purely a display-state bug -- the real API session was already
+  // fixed to be per-portal separately (see utils/apiClient.js) -- but
+  // confusing and worth closing off the same way.
   const [currentUser, setCurrentUser] = useState(() => {
     const route = typeof window !== 'undefined' ? (window.location.hash.startsWith('#/b2b') ? 'b2b' : window.location.hash.startsWith('#/admin') ? 'admin' : 'b2c') : 'b2c';
-    const saved = localStorage.getItem('nepal_quote_user_' + route) || localStorage.getItem('nepal_quote_current_user');
+    const saved = localStorage.getItem('nepal_quote_user_' + route);
     return saved ? JSON.parse(saved) : null;
   });
 
@@ -125,10 +136,8 @@ function App() {
   useEffect(() => {
     if (currentUser) {
       localStorage.setItem('nepal_quote_user_' + currentUser.role, JSON.stringify(currentUser));
-      localStorage.setItem('nepal_quote_current_user', JSON.stringify(currentUser));
     } else {
       localStorage.removeItem('nepal_quote_user_' + currentRoute);
-      localStorage.removeItem('nepal_quote_current_user');
     }
   }, [currentUser, currentRoute]);
 
@@ -295,7 +304,7 @@ function App() {
   const handleLogout = () => {
     const activeRole = currentUser ? currentUser.role : currentRoute;
     localStorage.removeItem('nepal_quote_user_' + activeRole);
-    localStorage.removeItem('nepal_quote_current_user');
+    localStorage.removeItem('nepal_quote_current_user'); // stale key from before per-portal sessions; harmless no-op once cleared
     apiLogoutLocal(); // clears this portal's own bearer token slot (admin/b2b/b2c sessions are independent)
 
     setCurrentUser(null);
@@ -503,7 +512,10 @@ function App() {
 
   const [isLeadCaptured, setIsLeadCaptured] = useState(() => {
     if (typeof window === 'undefined') return false;
-    return !!localStorage.getItem('nepal_quote_current_user') || !!localStorage.getItem('nepal_quote_lead_info');
+    // `nepal_quote_lead_info` is intentionally shared across portals (a
+    // visitor's name/email/phone from the lead-capture gate) -- unlike
+    // currentUser, this isn't a login session, so no per-portal leak here.
+    return !!localStorage.getItem('nepal_quote_lead_info');
   });
   const [leadForm, setLeadForm] = useState({ name: '', email: '', phone: '', countryCode: '+91' });
   const [showLeadCaptureModal, setShowLeadCaptureModal] = useState(false);
