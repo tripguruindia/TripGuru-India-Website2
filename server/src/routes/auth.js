@@ -1,6 +1,6 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
-const prisma = require('../db');
+const client = require('../db');
 const { signToken, requireAuth } = require('../middleware/auth');
 const { serializeUser } = require('../serializers');
 
@@ -12,20 +12,28 @@ function isValidPassword(pw) {
   return typeof pw === 'string' && pw.length >= 6 && /[a-zA-Z]/.test(pw) && /[0-9]/.test(pw);
 }
 
+async function findUserByEmail(email) {
+  const rs = await client.execute({
+    sql: 'SELECT * FROM users WHERE email = ?',
+    args: [email],
+  });
+  return rs.rows[0] || null;
+}
+
 router.post('/login', async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password) {
     return res.status(400).json({ error: 'Email and password are required' });
   }
-  const user = await prisma.user.findUnique({ where: { email: String(email).toLowerCase().trim() } });
+  const user = await findUserByEmail(String(email).toLowerCase().trim());
   if (!user) {
     return res.status(401).json({ error: 'Invalid email or password' });
   }
-  const ok = await bcrypt.compare(password, user.passwordHash);
+  const ok = await bcrypt.compare(password, user.password_hash);
   if (!ok) {
     return res.status(401).json({ error: 'Invalid email or password' });
   }
-  const token = signToken(user);
+  const token = signToken({ id: user.id, role: user.role, email: user.email });
   res.json({ token, user: serializeUser(user) });
 });
 
@@ -48,37 +56,48 @@ router.post('/signup', async (req, res) => {
   }
 
   const normalizedEmail = String(email).toLowerCase().trim();
-  const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+  const existing = await findUserByEmail(normalizedEmail);
   if (existing) {
     return res.status(409).json({ error: 'An account with this email already exists' });
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
-  const user = await prisma.user.create({
-    data: {
-      id: 'usr-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8),
-      email: normalizedEmail,
+  const id = 'usr-' + Date.now() + '-' + Math.random().toString(36).slice(2, 8);
+  const createdAt = new Date().toISOString();
+
+  await client.execute({
+    sql: `INSERT INTO users
+      (id, email, password_hash, role, full_name, phone, country_code,
+       agency_name, agency_address, agency_phone, agency_email, agency_website,
+       wallet_balance, address, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    args: [
+      id,
+      normalizedEmail,
       passwordHash,
       role,
-      fullName: fullName || '',
-      phone: phone || '',
-      countryCode: countryCode || '',
-      agencyName: profileData.agencyName || null,
-      agencyAddress: profileData.agencyAddress || null,
-      agencyPhone: profileData.agencyPhone || null,
-      agencyEmail: profileData.agencyEmail || null,
-      agencyWebsite: profileData.agencyWebsite || null,
-      walletBalance: role === 'b2b' ? 0 : undefined,
-      address: profileData.address || null,
-    },
+      fullName || '',
+      phone || '',
+      countryCode || '',
+      profileData.agencyName || null,
+      profileData.agencyAddress || null,
+      profileData.agencyPhone || null,
+      profileData.agencyEmail || null,
+      profileData.agencyWebsite || null,
+      role === 'b2b' ? 0 : 0,
+      profileData.address || null,
+      createdAt,
+    ],
   });
 
-  const token = signToken(user);
+  const user = await findUserByEmail(normalizedEmail);
+  const token = signToken({ id: user.id, role: user.role, email: user.email });
   res.status(201).json({ token, user: serializeUser(user) });
 });
 
 router.get('/me', requireAuth, async (req, res) => {
-  const user = await prisma.user.findUnique({ where: { id: req.user.id } });
+  const rs = await client.execute({ sql: 'SELECT * FROM users WHERE id = ?', args: [req.user.id] });
+  const user = rs.rows[0];
   if (!user) return res.status(404).json({ error: 'User not found' });
   res.json({ user: serializeUser(user) });
 });

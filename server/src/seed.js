@@ -1,9 +1,9 @@
 // One-off seed script: populates a fresh database with the same demo
 // fixtures the old localStorage-based app shipped with. Safe to re-run --
-// it upserts, so it won't duplicate rows.
+// it upserts (INSERT ... ON CONFLICT), so it won't duplicate rows.
 require('dotenv').config();
 const bcrypt = require('bcryptjs');
-const prisma = require('./db');
+const client = require('./db');
 const {
   INITIAL_CITIES,
   INITIAL_HOTELS,
@@ -14,180 +14,152 @@ const {
   INITIAL_BOOKINGS,
   INITIAL_ROUTES,
   INITIAL_USERS,
-} = require('../prisma/seed-data');
+} = require('../db/seed-data');
+
+async function run(sql, args = []) {
+  return client.execute({ sql, args });
+}
 
 async function main() {
   console.log('Seeding cities...');
   for (const name of INITIAL_CITIES) {
-    await prisma.city.upsert({ where: { name }, update: {}, create: { name } });
+    await run('INSERT INTO cities (name) VALUES (?) ON CONFLICT(name) DO NOTHING', [name]);
   }
 
   console.log('Seeding routes...');
   for (const r of INITIAL_ROUTES) {
-    await prisma.route.upsert({
-      where: { key: r.key },
-      update: { name: r.name, description: r.description },
-      create: r,
-    });
+    await run(
+      `INSERT INTO routes (key, name, description) VALUES (?, ?, ?)
+       ON CONFLICT(key) DO UPDATE SET name = excluded.name, description = excluded.description`,
+      [r.key, r.name, r.description]
+    );
   }
 
   console.log('Seeding hotels...');
   for (const h of INITIAL_HOTELS) {
-    await prisma.hotel.upsert({
-      where: { id: h.id },
-      update: h,
-      create: h,
-    });
+    await run(
+      `INSERT INTO hotels (id, name, city, category, description, rates) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET name=excluded.name, city=excluded.city, category=excluded.category,
+         description=excluded.description, rates=excluded.rates`,
+      [h.id, h.name, h.city, h.category, h.description, JSON.stringify(h.rates)]
+    );
   }
 
   console.log('Seeding vehicles...');
   for (const v of INITIAL_VEHICLES) {
-    await prisma.vehicle.upsert({
-      where: { id: v.id },
-      update: {
-        name: v.name,
-        description: v.description,
-        capacity: v.capacity,
-        dailySightseeingRate: v.daily_sightseeing_rate,
-        routeRates: v.route_rates,
-      },
-      create: {
-        id: v.id,
-        name: v.name,
-        description: v.description,
-        capacity: v.capacity,
-        dailySightseeingRate: v.daily_sightseeing_rate,
-        routeRates: v.route_rates,
-      },
-    });
+    await run(
+      `INSERT INTO vehicles (id, name, description, capacity, daily_sightseeing_rate, route_rates) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET name=excluded.name, description=excluded.description, capacity=excluded.capacity,
+         daily_sightseeing_rate=excluded.daily_sightseeing_rate, route_rates=excluded.route_rates`,
+      [v.id, v.name, v.description, v.capacity, v.daily_sightseeing_rate, JSON.stringify(v.route_rates)]
+    );
   }
 
   console.log('Seeding activities...');
   for (const a of INITIAL_ACTIVITIES) {
-    await prisma.activity.upsert({
-      where: { id: a.id },
-      update: {
-        name: a.name,
-        city: a.city,
-        description: a.description,
-        priceAdult: a.price_adult,
-        priceChild: a.price_child,
-      },
-      create: {
-        id: a.id,
-        name: a.name,
-        city: a.city,
-        description: a.description,
-        priceAdult: a.price_adult,
-        priceChild: a.price_child,
-      },
-    });
+    await run(
+      `INSERT INTO activities (id, name, city, description, price_adult, price_child) VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET name=excluded.name, city=excluded.city, description=excluded.description,
+         price_adult=excluded.price_adult, price_child=excluded.price_child`,
+      [a.id, a.name, a.city, a.description, a.price_adult, a.price_child]
+    );
   }
 
   console.log('Seeding packages...');
   for (const p of INITIAL_PACKAGES) {
-    await prisma.package.upsert({
-      where: { id: p.id },
-      update: {
-        name: p.name,
-        description: p.description,
-        durationNights: p.duration_nights,
-        defaultHotelCategory: p.default_hotel_category,
-        defaultVehicleId: p.default_vehicle_id,
-        startingPriceOverride: p.starting_price_override,
-        cities: p.cities,
-        days: p.days,
-      },
-      create: {
-        id: p.id,
-        name: p.name,
-        description: p.description,
-        durationNights: p.duration_nights,
-        defaultHotelCategory: p.default_hotel_category,
-        defaultVehicleId: p.default_vehicle_id,
-        startingPriceOverride: p.starting_price_override,
-        cities: p.cities,
-        days: p.days,
-      },
-    });
+    await run(
+      `INSERT INTO packages (id, name, description, duration_nights, default_hotel_category, default_vehicle_id, starting_price_override, cities, days)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET name=excluded.name, description=excluded.description, duration_nights=excluded.duration_nights,
+         default_hotel_category=excluded.default_hotel_category, default_vehicle_id=excluded.default_vehicle_id,
+         starting_price_override=excluded.starting_price_override, cities=excluded.cities, days=excluded.days`,
+      [
+        p.id,
+        p.name,
+        p.description,
+        p.duration_nights,
+        p.default_hotel_category,
+        p.default_vehicle_id,
+        p.starting_price_override,
+        JSON.stringify(p.cities),
+        JSON.stringify(p.days),
+      ]
+    );
   }
 
   console.log('Seeding settings...');
-  await prisma.settings.upsert({
-    where: { id: 1 },
-    update: {
-      markupPercent: INITIAL_SETTINGS.markup_percent,
-      b2cMarkupPercent: INITIAL_SETTINGS.b2c_markup_percent,
-      b2bMarkupPercent: INITIAL_SETTINGS.b2b_markup_percent,
-      b2bAdminMarginPercent: INITIAL_SETTINGS.b2b_admin_margin_percent,
-      taxPercent: INITIAL_SETTINGS.tax_percent,
-      exchangeRate: INITIAL_SETTINGS.exchange_rate,
-      popupPosterUrl: INITIAL_SETTINGS.popup_poster_url,
-      popupPosterActive: INITIAL_SETTINGS.popup_poster_active,
-    },
-    create: {
-      id: 1,
-      markupPercent: INITIAL_SETTINGS.markup_percent,
-      b2cMarkupPercent: INITIAL_SETTINGS.b2c_markup_percent,
-      b2bMarkupPercent: INITIAL_SETTINGS.b2b_markup_percent,
-      b2bAdminMarginPercent: INITIAL_SETTINGS.b2b_admin_margin_percent,
-      taxPercent: INITIAL_SETTINGS.tax_percent,
-      exchangeRate: INITIAL_SETTINGS.exchange_rate,
-      popupPosterUrl: INITIAL_SETTINGS.popup_poster_url,
-      popupPosterActive: INITIAL_SETTINGS.popup_poster_active,
-    },
-  });
+  await run(
+    `INSERT INTO settings (id, markup_percent, b2c_markup_percent, b2b_markup_percent, b2b_admin_margin_percent, tax_percent, exchange_rate, popup_poster_url, popup_poster_active)
+     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET markup_percent=excluded.markup_percent, b2c_markup_percent=excluded.b2c_markup_percent,
+       b2b_markup_percent=excluded.b2b_markup_percent, b2b_admin_margin_percent=excluded.b2b_admin_margin_percent,
+       tax_percent=excluded.tax_percent, exchange_rate=excluded.exchange_rate, popup_poster_url=excluded.popup_poster_url,
+       popup_poster_active=excluded.popup_poster_active`,
+    [
+      INITIAL_SETTINGS.markup_percent,
+      INITIAL_SETTINGS.b2c_markup_percent,
+      INITIAL_SETTINGS.b2b_markup_percent,
+      INITIAL_SETTINGS.b2b_admin_margin_percent,
+      INITIAL_SETTINGS.tax_percent,
+      INITIAL_SETTINGS.exchange_rate,
+      INITIAL_SETTINGS.popup_poster_url,
+      INITIAL_SETTINGS.popup_poster_active ? 1 : 0,
+    ]
+  );
 
   console.log('Seeding demo bookings...');
   for (const b of INITIAL_BOOKINGS) {
-    await prisma.booking.upsert({
-      where: { id: b.id },
-      update: {},
-      create: {
-        id: b.id,
-        clientName: b.client_name,
-        email: b.email,
-        phone: b.phone,
-        travelDate: b.travel_date,
-        adults: b.adults,
-        cwb: b.cwb,
-        cnb: b.cnb,
-        totalPrice: b.total_price,
-        packageName: b.package_name,
-        status: b.status,
-        createdAt: new Date(b.created_at),
-        itinerarySummary: b.itinerary_summary,
-        type: b.type,
-        agentId: b.agent_id || null,
-        agentCommission: b.agent_commission ?? null,
-        passengers: b.passengers,
-      },
-    });
+    await run(
+      `INSERT INTO bookings (id, client_name, email, phone, travel_date, adults, cwb, cnb, total_price, package_name, status, created_at, itinerary_summary, type, agent_id, agent_commission, passengers)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO NOTHING`,
+      [
+        b.id,
+        b.client_name,
+        b.email,
+        b.phone,
+        b.travel_date,
+        b.adults,
+        b.cwb,
+        b.cnb,
+        b.total_price,
+        b.package_name,
+        b.status,
+        b.created_at,
+        b.itinerary_summary,
+        b.type,
+        b.agent_id || null,
+        b.agent_commission ?? null,
+        JSON.stringify(b.passengers || []),
+      ]
+    );
   }
 
   console.log('Seeding demo users (passwords hashed)...');
   for (const u of INITIAL_USERS) {
     const passwordHash = await bcrypt.hash(u.password, 10);
-    await prisma.user.upsert({
-      where: { id: u.id },
-      update: {},
-      create: {
-        id: u.id,
-        email: u.email,
+    await run(
+      `INSERT INTO users (id, email, password_hash, role, full_name, phone, country_code, agency_name, agency_address, agency_phone, agency_email, agency_website, wallet_balance, address, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO NOTHING`,
+      [
+        u.id,
+        u.email,
         passwordHash,
-        role: u.role,
-        fullName: u.fullName || '',
-        phone: u.phone || '',
-        countryCode: u.countryCode || '',
-        agencyName: u.agencyName || null,
-        agencyAddress: u.agencyAddress || null,
-        agencyPhone: u.agencyPhone || null,
-        agencyEmail: u.agencyEmail || null,
-        agencyWebsite: u.agencyWebsite || null,
-        walletBalance: u.walletBalance ?? 0,
-        address: u.address || null,
-      },
-    });
+        u.role,
+        u.fullName || '',
+        u.phone || '',
+        u.countryCode || '',
+        u.agencyName || null,
+        u.agencyAddress || null,
+        u.agencyPhone || null,
+        u.agencyEmail || null,
+        u.agencyWebsite || null,
+        u.walletBalance ?? 0,
+        u.address || null,
+        new Date().toISOString(),
+      ]
+    );
   }
 
   console.log('Seed complete.');
@@ -198,6 +170,4 @@ main()
     console.error(err);
     process.exit(1);
   })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+  .finally(() => client.close());

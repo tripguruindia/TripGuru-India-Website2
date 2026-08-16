@@ -1,14 +1,16 @@
-// Prisma returns Decimal fields as Decimal.js instances, which
-// JSON.stringify turns into strings ("15.00"), not numbers. The Nepal
-// portal frontend expects plain JS numbers everywhere (it does math on
-// them directly in calculator.js), so every Decimal field is converted
-// back to a Number before a response leaves this server.
+// Converts a raw libSQL row (snake_case columns, JSON-in-TEXT for nested
+// structures) into the shape the Nepal portal frontend expects (matches
+// what the old client-side initializeDB() produced). Centralizing the
+// JSON.parse calls here means the route handlers never touch raw TEXT.
 
-function num(value) {
-  if (value === null || value === undefined) return value;
-  return typeof value === 'object' && typeof value.toNumber === 'function'
-    ? value.toNumber()
-    : Number(value);
+function parseJSON(value, fallback) {
+  if (value === null || value === undefined) return fallback;
+  if (typeof value !== 'string') return value; // already an object (e.g. in tests)
+  try {
+    return JSON.parse(value);
+  } catch (e) {
+    return fallback;
+  }
 }
 
 function serializeHotel(h) {
@@ -18,7 +20,7 @@ function serializeHotel(h) {
     city: h.city,
     category: h.category,
     description: h.description || '',
-    rates: h.rates,
+    rates: parseJSON(h.rates, {}),
   };
 }
 
@@ -28,8 +30,8 @@ function serializeVehicle(v) {
     name: v.name,
     description: v.description || '',
     capacity: v.capacity,
-    daily_sightseeing_rate: num(v.dailySightseeingRate),
-    route_rates: v.routeRates,
+    daily_sightseeing_rate: v.daily_sightseeing_rate,
+    route_rates: parseJSON(v.route_rates, {}),
   };
 }
 
@@ -43,8 +45,8 @@ function serializeActivity(a) {
     name: a.name,
     city: a.city,
     description: a.description || '',
-    price_adult: num(a.priceAdult),
-    price_child: num(a.priceChild),
+    price_adult: a.price_adult,
+    price_child: a.price_child,
   };
 }
 
@@ -53,78 +55,78 @@ function serializePackage(p) {
     id: p.id,
     name: p.name,
     description: p.description || '',
-    duration_nights: p.durationNights,
-    default_hotel_category: p.defaultHotelCategory,
-    default_vehicle_id: p.defaultVehicleId,
-    starting_price_override: num(p.startingPriceOverride),
-    cities: p.cities,
-    days: p.days,
+    duration_nights: p.duration_nights,
+    default_hotel_category: p.default_hotel_category,
+    default_vehicle_id: p.default_vehicle_id,
+    starting_price_override: p.starting_price_override,
+    cities: parseJSON(p.cities, []),
+    days: parseJSON(p.days, []),
   };
 }
 
 function serializeSettings(s) {
   if (!s) return null;
   return {
-    markup_percent: num(s.markupPercent),
-    b2c_markup_percent: num(s.b2cMarkupPercent),
-    b2b_markup_percent: num(s.b2bMarkupPercent),
-    b2b_admin_margin_percent: num(s.b2bAdminMarginPercent),
-    tax_percent: num(s.taxPercent),
-    exchange_rate: num(s.exchangeRate),
-    popup_poster_url: s.popupPosterUrl || '',
-    popup_poster_active: s.popupPosterActive,
+    markup_percent: s.markup_percent,
+    b2c_markup_percent: s.b2c_markup_percent,
+    b2b_markup_percent: s.b2b_markup_percent,
+    b2b_admin_margin_percent: s.b2b_admin_margin_percent,
+    tax_percent: s.tax_percent,
+    exchange_rate: s.exchange_rate,
+    popup_poster_url: s.popup_poster_url || '',
+    popup_poster_active: !!s.popup_poster_active,
   };
 }
 
 function serializeBooking(b) {
   return {
     id: b.id,
-    client_name: b.clientName,
+    client_name: b.client_name,
     email: b.email,
     phone: b.phone,
-    travel_date: b.travelDate,
+    travel_date: b.travel_date,
     adults: b.adults,
     cwb: b.cwb,
     cnb: b.cnb,
-    total_price: num(b.totalPrice),
-    package_name: b.packageName,
+    total_price: b.total_price,
+    package_name: b.package_name,
     status: b.status,
-    created_at: b.createdAt,
-    itinerary_summary: b.itinerarySummary,
+    created_at: b.created_at,
+    itinerary_summary: b.itinerary_summary,
     type: b.type,
-    agent_id: b.agentId,
-    agent_commission: num(b.agentCommission),
-    vehicleId: b.vehicleId,
-    hotelCategory: b.hotelCategory,
-    startCity: b.startCity,
-    endCity: b.endCity,
+    agent_id: b.agent_id,
+    agent_commission: b.agent_commission,
+    vehicleId: b.vehicle_id,
+    hotelCategory: b.hotel_category,
+    startCity: b.start_city,
+    endCity: b.end_city,
     notes: b.notes,
-    markup_percent: num(b.markupPercent),
-    b2b_admin_margin_percent: num(b.b2bAdminMarginPercent),
-    passengers: b.passengers,
-    itinerary: b.itinerary,
-    rooms: b.rooms,
-    b2b_white_label: b.b2bWhiteLabel,
+    markup_percent: b.markup_percent,
+    b2b_admin_margin_percent: b.b2b_admin_margin_percent,
+    passengers: parseJSON(b.passengers, []),
+    itinerary: parseJSON(b.itinerary, []),
+    rooms: parseJSON(b.rooms, []),
+    b2b_white_label: parseJSON(b.b2b_white_label, null),
   };
 }
 
-// Never include passwordHash in a response.
+// Never include password_hash in a response.
 function serializeUser(u) {
   return {
     id: u.id,
     email: u.email,
     role: u.role,
-    fullName: u.fullName,
+    fullName: u.full_name,
     phone: u.phone,
-    countryCode: u.countryCode,
-    agencyName: u.agencyName,
-    agencyAddress: u.agencyAddress,
-    agencyPhone: u.agencyPhone,
-    agencyEmail: u.agencyEmail,
-    agencyWebsite: u.agencyWebsite,
-    walletBalance: num(u.walletBalance),
+    countryCode: u.country_code,
+    agencyName: u.agency_name,
+    agencyAddress: u.agency_address,
+    agencyPhone: u.agency_phone,
+    agencyEmail: u.agency_email,
+    agencyWebsite: u.agency_website,
+    walletBalance: u.wallet_balance,
     address: u.address,
-    createdAt: u.createdAt,
+    createdAt: u.created_at,
   };
 }
 
@@ -133,14 +135,14 @@ function serializeLead(l) {
     id: l.id,
     name: l.name,
     email: l.email,
-    country_code: l.countryCode,
+    country_code: l.country_code,
     phone: l.phone,
-    created_at: l.createdAt,
+    created_at: l.created_at,
   };
 }
 
 module.exports = {
-  num,
+  parseJSON,
   serializeHotel,
   serializeVehicle,
   serializeRoute,
