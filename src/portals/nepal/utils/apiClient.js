@@ -13,39 +13,63 @@ const viteEnv = (typeof import.meta !== 'undefined' && import.meta.env) || {};
 const API_BASE = (viteEnv.VITE_NEPAL_API_BASE || 'https://tripguru-nepal-api.onrender.com')
   .replace(/\/+$/, '') + '/api/nepal';
 
-const TOKEN_KEY = 'nepal_auth_token';
-const ROLE_KEY = 'nepal_auth_role';
+// Each portal (admin/b2b/b2c) is its own independent login session in this
+// browser, matching the pre-existing per-route `currentUser` pattern in
+// App.jsx (see its `nepal_quote_user_<route>` storage) -- you can be logged
+// into Admin and B2B as different accounts in the same browser at once.
+// Tokens are therefore stored in a separate slot per role rather than one
+// shared slot. (An earlier version used a single shared token/role pair;
+// that let a session "leak" across portals -- e.g. switching from a logged-in
+// B2C tab straight to #/b2b, with no B2B login at all, would still carry the
+// B2C bearer token into B2B API calls and show the traveler's own bookings
+// on the agent dashboard. Discovered via live testing after the Phase 2
+// deploy and fixed here.)
+const TOKEN_KEY_PREFIX = 'nepal_auth_token_';
 
-export function getToken() {
+function currentRouteRole() {
+  if (typeof window === 'undefined') return 'b2c';
+  const hash = window.location.hash;
+  if (hash.startsWith('#/b2b')) return 'b2b';
+  if (hash.startsWith('#/admin')) return 'admin';
+  return 'b2c';
+}
+
+// `role` defaults to whichever portal route we're currently on -- every
+// caller in this file is already invoked in a route-scoped context (an
+// admin-only effect, a b2c/b2b-only effect, a login handler on the active
+// route, etc.) so this resolves to the right slot without callers having to
+// pass it explicitly. Pass an explicit role (e.g. isAdminSession() does)
+// when you need a specific portal's session regardless of the current route.
+export function getToken(role = currentRouteRole()) {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem(TOKEN_KEY);
+  return localStorage.getItem(TOKEN_KEY_PREFIX + role);
 }
 
 export function getStoredRole() {
   if (typeof window === 'undefined') return null;
-  return localStorage.getItem(ROLE_KEY);
+  return getToken() ? currentRouteRole() : null;
 }
 
 export function setSession(token, role) {
   if (typeof window === 'undefined') return;
-  localStorage.setItem(TOKEN_KEY, token);
-  localStorage.setItem(ROLE_KEY, role);
+  localStorage.setItem(TOKEN_KEY_PREFIX + role, token);
 }
 
-export function clearSession() {
+export function clearSession(role = currentRouteRole()) {
   if (typeof window === 'undefined') return;
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(ROLE_KEY);
+  localStorage.removeItem(TOKEN_KEY_PREFIX + role);
 }
 
-// True only when we have both a token AND it was issued to an admin --
-// this is what seedData.js checks to decide localStorage vs API.
+// True only when we have a token specifically issued to an admin -- this is
+// what seedData.js checks to decide localStorage vs API. Always checks the
+// admin slot regardless of the current route, since it means "is there a
+// genuine admin login in this browser", not "is the current route admin".
 export function isAdminSession() {
-  return !!getToken() && getStoredRole() === 'admin';
+  return !!getToken('admin');
 }
 
-// True for any real backend session (admin, b2b, or b2c) -- used where the
-// caller just needs "is this a real logged-in account", not a specific role.
+// True when the CURRENT portal route has a real backend session -- used
+// where the caller just needs "is this route logged in", not a specific role.
 export function isApiSession() {
   return !!getToken();
 }

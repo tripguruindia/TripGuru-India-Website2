@@ -296,7 +296,7 @@ function App() {
     const activeRole = currentUser ? currentUser.role : currentRoute;
     localStorage.removeItem('nepal_quote_user_' + activeRole);
     localStorage.removeItem('nepal_quote_current_user');
-    apiLogoutLocal(); // clears the bearer token/role if this was an admin session (no-op otherwise)
+    apiLogoutLocal(); // clears this portal's own bearer token slot (admin/b2b/b2c sessions are independent)
 
     setCurrentUser(null);
     setShowB2bLoginPortal(false);
