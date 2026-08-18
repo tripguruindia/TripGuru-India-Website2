@@ -142,6 +142,41 @@ function serializeLead(l) {
   };
 }
 
+function serializeQuote(q) {
+  return {
+    id: q.id,
+    agent_id: q.agent_id || null,
+    user_id: q.user_id || null,
+    client_name: q.client_name || '',
+    client_email: q.client_email || '',
+    client_phone: q.client_phone || '',
+    country_code: q.country_code || '',
+    package_name: q.package_name || '',
+    travel_date: q.travel_date || '',
+    total_price: q.total_price,
+    status: q.status || 'Draft',
+    valid_until: q.valid_until || null,
+    adults: q.adults,
+    cwb: q.cwb,
+    cnb: q.cnb,
+    vehicle_id: q.vehicle_id || '',
+    hotel_category: q.hotel_category || '',
+    start_city: q.start_city || '',
+    end_city: q.end_city || '',
+    markup_percent: q.markup_percent,
+    b2b_admin_margin_percent: q.b2b_admin_margin_percent,
+    offer_discount_per_pax: q.offer_discount_per_pax || 0,
+    itinerary: parseJSON(q.itinerary, []),
+    rooms: parseJSON(q.rooms, []),
+    passengers: parseJSON(q.passengers, []),
+    notes: q.notes || '',
+    converted_booking_id: q.converted_booking_id || null,
+    last_sent_at: q.last_sent_at || null,
+    created_at: q.created_at,
+    updated_at: q.updated_at,
+  };
+}
+
 module.exports = {
   parseJSON,
   serializeHotel,
@@ -153,4 +188,5 @@ module.exports = {
   serializeBooking,
   serializeUser,
   serializeLead,
+  serializeQuote,
 };
