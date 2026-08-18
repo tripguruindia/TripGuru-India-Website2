@@ -1443,3 +1443,131 @@
 .nepal-portal-root .draft-resume-secondary:hover {
   color: var(--text-primary) !important;
 }
+
+
+/* ── Saved quotes ("My Quotes") ──────────────────────────────────────────── */
+/* Same rule as the draft-resume banner above: surfaces and text both come from
+   the token set, never a fixed Tailwind palette class, because the portal
+   forces descendant text to --text-primary and a light fixed background would
+   render cream-on-cream in dark mode. Verified in both themes. */
+
+.nepal-portal-root .quote-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.nepal-portal-root .quote-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 99px;
+  border: 1px solid var(--border-color) !important;
+  background: transparent !important;
+  color: var(--text-muted) !important;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.nepal-portal-root .quote-tab:hover {
+  color: var(--text-primary) !important;
+  border-color: var(--primary) !important;
+}
+
+.nepal-portal-root .quote-tab.is-active {
+  background: var(--primary) !important;
+  border-color: var(--primary) !important;
+  color: #0D0B08 !important;
+}
+
+.nepal-portal-root .quote-tab-count {
+  font-size: 0.65rem;
+  opacity: 0.8;
+}
+
+.nepal-portal-root .quote-card {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: var(--radius-md);
+  padding: 1.1rem 1.25rem;
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.nepal-portal-root .quote-card:hover {
+  border-color: var(--primary) !important;
+  box-shadow: var(--shadow-md);
+}
+
+.nepal-portal-root .quote-card-title {
+  color: var(--text-primary) !important;
+  font-family: var(--font-heading);
+}
+
+.nepal-portal-root .quote-card-meta {
+  color: var(--text-muted) !important;
+}
+
+.nepal-portal-root .quote-card-price {
+  color: var(--primary-light) !important;
+  font-family: var(--font-heading);
+}
+
+/* Status pips. Each keeps a tinted, theme-neutral surface (a translucent wash
+   over whatever --bg-card is) so the same rule reads correctly in light and
+   dark rather than needing a per-theme override. */
+.nepal-portal-root .quote-pip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 99px;
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border: 1px solid transparent;
+}
+
+.nepal-portal-root .quote-pip-draft {
+  background: rgba(154, 144, 128, 0.16) !important;
+  border-color: rgba(154, 144, 128, 0.4) !important;
+  color: var(--text-muted) !important;
+}
+
+.nepal-portal-root .quote-pip-sent {
+  background: rgba(201, 168, 76, 0.16) !important;
+  border-color: rgba(201, 168, 76, 0.45) !important;
+  color: var(--primary-light) !important;
+}
+
+.nepal-portal-root .quote-pip-won {
+  background: rgba(22, 163, 74, 0.16) !important;
+  border-color: rgba(22, 163, 74, 0.45) !important;
+  color: var(--success) !important;
+}
+
+.nepal-portal-root .quote-pip-lost {
+  background: rgba(220, 38, 38, 0.14) !important;
+  border-color: rgba(220, 38, 38, 0.4) !important;
+  color: var(--error) !important;
+}
+
+.nepal-portal-root .quote-empty {
+  border: 1px dashed var(--border-color) !important;
+  border-radius: var(--radius-md);
+  color: var(--text-muted) !important;
+}
+
+.nepal-portal-root .quote-save-hint {
+  color: var(--text-muted) !important;
+}
+
+.nepal-portal-root .quote-locked-note {
+  color: var(--text-muted) !important;
+}
