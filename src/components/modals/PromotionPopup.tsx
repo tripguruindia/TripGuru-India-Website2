@@ -71,6 +71,7 @@ export const PromotionPopup = () => {
               {offer.image_url ? (
                 <div className="relative overflow-hidden">
                   <img
+                    loading="lazy"
                     src={offer.image_url}
                     alt={offer.title || 'Special Offer'}
                     className="block w-full h-auto max-h-[70vh] object-contain"

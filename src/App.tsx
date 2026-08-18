@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, lazy, Suspense } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { BrowserRouter, Routes, Route, useLocation, useNavigate, useParams } from 'react-router-dom';
 
@@ -24,7 +24,11 @@ import { SeoManager } from './components/seo/SeoManager';
 import { cityLandingPageMap, cityLandingPages } from './cityLandingPages';
 import { DESTINATIONS } from './constants';
 import { Destination } from './types';
-import NepalApp from './portals/nepal/App';
+// Lazy-loaded so the ~9.5k-line Nepal portal ships as its own chunk. It was
+// statically imported, which meant every visitor to the marketing homepage
+// downloaded and parsed the entire admin/agent/traveller portal even though
+// only a small fraction ever open /nepal.
+const NepalApp = lazy(() => import('./portals/nepal/App'));
 
 const ScrollToSection = () => {
   const { pathname } = useLocation();
@@ -188,7 +192,18 @@ function AppContent() {
   const isThankYouRoute = normalizedPath === '/thank-you';
 
   if (isNepalRoute) {
-    return <NepalApp />;
+    return (
+      <Suspense fallback={
+        <div className="min-h-screen flex items-center justify-center bg-[#0D0B08]">
+          <div className="text-center">
+            <div className="w-8 h-8 border-2 border-[#C9A84C] border-t-transparent rounded-full animate-spin mx-auto" />
+            <p className="mt-4 text-xs uppercase tracking-widest text-[#9A9080]">Loading portal</p>
+          </div>
+        </div>
+      }>
+        <NepalApp />
+      </Suspense>
+    );
   }
 
   const cityLandingPage =

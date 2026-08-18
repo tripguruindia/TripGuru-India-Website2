@@ -23,10 +23,11 @@ Build Command: npm run build
 Output Directory: dist
 ```
 
-4. Add this environment variable:
+4. Add these environment variables (both Production and Preview):
 
 ```env
 VITE_INTRAVWEB_API_BASE=https://intravweb.onrender.com
+VITE_NEPAL_API_BASE=https://tripguru-nepal-api.onrender.com
 ```
 
 5. Deploy.
@@ -55,10 +56,14 @@ npm install
 npm run dev
 ```
 
+Vite reads env files only at startup, so restart `npm run dev` after editing
+`.env.local`.
+
 Use a local backend by changing `.env.local`:
 
 ```env
 VITE_INTRAVWEB_API_BASE=http://localhost:4000
+VITE_NEPAL_API_BASE=http://localhost:4001
 ```
 
 ## 6. Env Var Table
@@ -66,6 +71,7 @@ VITE_INTRAVWEB_API_BASE=http://localhost:4000
 | Variable | Required | Purpose |
 |---|---|---|
 | `VITE_INTRAVWEB_API_BASE` | Yes | Base URL for InTravWeb offers and lead APIs |
+| `VITE_NEPAL_API_BASE` | Yes | Base URL for the Nepal portal API (auth, live pricing data, bookings). Without it the portal silently falls back to bundled seed data, so prices will not match the live database. |
 
 ## 7. Project Structure
 
@@ -99,6 +105,10 @@ public/
 ## 9. Pre-Launch Checklist
 
 - [ ] `VITE_INTRAVWEB_API_BASE` is set in Vercel.
+- [ ] `VITE_NEPAL_API_BASE` is set in Vercel (Production and Preview).
+- [ ] Nepal portal demo passwords have been rotated -- the seeded `admin`,
+      `agent` and `client` accounts ship with the password equal to the role
+      name and must not reach production.
 - [ ] If deploying from ZIP, it is flat and excludes `node_modules/`, `dist/`, `.env`, and `.env.local`.
 - [ ] InTravWeb is live before frontend deployment.
 - [ ] InTravWeb `ALLOWED_ORIGINS` includes TripGuru domains.

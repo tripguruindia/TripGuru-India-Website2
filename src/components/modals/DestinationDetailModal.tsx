@@ -54,6 +54,7 @@ export const DestinationDetailModal: React.FC<DestinationDetailModalProps> = ({
             {/* Left Side: Image & Hero Info */}
             <div className="relative w-full md:w-2/5 h-64 md:h-auto overflow-hidden">
               <img 
+                loading="lazy"
                 src={destination.image} 
                 alt={destination.name}
                 className="w-full h-full object-cover"
