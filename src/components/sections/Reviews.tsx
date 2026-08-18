@@ -83,7 +83,7 @@ export const Reviews = () => {
             viewport={{ once: true }}
             className="inline-flex items-center gap-2 text-gold uppercase tracking-[0.28em] text-[10px] font-semibold mb-6"
           >
-            <img src="https://www.google.com/favicon.ico" alt="" className="w-3.5 h-3.5" />
+            <img src="https://www.google.com/favicon.ico" alt="" loading="lazy" className="w-3.5 h-3.5" />
             Google Verified Reviews
           </motion.span>
           <motion.h2

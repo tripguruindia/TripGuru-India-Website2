@@ -8,6 +8,7 @@ import {
 import { syncUserToSheet, syncLeadToSheet, syncBookingToSheet } from './utils/dbSync';
 import { initializeDB, saveDB, INITIAL_ROUTES } from './data/seedData';
 import { calculateQuote, validateRoomCapacity, deriveFromRooms } from './utils/calculator';
+import { requireXLSX } from './utils/loadXlsx';
 import {
   apiLogin,
   apiSignup,
@@ -618,12 +619,9 @@ function App() {
     }
   };
 
-  const exportLeadsToExcel = () => {
-    const XLSX = window.XLSX;
-    if (!XLSX) {
-      window.alert("Excel helper library not loaded. Please try again in a moment.");
-      return;
-    }
+  const exportLeadsToExcel = async () => {
+    const XLSX = await requireXLSX();
+    if (!XLSX) return;
     const data = (db.leads || []).map((lead, idx) => ({
       "S.No.": idx + 1,
       "Lead ID": lead.id,
@@ -2056,12 +2054,9 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
   // --- EXCEL IMPORT/EXPORT FUNCTIONS ---
 
-  const exportHotels = () => {
-    const XLSX = window.XLSX;
-    if (!XLSX) {
-      alert("Excel library is loading, please try again in a moment.");
-      return;
-    }
+  const exportHotels = async () => {
+    const XLSX = await requireXLSX();
+    if (!XLSX) return;
     
     const data = db.hotels.map(h => ({
       "ID": h.id,
@@ -2097,8 +2092,9 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     XLSX.writeFile(wb, "nepal_hotels_master.xlsx");
   };
 
-  const importHotels = (e) => {
-    const XLSX = window.XLSX;
+  const importHotels = async (e) => {
+    const XLSX = await requireXLSX();
+    if (!XLSX) return;
     const file = e.target.files[0];
     if (!file) return;
     
@@ -2189,12 +2185,9 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     e.target.value = "";
   };
 
-  const exportActivities = () => {
-    const XLSX = window.XLSX;
-    if (!XLSX) {
-      alert("Excel library is loading, please try again in a moment.");
-      return;
-    }
+  const exportActivities = async () => {
+    const XLSX = await requireXLSX();
+    if (!XLSX) return;
     
     const data = db.activities.map(a => ({
       "ID": a.id,
@@ -2211,8 +2204,9 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     XLSX.writeFile(wb, "nepal_activities_master.xlsx");
   };
 
-  const importActivities = (e) => {
-    const XLSX = window.XLSX;
+  const importActivities = async (e) => {
+    const XLSX = await requireXLSX();
+    if (!XLSX) return;
     const file = e.target.files[0];
     if (!file) return;
     
@@ -2276,12 +2270,9 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     e.target.value = "";
   };
 
-  const exportVehicles = () => {
-    const XLSX = window.XLSX;
-    if (!XLSX) {
-      alert("Excel library is loading, please try again in a moment.");
-      return;
-    }
+  const exportVehicles = async () => {
+    const XLSX = await requireXLSX();
+    if (!XLSX) return;
     
     const routeKeys = db.routes.map(r => r.key);
     
@@ -2307,8 +2298,9 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     XLSX.writeFile(wb, "nepal_vehicles_master.xlsx");
   };
 
-  const importVehicles = (e) => {
-    const XLSX = window.XLSX;
+  const importVehicles = async (e) => {
+    const XLSX = await requireXLSX();
+    if (!XLSX) return;
     const file = e.target.files[0];
     if (!file) return;
     
