@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Plus, Minus, Trash2, Edit3, Save, Settings, Layers, Calendar, Users, 
   MapPin, TrendingUp, Briefcase, Compass, FileText, CheckCircle, Clock, 
@@ -1428,6 +1428,16 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     endCity: 'Kathmandu'
   });
 
+  // One default quote per package, computed once per data/view change rather
+  // than once per package on every render. The card display and the price sort
+  // both read from here, which also makes sorting consistent with the prices
+  // actually shown (the sort previously used a different B2B margin).
+  const packageDefaultQuotes = useMemo(() => {
+    const map = {};
+    (db.packages || []).forEach(pkg => { map[pkg.id] = getPackageDefaultQuote(pkg); });
+    return map;
+  }, [db.packages, db.hotels, db.vehicles, db.activities, db.routes, db.settings, view]);
+
   // How much per pax the advertised offer price is below the calculated rate.
   // Zero when the package has no override, or when the override is at/above
   // the calculated price (never silently marks a package UP).
@@ -1696,8 +1706,12 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     ? (currentBooking ? (currentBooking.markup_percent !== undefined ? currentBooking.markup_percent : 0) : agentMarkupInput)
     : (currentBooking ? (currentBooking.markup_percent !== undefined ? currentBooking.markup_percent : b2cMarkupInput) : b2cMarkupInput);
 
-  // Calculate live numbers (INR)
-  const quoteCalculation = calculateQuote({
+  // Calculate live numbers (INR).
+  // Memoised because this walks the whole itinerary (hotels, routes, activities
+  // per day) and previously re-ran on EVERY render of this ~9.5k-line
+  // component -- including renders triggered by unrelated state such as
+  // keystrokes in a form field.
+  const quoteCalculation = useMemo(() => calculateQuote({
     rooms,
     itinerary: customItinerary,
     vehicleId: selectedVehicleId,
@@ -1713,7 +1727,12 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     },
     startCity,
     endCity
-  });
+  }), [
+    rooms, customItinerary, selectedVehicleId,
+    db.hotels, db.vehicles, db.activities, db.routes,
+    activeMarkup, activeB2bAdminMargin, taxInput, offerDiscountPerPax,
+    startCity, endCity
+  ]);
 
   const hasNoStayTransfer = quoteCalculation.dayWiseBreakdown.some(day => 
     (!day.hotelId || day.hotelId === 'no_stay') && day.transportRoute
@@ -4857,28 +4876,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                             filteredPackages.sort((a, b) => {
                               const getPrice = (p) => {
                                 if (p.starting_price_override) return Number(p.starting_price_override);
-                                const q = calculateQuote({
-                                  travelers: { adults: 2, cwb: 0, cnb: 0 },
-                                  roomConfig: { single: 0, double: 1, extra_adult: 0, cwb: 0, cnb: 0 },
-                                  itinerary: p.days.map(d => {
-                                    const h = db.hotels.find(htl => htl.city.toLowerCase() === d.city.toLowerCase() && htl.category === p.default_hotel_category);
-                                    return {
-                                      ...d,
-                                      hotelId: h ? h.id : '',
-                                      meals: d.city.toLowerCase() === 'chitwan' ? 'AP' : 'CP',
-                                      transfer_route: d.transfer_route !== undefined ? d.transfer_route : '',
-                                      activity_ids: [...d.activity_ids]
-                                    };
-                                  }),
-                                  vehicleId: p.default_vehicle_id,
-                                  hotelsData: db.hotels,
-                                  vehiclesData: db.vehicles,
-                                  activitiesData: db.activities,
-                                  settings: { ...db.settings, markup_percent: view === 'b2b' ? 0 : undefined, b2b_admin_margin_percent: 0 },
-                                  startCity: 'Kathmandu',
-                                  endCity: 'Kathmandu'
-                                });
-                                return q.totals.perPerson;
+                                return (packageDefaultQuotes[p.id] || getPackageDefaultQuote(p)).totals.perPerson;
                               };
                               const priceA = getPrice(a);
                               const priceB = getPrice(b);
@@ -4895,32 +4893,9 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                           }
 
                           return filteredPackages.map(pkg => {
-                          // Calculate default approximate price for cards in INR (2 pax default)
-                          const defaultQuote = calculateQuote({
-                            travelers: { adults: 2, cwb: 0, cnb: 0 },
-                            roomConfig: { single: 0, double: 1, extra_adult: 0, cwb: 0, cnb: 0 },
-                            itinerary: pkg.days.map(d => {
-                              const h = db.hotels.find(htl => htl.city.toLowerCase() === d.city.toLowerCase() && htl.category === pkg.default_hotel_category);
-                              return {
-                                ...d,
-                                hotelId: h ? h.id : '',
-                                meals: d.city.toLowerCase() === 'chitwan' ? 'AP' : 'CP',
-                                transfer_route: d.transfer_route !== undefined ? d.transfer_route : '',
-                                activity_ids: [...d.activity_ids]
-                              };
-                            }),
-                            vehicleId: pkg.default_vehicle_id,
-                            hotelsData: db.hotels,
-                            vehiclesData: db.vehicles,
-                            activitiesData: db.activities,
-                            settings: {
-                              ...db.settings,
-                              markup_percent: view === 'b2b' ? 0 : undefined,
-                              b2b_admin_margin_percent: view === 'b2b' ? (db.settings.b2b_markup_percent || 10) : 0
-                            },
-                            startCity: 'Kathmandu',
-                            endCity: 'Kathmandu'
-                          });
+                          // Default approximate price for cards in INR (2 pax
+                          // default), read from the memoised map above.
+                          const defaultQuote = packageDefaultQuotes[pkg.id] || getPackageDefaultQuote(pkg);
 
                           return (
                             <div key={pkg.id} className="premium-card bg-white flex flex-col justify-between min-h-[520px] md:h-[520px] relative border border-slate-200 rounded-2xl overflow-hidden hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
