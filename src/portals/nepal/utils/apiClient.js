@@ -243,3 +243,42 @@ export async function createBooking(payload) {
 export async function getMyBookings() {
   return apiFetch('/bookings/mine');
 }
+
+// ---------------------------------------------------------------------------
+// Saved quotes -- an agent's (or logged-in traveler's) work-in-progress
+// proposals, before any of them become a booking. All six endpoints require a
+// real session: the server scopes every read and write to the caller's own
+// agent_id/user_id, so there is no "all quotes" call to make here.
+//
+// Unlike the localStorage builder draft (one implicit unfinished build, tied
+// to one browser), these are explicit, plural, and survive a device change.
+// ---------------------------------------------------------------------------
+export async function listMyQuotes(status) {
+  const qs = status ? `?status=${encodeURIComponent(status)}` : '';
+  return apiFetch(`/quotes/mine${qs}`);
+}
+
+export async function getQuote(id) {
+  return apiFetch(`/quotes/${encodeURIComponent(id)}`);
+}
+
+export async function createQuote(payload) {
+  return apiFetch('/quotes', { method: 'POST', body: payload });
+}
+
+// Partial update -- only the keys present in `patch` are written, so callers
+// can flip a status without resending the whole itinerary.
+export async function updateQuote(id, patch) {
+  return apiFetch(`/quotes/${encodeURIComponent(id)}`, { method: 'PATCH', body: patch });
+}
+
+export async function deleteQuote(id) {
+  return apiFetch(`/quotes/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
+// Returns { booking, quote, already? }. Idempotent server-side: converting an
+// already-converted quote returns the existing booking rather than making a
+// second one, so a double-click can't double-book a client.
+export async function convertQuote(id) {
+  return apiFetch(`/quotes/${encodeURIComponent(id)}/convert`, { method: 'POST' });
+}

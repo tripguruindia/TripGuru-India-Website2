@@ -19,6 +19,11 @@ import {
   getPublicDb,
   createBooking,
   getMyBookings,
+  listMyQuotes,
+  createQuote,
+  updateQuote,
+  deleteQuote,
+  convertQuote,
   createUser,
   updateUser,
   deleteUser,
@@ -231,6 +236,42 @@ function App() {
       .catch((err) => console.error('Failed to load my bookings', err));
     return () => { cancelled = true; };
   }, [currentRoute, currentUser]);
+
+  // Saved quotes: the caller's own work-in-progress proposals, scoped
+  // server-side by agent_id/user_id exactly like bookings above. Loaded once
+  // per session rather than per tab switch -- the individual handlers below
+  // keep this list in step after every save/convert/delete, so refetching on
+  // each navigation would only add latency.
+  const [myQuotes, setMyQuotes] = useState([]);
+  const [quotesLoading, setQuotesLoading] = useState(false);
+  const [quotesError, setQuotesError] = useState(null);
+  // Which pipeline tab is showing. Filtering happens client-side: the list is
+  // one agent's own quotes, so it's small, and switching tabs instantly beats
+  // a round-trip to the ?status= filter the API also offers.
+  const [quoteStatusFilter, setQuoteStatusFilter] = useState('All');
+
+  const refreshMyQuotes = React.useCallback(async () => {
+    if (!isApiSession()) { setMyQuotes([]); return; }
+    setQuotesLoading(true);
+    try {
+      const rows = await listMyQuotes();
+      setMyQuotes(rows);
+      setQuotesError(null);
+    } catch (err) {
+      console.error('Failed to load saved quotes', err);
+      setQuotesError(err.message || 'Could not load your saved quotes.');
+    } finally {
+      setQuotesLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if ((currentRoute !== 'b2c' && currentRoute !== 'b2b') || !isApiSession()) {
+      setMyQuotes([]);
+      return;
+    }
+    refreshMyQuotes();
+  }, [currentRoute, currentUser, refreshMyQuotes]);
 
   // Sync active user when shifting between portal URLs (hash links)
   useEffect(() => {
@@ -1857,7 +1898,195 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
   };
 
-  const hasNoStayTransfer = quoteCalculation.dayWiseBreakdown.some(day => 
+  // ---------------------------------------------------------------------
+  // Saved quotes -- builder side
+  // ---------------------------------------------------------------------
+  // The localStorage draft above is one implicit unfinished build, tied to
+  // one browser. A saved quote is explicit and plural: an agent can keep a
+  // proposal per client, come back to it on another device, send it, and
+  // convert the one the client accepts. `activeQuoteId` tracks which saved
+  // quote (if any) the builder is currently editing, so pressing Save again
+  // updates that quote instead of piling up near-identical copies.
+  const [activeQuoteId, setActiveQuoteId] = useState(null);
+  const [quoteSaveState, setQuoteSaveState] = useState('idle'); // idle | saving | saved | error
+  const [quoteBusyId, setQuoteBusyId] = useState(null);
+
+  // Any edit after a save means what's on screen no longer matches what's on
+  // the server, so the button goes back to offering a save.
+  useEffect(() => {
+    setQuoteSaveState((prev) => (prev === 'saved' ? 'idle' : prev));
+    // Deliberately keyed to the builder inputs, not to quoteSaveState itself.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    customItinerary, rooms, selectedVehicleId, selectedHotelCategory,
+    travelDate, startCity, endCity, customPackageName, offerDiscountPerPax,
+    checkoutForm,
+  ]);
+
+  const buildQuotePayload = () => ({
+    client_name: checkoutForm.clientName || '',
+    client_email: checkoutForm.email || '',
+    client_phone: checkoutForm.phone ? `${checkoutForm.countryCode} ${checkoutForm.phone}` : '',
+    country_code: checkoutForm.countryCode || '+91',
+    package_name: customPackageName || 'Untitled quote',
+    travel_date: travelDate || '',
+    total_price: Math.round(quoteCalculation.totals.total || 0),
+    adults: travelers.adults,
+    cwb: travelers.cwb,
+    cnb: travelers.cnb,
+    vehicle_id: selectedVehicleId || '',
+    hotel_category: selectedHotelCategory || '',
+    start_city: startCity || '',
+    end_city: endCity || '',
+    markup_percent: activeMarkup,
+    b2b_admin_margin_percent: view === 'b2b' ? b2bMarkupInput : 0,
+    offer_discount_per_pax: offerDiscountPerPax || 0,
+    itinerary: customItinerary,
+    rooms,
+    passengers: Array.from({ length: travelers.adults }).map((_, i) => ({
+      name: `${checkoutForm.clientName || 'Guest'} (Pax ${i + 1})`,
+      type: 'Adult',
+    })),
+    notes: checkoutForm.notes || '',
+  });
+
+  const handleSaveQuote = async () => {
+    if (!currentUser || !isApiSession()) {
+      window.alert('Please sign in first — saved quotes are kept on your account so you can pick them up on any device.');
+      return;
+    }
+    if (!customItinerary || customItinerary.length === 0) {
+      window.alert('Add at least one day to the itinerary before saving this quote.');
+      return;
+    }
+
+    setQuoteSaveState('saving');
+    try {
+      const payload = buildQuotePayload();
+      const saved = activeQuoteId
+        ? await updateQuote(activeQuoteId, payload)
+        : await createQuote(payload);
+      setActiveQuoteId(saved.id);
+      setMyQuotes((prev) => {
+        const rest = prev.filter((q) => q.id !== saved.id);
+        return [saved, ...rest];
+      });
+      setQuoteSaveState('saved');
+      // The saved quote is now the durable copy of this build, so the
+      // browser-only draft has nothing left to protect.
+      clearBuilderDraft();
+    } catch (err) {
+      console.error('Failed to save quote', err);
+      setQuoteSaveState('error');
+      window.alert(err.message || 'Could not save this quote. Please check your connection and try again.');
+    }
+  };
+
+  // Load a saved quote back into the builder. Mirrors resumeBuilderDraft, but
+  // sourced from the server rather than this browser's localStorage.
+  const handleResumeQuote = (quote) => {
+    setActiveQuoteId(quote.id);
+    setCurrentPackageId(null);
+    setCustomPackageName(quote.package_name || 'Untitled quote');
+    setCustomItinerary(quote.itinerary || []);
+    if (quote.rooms && quote.rooms.length) setRooms(quote.rooms);
+    if (quote.vehicle_id) setSelectedVehicleId(quote.vehicle_id);
+    if (quote.hotel_category) setSelectedHotelCategory(quote.hotel_category);
+    if (quote.travel_date) setTravelDate(quote.travel_date);
+    if (quote.start_city) setStartCity(quote.start_city);
+    if (quote.end_city) setEndCity(quote.end_city);
+    setOfferDiscountPerPax(quote.offer_discount_per_pax || 0);
+    if (view === 'b2b' && quote.b2b_admin_margin_percent !== null && quote.b2b_admin_margin_percent !== undefined) {
+      setB2bMarkupInput(quote.b2b_admin_margin_percent);
+    }
+    // client_phone is stored with the dialling code prefixed (as bookings are),
+    // so split it back out for the two-field checkout form.
+    const phone = quote.client_phone || '';
+    const hasCode = phone.startsWith('+');
+    setCheckoutForm({
+      clientName: quote.client_name || '',
+      email: quote.client_email || '',
+      countryCode: hasCode ? phone.split(' ')[0] : (quote.country_code || '+91'),
+      phone: hasCode ? phone.split(' ').slice(1).join(' ') : phone,
+      notes: quote.notes || '',
+    });
+    setQuoteSaveState('saved');
+    if (view === 'b2b') setB2bSubView('customize'); else setB2cSubView('customize');
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
+  };
+
+  const handleMarkQuoteSent = async (quote) => {
+    setQuoteBusyId(quote.id);
+    try {
+      const updated = await updateQuote(quote.id, { status: 'Sent' });
+      setMyQuotes((prev) => prev.map((q) => (q.id === updated.id ? updated : q)));
+    } catch (err) {
+      console.error('Failed to mark quote as sent', err);
+      window.alert(err.message || 'Could not update this quote.');
+    } finally {
+      setQuoteBusyId(null);
+    }
+  };
+
+  const handleMarkQuoteLost = async (quote) => {
+    if (!window.confirm(`Mark the quote for ${quote.client_name || 'this client'} as lost? You can still reopen and edit it afterwards.`)) return;
+    setQuoteBusyId(quote.id);
+    try {
+      const updated = await updateQuote(quote.id, { status: 'Lost' });
+      setMyQuotes((prev) => prev.map((q) => (q.id === updated.id ? updated : q)));
+    } catch (err) {
+      console.error('Failed to mark quote as lost', err);
+      window.alert(err.message || 'Could not update this quote.');
+    } finally {
+      setQuoteBusyId(null);
+    }
+  };
+
+  const handleDeleteQuote = async (quote) => {
+    if (!window.confirm(`Delete the quote for ${quote.client_name || 'this client'}? This cannot be undone.`)) return;
+    setQuoteBusyId(quote.id);
+    try {
+      await deleteQuote(quote.id);
+      setMyQuotes((prev) => prev.filter((q) => q.id !== quote.id));
+      if (activeQuoteId === quote.id) setActiveQuoteId(null);
+    } catch (err) {
+      console.error('Failed to delete quote', err);
+      window.alert(err.message || 'Could not delete this quote.');
+    } finally {
+      setQuoteBusyId(null);
+    }
+  };
+
+  // Turn an accepted quote into a real booking. The server does the work --
+  // it creates the booking, recomputes commission from the stored total, and
+  // marks the quote Won -- so nothing about the money is decided here.
+  const handleConvertQuote = async (quote) => {
+    if (!quote.client_name || !quote.client_email || !quote.client_phone) {
+      window.alert("This quote needs the client's name, email and mobile number before it can be booked. Open it, fill those in on the booking form, and save it again.");
+      return;
+    }
+    if (!window.confirm(`Convert this quote into a confirmed booking for ${quote.client_name}?`)) return;
+
+    setQuoteBusyId(quote.id);
+    try {
+      const { booking, quote: updatedQuote } = await convertQuote(quote.id);
+      setMyQuotes((prev) => prev.map((q) => (q.id === updatedQuote.id ? updatedQuote : q)));
+      setMyBookings((prev) => (prev.some((b) => b.id === booking.id) ? prev : [booking, ...prev]));
+      // Mirror into local `db` so the invoice screen can find the booking by
+      // id, the same way a booking made through checkout is stored.
+      updateDBState({ ...db, bookings: [booking, ...db.bookings.filter((b) => b.id !== booking.id)] });
+      syncBookingToSheet(booking);
+      if (activeQuoteId === quote.id) setActiveQuoteId(null);
+      handleViewVoucher(booking);
+    } catch (err) {
+      console.error('Failed to convert quote', err);
+      window.alert(err.message || 'Could not convert this quote into a booking.');
+    } finally {
+      setQuoteBusyId(null);
+    }
+  };
+
+  const hasNoStayTransfer = quoteCalculation.dayWiseBreakdown.some(day =>
     (!day.hotelId || day.hotelId === 'no_stay') && day.transportRoute
   );
 
@@ -1928,8 +2157,22 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       // booking permanent instead of living only in this browser's
       // localStorage. Sending our own `id` keeps it in sync with the
       // optimistic local state below.
-      const serverBooking = await createBooking(newBooking);
-      newBooking = { ...newBooking, ...serverBooking };
+      //
+      // If this build came from a saved quote, book it *through* that quote
+      // rather than alongside it: save the final edits, then convert. That
+      // keeps one booking instead of two records for the same trip, and
+      // leaves the quote marked Won with `converted_booking_id` pointing at
+      // the booking -- which is what makes win rates measurable.
+      if (activeQuoteId) {
+        await updateQuote(activeQuoteId, buildQuotePayload());
+        const { booking, quote: wonQuote } = await convertQuote(activeQuoteId);
+        newBooking = { ...newBooking, ...booking };
+        setMyQuotes((prev) => prev.map((q) => (q.id === wonQuote.id ? wonQuote : q)));
+        setActiveQuoteId(null);
+      } else {
+        const serverBooking = await createBooking(newBooking);
+        newBooking = { ...newBooking, ...serverBooking };
+      }
     } catch (err) {
       console.error('Failed to save booking to the server', err);
       window.alert(
@@ -2926,6 +3169,214 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   // An agent session, not merely "the b2b route is open".
   const isB2bAuthenticated = !!currentUser && currentUser.role === 'b2b';
 
+  // ---------------------------------------------------------------------
+  // "My Quotes" -- the saved-quote pipeline, shared by B2B and B2C.
+  // ---------------------------------------------------------------------
+  // Laid out as status filter tabs over a card list rather than side-by-side
+  // kanban columns: an agent following up on their phone gets the same view
+  // as one on a laptop, and a quote's details (client, package, price, dates)
+  // stay readable instead of being squeezed into a narrow column.
+  const QUOTE_TABS = ['All', 'Draft', 'Sent', 'Won', 'Lost'];
+
+  const renderMyQuotes = () => {
+    if (!currentUser) {
+      return (
+        <div className="max-w-3xl mx-auto py-10 text-center">
+          <div className="quote-empty p-10">
+            <FileText size={30} className="mx-auto mb-3 opacity-60" />
+            <h3 className="quote-card-title text-lg font-extrabold">Sign in to see your saved quotes</h3>
+            <p className="quote-card-meta text-xs mt-2 max-w-md mx-auto leading-relaxed">
+              Saved quotes are kept on your account, so a proposal you start on one device is
+              waiting for you on the next.
+            </p>
+            <button
+              onClick={() => (view === 'b2b' ? setShowB2bLoginPortal(true) : setShowB2cLoginPortal(true))}
+              className="btn btn-primary btn-sm mt-5"
+            >
+              Sign In
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    const counts = QUOTE_TABS.reduce((acc, tab) => {
+      acc[tab] = tab === 'All' ? myQuotes.length : myQuotes.filter((q) => q.status === tab).length;
+      return acc;
+    }, {});
+    const visible = quoteStatusFilter === 'All'
+      ? myQuotes
+      : myQuotes.filter((q) => q.status === quoteStatusFilter);
+
+    const pipClass = (status) => `quote-pip quote-pip-${(status || 'draft').toLowerCase()}`;
+    const paxLabel = (q) => {
+      const bits = [];
+      if (q.adults) bits.push(`${q.adults} adult${q.adults > 1 ? 's' : ''}`);
+      const kids = (q.cwb || 0) + (q.cnb || 0);
+      if (kids) bits.push(`${kids} child${kids > 1 ? 'ren' : ''}`);
+      return bits.join(', ') || '—';
+    };
+    const when = (iso) => {
+      if (!iso) return '—';
+      const d = new Date(iso);
+      return Number.isNaN(d.getTime()) ? '—' : d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+    };
+
+    return (
+      <div className="max-w-5xl mx-auto py-6 fade-in">
+        <div className="mb-6">
+          <h2 className="quote-card-title text-2xl font-extrabold">My Quotes</h2>
+          <p className="quote-card-meta text-xs mt-1.5 leading-relaxed max-w-2xl">
+            Proposals you've saved but not booked yet. Reopen one to keep editing it, mark it sent
+            once the client has it, and convert it the moment they say yes.
+          </p>
+        </div>
+
+        <div className="quote-tabs mb-5">
+          {QUOTE_TABS.map((tab) => (
+            <button
+              key={tab}
+              onClick={() => setQuoteStatusFilter(tab)}
+              className={`quote-tab ${quoteStatusFilter === tab ? 'is-active' : ''}`}
+            >
+              {tab}
+              <span className="quote-tab-count">{counts[tab]}</span>
+            </button>
+          ))}
+        </div>
+
+        {quotesError && (
+          <div className="quote-empty p-4 mb-4 text-xs flex items-center gap-2">
+            <AlertTriangle size={14} /> {quotesError}
+            <button onClick={refreshMyQuotes} className="btn btn-secondary btn-sm ml-auto">Retry</button>
+          </div>
+        )}
+
+        {quotesLoading && myQuotes.length === 0 ? (
+          <div className="quote-empty p-10 text-center text-xs">Loading your saved quotes…</div>
+        ) : visible.length === 0 ? (
+          <div className="quote-empty p-10 text-center">
+            <Layers size={26} className="mx-auto mb-3 opacity-60" />
+            <p className="text-sm font-bold quote-card-title">
+              {myQuotes.length === 0 ? 'No saved quotes yet' : `Nothing in ${quoteStatusFilter}`}
+            </p>
+            <p className="quote-card-meta text-xs mt-2 max-w-md mx-auto leading-relaxed">
+              {myQuotes.length === 0
+                ? 'Build an itinerary in the Custom Planner or from a preset package, then choose "Save Quote for Later".'
+                : 'Try another tab, or build a new quote from the planner.'}
+            </p>
+            {myQuotes.length === 0 && (
+              <button
+                onClick={() => (view === 'b2b' ? setB2bSubView('wizard') : setB2cSubView('wizard'))}
+                className="btn btn-primary btn-sm mt-5"
+              >
+                Build a quote
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {visible.map((q) => {
+              const busy = quoteBusyId === q.id;
+              const locked = !!q.converted_booking_id;
+              return (
+                <div key={q.id} className="quote-card">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="quote-card-title text-base font-extrabold truncate">
+                          {q.client_name || q.package_name || 'Untitled quote'}
+                        </h3>
+                        <span className={pipClass(q.status)}>{q.status}</span>
+                        {q.id === activeQuoteId && (
+                          <span className="quote-pip quote-pip-sent">Open in planner</span>
+                        )}
+                      </div>
+                      <p className="quote-card-meta text-xs mt-1 truncate">
+                        {q.package_name || 'Custom itinerary'}
+                        {q.itinerary?.length ? ` · ${q.itinerary.length} days` : ''} · {paxLabel(q)}
+                      </p>
+                      <p className="quote-card-meta text-[11px] mt-1.5">
+                        Travel {q.travel_date || 'not set'} · Updated {when(q.updated_at)}
+                        {q.last_sent_at ? ` · Sent ${when(q.last_sent_at)}` : ''}
+                      </p>
+                      {/* Convert refuses without these, so say so here rather
+                          than letting the agent find out at the last step. */}
+                      {!locked && !(q.client_name && q.client_email && q.client_phone) && (
+                        <p className="quote-card-meta text-[11px] mt-1.5 flex items-center gap-1.5">
+                          <AlertTriangle size={11} />
+                          Add the client's name, email and mobile before this can be booked.
+                        </p>
+                      )}
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="quote-card-price text-xl font-extrabold">
+                        ₹{Number(q.total_price || 0).toLocaleString('en-IN')}
+                      </div>
+                      <div className="quote-card-meta text-[10px] uppercase tracking-wider font-bold">Total</div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2 mt-4 pt-3.5 border-t" style={{ borderColor: 'var(--border-color)' }}>
+                    {locked ? (
+                      <div className="quote-locked-note text-[11px] flex items-center gap-1.5">
+                        <CheckCircle size={13} />
+                        Booked as <strong>{q.converted_booking_id}</strong> — this quote is now the
+                        record of what the client agreed to, so it can't be changed.
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => handleResumeQuote(q)}
+                          disabled={busy}
+                          className="btn btn-secondary btn-sm flex items-center gap-1.5 text-[11px]"
+                        >
+                          <Edit3 size={12} /> Open &amp; Edit
+                        </button>
+                        {q.status !== 'Sent' && (
+                          <button
+                            onClick={() => handleMarkQuoteSent(q)}
+                            disabled={busy}
+                            className="btn btn-secondary btn-sm flex items-center gap-1.5 text-[11px]"
+                          >
+                            <MessageSquare size={12} /> Mark as Sent
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleConvertQuote(q)}
+                          disabled={busy}
+                          className="btn btn-primary btn-sm flex items-center gap-1.5 text-[11px]"
+                        >
+                          <CheckCircle size={12} /> {busy ? 'Working…' : 'Convert to Booking'}
+                        </button>
+                        {q.status !== 'Lost' && (
+                          <button
+                            onClick={() => handleMarkQuoteLost(q)}
+                            disabled={busy}
+                            className="btn btn-secondary btn-sm flex items-center gap-1.5 text-[11px]"
+                          >
+                            <X size={12} /> Mark Lost
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleDeleteQuote(q)}
+                          disabled={busy}
+                          className="btn btn-secondary btn-sm flex items-center gap-1.5 text-[11px] ml-auto"
+                        >
+                          <Trash2 size={12} /> Delete
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderB2bSignedOutPrompt = () => (
     <div className="max-w-6xl mx-auto py-6">
       <div className="bg-gradient-to-r from-emerald-800 to-indigo-950 rounded-3xl p-8 shadow-lg text-center">
@@ -2955,6 +3406,10 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       : db.bookings.filter(b => b.type === 'B2B' && b.agent_id === currentUser?.id);
     const totalSales = b2bBookings.reduce((sum, b) => sum + (b.total_price || 0), 0);
     const totalCommission = b2bBookings.reduce((sum, b) => sum + (b.agent_commission || 0), 0);
+    // "Open" = still winnable. Won quotes are already counted as bookings
+    // above, and Lost ones are closed, so neither belongs in a follow-up count.
+    const openQuoteCount = myQuotes.filter((q) => q.status === 'Draft' || q.status === 'Sent').length;
+    const wonQuoteCount = myQuotes.filter((q) => q.status === 'Won').length;
 
     return (
       <div className="max-w-6xl mx-auto py-6">
@@ -3026,8 +3481,30 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
         </div>
 
         {/* Quick Actions & Partner Info */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          <div 
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div
+            onClick={() => setB2bSubView('quotes')}
+            className="group cursor-pointer quote-card flex items-start gap-4"
+          >
+            <div className="bg-emerald-600 text-white p-3 rounded-2xl group-hover:scale-105 transition-transform duration-300">
+              <FileText size={24} />
+            </div>
+            <div>
+              <h3 className="quote-card-title font-extrabold text-base">My Quotes</h3>
+              <p className="quote-card-meta text-xs mt-1 leading-relaxed">
+                {openQuoteCount > 0
+                  ? `${openQuoteCount} quote${openQuoteCount > 1 ? 's' : ''} still open${wonQuoteCount ? `, ${wonQuoteCount} won so far` : ''}.`
+                  : wonQuoteCount > 0
+                    ? `All followed up — ${wonQuoteCount} quote${wonQuoteCount > 1 ? 's' : ''} won so far.`
+                    : 'Save a proposal instead of losing it, then follow it up here.'}
+              </p>
+              <span className="inline-flex items-center gap-1.5 text-xs text-emerald-600 font-bold mt-4">
+                Open Quote Pipeline <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+              </span>
+            </div>
+          </div>
+
+          <div
             onClick={() => setB2bSubView('packages')}
             className="group cursor-pointer bg-gradient-to-br from-emerald-50 to-teal-50/50 border border-emerald-100/75 rounded-3xl p-6 shadow-sm hover:shadow-md hover:border-emerald-300 transition-all duration-300 flex items-start gap-4"
           >
@@ -4492,7 +4969,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                 { tab: 'profile', label: 'My Profile', icon: <User size={12} /> }
               ].map(item => (
                 <li key={item.tab}>
-                  <button 
+                  <button
                     onClick={() => setB2cSubView(item.tab)}
                     className={`w-full text-left text-xs py-1.5 px-3 rounded flex items-center gap-2 ${b2cSubView === item.tab ? 'bg-orange-700 text-white font-medium' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
                   >
@@ -4511,6 +4988,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
             <ul className="list-none flex flex-col gap-1">
               {[
                 { tab: 'dashboard', label: 'Agent Dashboard', icon: <TrendingUp size={12} /> },
+                { tab: 'quotes', label: 'My Quotes', icon: <FileText size={12} /> },
                 { tab: 'packages', label: 'Preset Packages', icon: <Layers size={12} /> },
                 { tab: 'wizard', label: 'Custom Planner', icon: <Compass size={12} /> },
                 { tab: 'profile', label: 'My Profile', icon: <User size={12} /> }
@@ -4693,6 +5171,22 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                   </button>
                 )}
                 
+                {/* The B2C portal has no sidebar (see `view !== 'b2c'` on the
+                    <aside> above), so its navigation lives in this header. */}
+                {currentUser && (
+                  <button
+                    type="button"
+                    onClick={() => setB2cSubView('quotes')}
+                    className={`hidden sm:flex items-center gap-1.5 text-xs font-bold px-3 py-1.5 rounded-xl border transition ${
+                      b2cSubView === 'quotes'
+                        ? 'bg-orange-50 border-orange-200 text-orange-700 shadow-inner'
+                        : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    <Save size={12} /> My Quotes
+                  </button>
+                )}
+
                 {currentUser && (
                   <button
                     type="button"
@@ -4885,6 +5379,10 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                 {isB2B && b2bSubView === 'dashboard' && (
                   isB2bAuthenticated ? renderB2bDashboard() : renderB2bSignedOutPrompt()
                 )}
+
+                {/* Saved-quote pipeline. Same screen for both portals -- the
+                    server scopes the list to the caller either way. */}
+                {currentSubView === 'quotes' && renderMyQuotes()}
 
                 {/* SUBVIEW 1: Preset Standard Packages Explorer or Custom Planner Intake Form */}
                 {currentSubView === 'dashboard' ? null : (currentSubView === 'packages' || currentSubView === 'wizard') && (
@@ -6577,13 +7075,39 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                               )}
                             </div>
 
-                            <button 
+                            <button
                               onClick={() => setShowCheckoutModal(true)}
                               className={`w-full bg-${themeColor === 'emerald' ? 'emerald-600 hover:bg-emerald-700' : '[#0f2942] hover:bg-[#1a3d5e]'} text-white py-3 rounded shadow-md mt-4 flex items-center justify-center gap-2 font-bold uppercase tracking-wider transition`}
                               disabled={!quoteCalculation.roomValidation.isValid}
                             >
                               <CheckCircle size={18} /> Book Vacation Now
                             </button>
+
+                            {/* Keep the build without booking it. Only offered
+                                to a signed-in account, because that's what a
+                                saved quote is scoped to -- and it's what lets
+                                the same quote reopen on another device. */}
+                            {currentUser && (
+                              <>
+                                <button
+                                  onClick={handleSaveQuote}
+                                  disabled={quoteSaveState === 'saving' || !customItinerary.length}
+                                  className="btn btn-secondary w-full mt-2 flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-wider disabled:opacity-50"
+                                >
+                                  <Save size={15} />
+                                  {quoteSaveState === 'saving'
+                                    ? 'Saving…'
+                                    : activeQuoteId ? 'Update Saved Quote' : 'Save Quote for Later'}
+                                </button>
+                                <div className="quote-save-hint text-[10px] text-center mt-1.5 leading-relaxed">
+                                  {quoteSaveState === 'saved'
+                                    ? 'Saved to your account — open it any time from My Quotes.'
+                                    : activeQuoteId
+                                      ? 'You have unsaved changes to this quote.'
+                                      : 'Keep this itinerary and come back to it later, on any device.'}
+                                </div>
+                              </>
+                            )}
                           </>
                         )}
                       </div>

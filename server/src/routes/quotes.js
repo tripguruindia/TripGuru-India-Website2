@@ -281,6 +281,25 @@ router.post('/:id/convert', requireAuth, async (req, res) => {
   const now = new Date().toISOString();
   const bookingId = `qt-${Date.now().toString().slice(-4)}${Math.random().toString(36).slice(2, 4)}`;
 
+  // The booking list renders package_name and itinerary_summary as two lines,
+  // so copying the package name into both just prints it twice. Rebuild the
+  // same one-line shape POST /bookings stores ("5 Nights, 2 Adults, ...").
+  const nights = (() => {
+    try {
+      const parsed = JSON.parse(quote.itinerary || '[]');
+      return Array.isArray(parsed) ? parsed.length : 0;
+    } catch {
+      return 0;
+    }
+  })();
+  const itinerarySummary = [
+    `${nights} Nights`,
+    `${quote.adults || 0} Adults`,
+    `${quote.cwb || 0} CWB`,
+    `${quote.cnb || 0} CNB`,
+    `${quote.hotel_category || 'Standard'} Hotels.`,
+  ].join(', ');
+
   await run(
     `INSERT INTO bookings (
        id, client_name, email, phone, travel_date, adults, cwb, cnb,
@@ -302,7 +321,7 @@ router.post('/:id/convert', requireAuth, async (req, res) => {
       quote.package_name || '',
       'Confirmed',
       now,
-      quote.package_name || '',
+      itinerarySummary,
       isB2B ? 'B2B' : 'B2C',
       isB2B ? ownerId : null,
       isB2B ? Math.round(Number(quote.total_price || 0) * AGENT_COMMISSION_RATE) : null,
