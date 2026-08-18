@@ -1800,7 +1800,14 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
   // On first load, surface any draft from a previous session.
   useEffect(() => {
-    if (typeof window === 'undefined' || view === 'admin' || !draftKey) return;
+    if (typeof window === 'undefined' || view === 'admin') return;
+    // Signing out (draftKey -> null) must drop the prompt immediately. The
+    // portal is a SPA, so there's no page reload to clear it for us, and a
+    // banner naming the previous user's trip must not outlive their session.
+    if (!draftKey) {
+      setResumableDraft(null);
+      return;
+    }
     try {
       const raw = localStorage.getItem(draftKey);
       if (!raw) return;
@@ -4853,10 +4860,10 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
                   {/* Resume an unfinished build from a previous session. */}
                   {resumableDraft && (
-                    <div className="mb-6 no-print bg-amber-50 border border-amber-300/70 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+                    <div className="draft-resume-banner mb-6 no-print border rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
                       <div className="text-left">
-                        <span className="text-[9px] uppercase font-black tracking-widest text-amber-700 block">Unfinished quote</span>
-                        <p className="text-xs text-slate-700 mt-1">
+                        <span className="draft-resume-eyebrow text-[9px] uppercase font-black tracking-widest block">Unfinished quote</span>
+                        <p className="draft-resume-copy text-xs mt-1">
                           You have a saved draft
                           {resumableDraft.packageName ? <strong> — {resumableDraft.packageName}</strong> : null}
                           {' '}({resumableDraft.itinerary.length} days), last edited{' '}
@@ -4866,13 +4873,13 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                       <div className="flex items-center gap-2 shrink-0">
                         <button
                           onClick={resumeBuilderDraft}
-                          className="bg-[#0f2942] hover:bg-orange-600 text-white font-extrabold text-[10px] uppercase tracking-wider py-2 px-4 rounded-xl transition"
+                          className="draft-resume-primary font-extrabold text-[10px] uppercase tracking-wider py-2 px-4 rounded-xl transition"
                         >
                           Resume
                         </button>
                         <button
                           onClick={clearBuilderDraft}
-                          className="text-slate-500 hover:text-slate-700 font-bold text-[10px] uppercase tracking-wider py-2 px-3 transition"
+                          className="draft-resume-secondary font-bold text-[10px] uppercase tracking-wider py-2 px-3 transition"
                         >
                           Discard
                         </button>

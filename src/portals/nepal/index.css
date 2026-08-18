@@ -1401,3 +1401,45 @@
 
 
 
+
+/* ── Draft resume banner ─────────────────────────────────────────────────── */
+/* Uses theme tokens rather than fixed Tailwind palette classes: the portal's
+   global rules force descendant text to --text-primary, which turned a light
+   amber banner into cream-on-cream in dark mode. Deriving both surface and
+   text from the same token set keeps it legible in either theme. */
+.nepal-portal-root .draft-resume-banner {
+  background: rgba(201, 168, 76, 0.10) !important;
+  border-color: var(--border-color) !important;
+}
+
+.nepal-portal-root .draft-resume-eyebrow {
+  color: var(--primary) !important;
+}
+
+.nepal-portal-root .draft-resume-copy {
+  color: var(--text-primary) !important;
+  opacity: 0.85;
+}
+
+.nepal-portal-root .draft-resume-copy strong {
+  color: var(--primary-light) !important;
+  opacity: 1;
+}
+
+.nepal-portal-root .draft-resume-primary {
+  background: var(--primary) !important;
+  color: #0D0B08 !important;
+}
+
+.nepal-portal-root .draft-resume-primary:hover {
+  filter: brightness(1.08);
+}
+
+.nepal-portal-root .draft-resume-secondary {
+  background: transparent !important;
+  color: var(--text-muted) !important;
+}
+
+.nepal-portal-root .draft-resume-secondary:hover {
+  color: var(--text-primary) !important;
+}
