@@ -26,6 +26,20 @@ import {
 import './App.css';
 import './index.css';
 
+const EMPTY_B2B_PROFILE = {
+  agentName: '',
+  email: '',
+  countryCode: '+91',
+  phone: '',
+  address: '',
+  agencyName: '',
+  agencyLogo: '',
+  agencyAddress: '',
+  agencyEmail: '',
+  agencyPhone: '',
+  agencyWebsite: ''
+};
+
 const formatCityName = (c) => {
   if (!c) return '';
   const clean = c.toLowerCase().trim();
@@ -310,6 +324,14 @@ function App() {
     setCurrentUser(null);
     setShowB2bLoginPortal(false);
     setShowB2cLoginPortal(false);
+
+    // The agent profile is held separately from the auth session, so without
+    // this it survived logout -- leaving the previous agent's name, agency and
+    // wallet figure on screen for the next (possibly anonymous) visitor.
+    if (activeRole === 'b2b') {
+      localStorage.removeItem('nepal_quote_b2b_profile');
+      setB2bProfile({ ...EMPTY_B2B_PROFILE });
+    }
     setIsLeadCaptured(!!localStorage.getItem('nepal_quote_lead_info'));
     
     if (activeRole === 'admin' || activeRole === 'b2b') {
@@ -331,21 +353,13 @@ function App() {
     };
   });
 
+  // Blank rather than seeded demo values: these fields are shown on the agent
+  // dashboard and baked into white-labelled quotes, so a placeholder agency
+  // ("Horizon Travel Partners") could be presented to a real visitor -- or
+  // printed on a real agent's documents -- as though it were their own.
   const [b2bProfile, setB2bProfile] = useState(() => {
     const saved = localStorage.getItem('nepal_quote_b2b_profile');
-    return saved ? JSON.parse(saved) : {
-      agentName: 'Horizon Travel Partners',
-      email: 'agent@horizontravel.com',
-      countryCode: '+91',
-      phone: '9876543210',
-      address: '123 Travel Street, Delhi',
-      agencyName: 'Horizon Travel Partners',
-      agencyLogo: '',
-      agencyAddress: '123 Travel Street, Delhi',
-      agencyEmail: 'booking@horizontravel.com',
-      agencyPhone: '9876543210',
-      agencyWebsite: 'www.horizontravel.com'
-    };
+    return saved ? JSON.parse(saved) : { ...EMPTY_B2B_PROFILE };
   });
 
   useEffect(() => {
@@ -2917,6 +2931,27 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     }
   };
 
+  // An agent session, not merely "the b2b route is open".
+  const isB2bAuthenticated = !!currentUser && currentUser.role === 'b2b';
+
+  const renderB2bSignedOutPrompt = () => (
+    <div className="max-w-6xl mx-auto py-6">
+      <div className="bg-gradient-to-r from-emerald-800 to-indigo-950 rounded-3xl p-8 shadow-lg text-center">
+        <span className="bg-emerald-600 text-xs px-3 py-1 rounded-full uppercase tracking-wider font-semibold">B2B Partner Portal</span>
+        <h2 className="text-3xl font-extrabold mt-4 font-heading leading-tight">Sign in to your agent account</h2>
+        <p className="mt-3 text-sm leading-relaxed max-w-lg mx-auto">
+          Your dashboard, commission rates, wallet balance and booking history are available once you sign in.
+        </p>
+        <button
+          onClick={() => setShowB2bLoginPortal(true)}
+          className="mt-6 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs uppercase tracking-wider py-3 px-6 rounded-xl transition"
+        >
+          Partner Sign In / Register
+        </button>
+      </div>
+    </div>
+  );
+
   const renderB2bDashboard = () => {
     // Server-scoped to the logged-in agent's own bookings (GET /bookings/mine
     // filters by agent_id) -- previously read db.bookings.filter(type==='B2B'),
@@ -4852,7 +4887,12 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
             return (
               <div className="fade-in">
-                {isB2B && b2bSubView === 'dashboard' && renderB2bDashboard()}
+                {/* The dashboard shows agent-identifying data (agency, agent id,
+                    commission tier, wallet balance) and must never render to a
+                    visitor without an authenticated agent session. */}
+                {isB2B && b2bSubView === 'dashboard' && (
+                  isB2bAuthenticated ? renderB2bDashboard() : renderB2bSignedOutPrompt()
+                )}
 
                 {/* SUBVIEW 1: Preset Standard Packages Explorer or Custom Planner Intake Form */}
                 {currentSubView === 'dashboard' ? null : (currentSubView === 'packages' || currentSubView === 'wizard') && (
