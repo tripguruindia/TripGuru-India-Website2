@@ -1761,11 +1761,15 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   // an accidental refresh or a closed tab is painful. The in-progress build is
   // mirrored to localStorage and offered back on return. Draft-only: nothing
   // here is a booking, and confirming or abandoning clears it.
-  const DRAFT_KEY = 'nepal_quote_builder_draft';
+  // Drafts are an account feature: they're only kept for a signed-in user, and
+  // the storage key is scoped to that user's id. This keeps a traveller's
+  // in-progress plan off a shared or public computer once they sign out, and
+  // stops two people using the same browser from seeing each other's build.
+  const draftKey = currentUser ? `nepal_quote_builder_draft_${currentUser.id}` : null;
   const [resumableDraft, setResumableDraft] = useState(null);
 
   useEffect(() => {
-    if (typeof window === 'undefined' || view === 'admin') return;
+    if (typeof window === 'undefined' || view === 'admin' || !draftKey) return;
     if (!customItinerary || customItinerary.length === 0) return;
     const draft = {
       savedAt: new Date().toISOString(),
@@ -1782,12 +1786,13 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       offerDiscountPerPax
     };
     try {
-      localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+      localStorage.setItem(draftKey, JSON.stringify(draft));
     } catch {
       // Quota or private-mode failures are non-fatal -- autosave is a
       // convenience, never a precondition for building a quote.
     }
   }, [
+    draftKey,
     view, currentPackageId, customPackageName, customItinerary, rooms,
     selectedVehicleId, selectedHotelCategory, travelDate, startCity, endCity,
     offerDiscountPerPax
@@ -1795,23 +1800,24 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
   // On first load, surface any draft from a previous session.
   useEffect(() => {
-    if (typeof window === 'undefined' || view === 'admin') return;
+    if (typeof window === 'undefined' || view === 'admin' || !draftKey) return;
     try {
-      const raw = localStorage.getItem(DRAFT_KEY);
+      const raw = localStorage.getItem(draftKey);
       if (!raw) return;
       const draft = JSON.parse(raw);
       if (draft?.itinerary?.length) setResumableDraft(draft);
     } catch {
-      localStorage.removeItem(DRAFT_KEY);
+      localStorage.removeItem(draftKey);
     }
-    // Intentionally first-load only: re-offering the draft mid-build would
-    // fight the user's current work.
+    // Runs on load and on sign-in (draftKey changes), not on every edit --
+    // re-offering the draft mid-build would fight the user's current work.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [draftKey]);
 
   const clearBuilderDraft = () => {
     setResumableDraft(null);
-    try { localStorage.removeItem(DRAFT_KEY); } catch { /* no-op */ }
+    if (!draftKey) return;
+    try { localStorage.removeItem(draftKey); } catch { /* no-op */ }
   };
 
   const resumeBuilderDraft = () => {
