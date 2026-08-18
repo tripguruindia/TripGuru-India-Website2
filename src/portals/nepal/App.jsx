@@ -1389,10 +1389,25 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   useEffect(() => {
     if (view === 'b2c' && db.settings?.popup_poster_active && db.settings?.popup_poster_url) {
       const shown = sessionStorage.getItem('nepal_quote_poster_shown');
-      if (!shown) {
+      if (shown) return;
+      // Hold the promo back until the visitor has actually seen the page.
+      // Firing it immediately covered the hero before anything had rendered,
+      // which reads as an interstitial ad and drives bounces. Shows on the
+      // first scroll, or after a short delay if they never scroll.
+      let done = false;
+      const reveal = () => {
+        if (done) return;
+        done = true;
         setShowPosterPopup(true);
         sessionStorage.setItem('nepal_quote_poster_shown', 'true');
-      }
+        window.removeEventListener('scroll', reveal);
+      };
+      const timer = window.setTimeout(reveal, 6000);
+      window.addEventListener('scroll', reveal, { passive: true, once: true });
+      return () => {
+        window.clearTimeout(timer);
+        window.removeEventListener('scroll', reveal);
+      };
     }
   }, [view, db.settings]);
 
@@ -1529,7 +1544,12 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     } else {
       setB2cSubView('customize');
     }
-    setShowCheckoutModal(true);
+    // Land on the itinerary so the traveller can review the day-by-day plan,
+    // inclusions and live price before committing. Previously this opened the
+    // checkout form immediately, asking someone to confirm a six-figure
+    // booking they had not yet been shown. "Book Vacation Now" in the pricing
+    // sidebar is still one click away.
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
   };
 
   // --- Room-Based Configuration Handlers ---
@@ -1734,6 +1754,84 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     startCity, endCity
   ]);
 
+  // ---------------------------------------------------------------------
+  // Builder draft autosave
+  // ---------------------------------------------------------------------
+  // A five-day custom itinerary represents a lot of choices, and losing it to
+  // an accidental refresh or a closed tab is painful. The in-progress build is
+  // mirrored to localStorage and offered back on return. Draft-only: nothing
+  // here is a booking, and confirming or abandoning clears it.
+  const DRAFT_KEY = 'nepal_quote_builder_draft';
+  const [resumableDraft, setResumableDraft] = useState(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || view === 'admin') return;
+    if (!customItinerary || customItinerary.length === 0) return;
+    const draft = {
+      savedAt: new Date().toISOString(),
+      view,
+      packageId: currentPackageId,
+      packageName: customPackageName,
+      itinerary: customItinerary,
+      rooms,
+      vehicleId: selectedVehicleId,
+      hotelCategory: selectedHotelCategory,
+      travelDate,
+      startCity,
+      endCity,
+      offerDiscountPerPax
+    };
+    try {
+      localStorage.setItem(DRAFT_KEY, JSON.stringify(draft));
+    } catch {
+      // Quota or private-mode failures are non-fatal -- autosave is a
+      // convenience, never a precondition for building a quote.
+    }
+  }, [
+    view, currentPackageId, customPackageName, customItinerary, rooms,
+    selectedVehicleId, selectedHotelCategory, travelDate, startCity, endCity,
+    offerDiscountPerPax
+  ]);
+
+  // On first load, surface any draft from a previous session.
+  useEffect(() => {
+    if (typeof window === 'undefined' || view === 'admin') return;
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY);
+      if (!raw) return;
+      const draft = JSON.parse(raw);
+      if (draft?.itinerary?.length) setResumableDraft(draft);
+    } catch {
+      localStorage.removeItem(DRAFT_KEY);
+    }
+    // Intentionally first-load only: re-offering the draft mid-build would
+    // fight the user's current work.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const clearBuilderDraft = () => {
+    setResumableDraft(null);
+    try { localStorage.removeItem(DRAFT_KEY); } catch { /* no-op */ }
+  };
+
+  const resumeBuilderDraft = () => {
+    const draft = resumableDraft;
+    if (!draft) return;
+    setCurrentPackageId(draft.packageId ?? null);
+    setCustomPackageName(draft.packageName ?? 'My Nepal Tour Custom');
+    setCustomItinerary(draft.itinerary || []);
+    if (draft.rooms) setRooms(draft.rooms);
+    if (draft.vehicleId) setSelectedVehicleId(draft.vehicleId);
+    if (draft.hotelCategory) setSelectedHotelCategory(draft.hotelCategory);
+    if (draft.travelDate) setTravelDate(draft.travelDate);
+    if (draft.startCity) setStartCity(draft.startCity);
+    if (draft.endCity) setEndCity(draft.endCity);
+    setOfferDiscountPerPax(draft.offerDiscountPerPax || 0);
+    if (view === 'b2b') setB2bSubView('customize'); else setB2cSubView('customize');
+    setResumableDraft(null);
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
+  };
+
   const hasNoStayTransfer = quoteCalculation.dayWiseBreakdown.some(day => 
     (!day.hotelId || day.hotelId === 'no_stay') && day.transportRoute
   );
@@ -1825,6 +1923,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
     setLastBookingId(newBooking.id);
     setShowCheckoutModal(false);
+    // The build is now a real booking -- the draft has served its purpose.
+    clearBuilderDraft();
     if (isB2B) {
       setB2bSubView('invoice');
     } else {
@@ -4745,6 +4845,34 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                 {currentSubView === 'dashboard' ? null : (currentSubView === 'packages' || currentSubView === 'wizard') && (
                 <div className="max-w-6xl mx-auto py-4">
 
+                  {/* Resume an unfinished build from a previous session. */}
+                  {resumableDraft && (
+                    <div className="mb-6 no-print bg-amber-50 border border-amber-300/70 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+                      <div className="text-left">
+                        <span className="text-[9px] uppercase font-black tracking-widest text-amber-700 block">Unfinished quote</span>
+                        <p className="text-xs text-slate-700 mt-1">
+                          You have a saved draft
+                          {resumableDraft.packageName ? <strong> — {resumableDraft.packageName}</strong> : null}
+                          {' '}({resumableDraft.itinerary.length} days), last edited{' '}
+                          {new Date(resumableDraft.savedAt).toLocaleDateString()}.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={resumeBuilderDraft}
+                          className="bg-[#0f2942] hover:bg-orange-600 text-white font-extrabold text-[10px] uppercase tracking-wider py-2 px-4 rounded-xl transition"
+                        >
+                          Resume
+                        </button>
+                        <button
+                          onClick={clearBuilderDraft}
+                          className="text-slate-500 hover:text-slate-700 font-bold text-[10px] uppercase tracking-wider py-2 px-3 transition"
+                        >
+                          Discard
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   {currentSubView === 'packages' && (
                     <div className="fade-in">
@@ -4943,10 +5071,24 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                 <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/50 mt-3 flex items-center justify-between">
                                   {view === 'b2c' && !hasContactDetails ? (
                                     <div className="w-full flex items-center justify-between">
+                                      {/* Anonymous visitors see the headline "from" rate openly --
+                                          hiding every price behind a form is a heavy first
+                                          impression and gives no basis to compare packages.
+                                          The day-wise breakdown stays gated. */}
                                       <div>
-                                        <span className="text-[8px] text-slate-405 uppercase font-extrabold tracking-wider block">Pricing</span>
-                                        <span className="text-xs font-bold text-orange-655 flex items-center gap-1 mt-1">
-                                          <Lock size={12} className="text-orange-600" /> Locked
+                                        <span className="text-[8px] text-slate-405 uppercase font-extrabold tracking-wider block">
+                                          From {pkg.starting_price_override ? "(Special Offer)" : ""}
+                                        </span>
+                                        <span className="text-base font-black text-[#0f2942] font-heading">
+                                          ₹{Math.round(
+                                            pkg.starting_price_override
+                                              ? Number(pkg.starting_price_override)
+                                              : defaultQuote.totals.perPerson
+                                          ).toLocaleString()}
+                                          <span className="text-[9px] text-slate-500 font-medium ml-0.5">/ pax</span>
+                                        </span>
+                                        <span className="text-[8px] text-slate-405 flex items-center gap-1 mt-0.5">
+                                          <Lock size={10} className="text-orange-600" /> Full breakdown locked
                                         </span>
                                       </div>
                                       <button 
@@ -4955,9 +5097,9 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                           setPendingLeadAction({ type: 'customize', pkg });
                                           setShowLeadCaptureModal(true);
                                         }}
-                                        className="bg-orange-650 hover:bg-orange-700 text-white font-extrabold text-[9px] uppercase tracking-wider py-1.5 px-3 rounded-lg shadow-sm transition"
+                                        className="bg-orange-650 hover:bg-orange-700 text-white font-extrabold text-[9px] uppercase tracking-wider py-1.5 px-3 rounded-lg shadow-sm transition shrink-0"
                                       >
-                                        Unlock Rates
+                                        See Details
                                       </button>
                                     </div>
                                   ) : (
@@ -5053,7 +5195,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                   onClick={() => handleViewAndBookPackage(pkg)}
                                   className="flex-1 bg-[#0f2942] hover:bg-orange-600 hover:text-white text-white font-extrabold text-[10px] uppercase tracking-wider py-2.5 rounded-xl shadow-sm transition-all duration-300 flex items-center justify-center gap-1"
                                 >
-                                  <span>View & Book</span>
+                                  <span>View Itinerary</span>
                                   <CheckCircle size={12} />
                                 </button>
                                 <button 
