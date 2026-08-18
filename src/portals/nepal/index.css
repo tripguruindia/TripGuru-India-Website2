@@ -955,8 +955,24 @@
   border: 1px solid var(--border-color) !important;
 }
 
+/* This banner keeps its dark gradient in BOTH themes, so its contents must
+   NOT follow --text-primary: in light mode that token is dark brown (#2C2415),
+   which rendered the agent's name, intro copy and agency/ID/tier row as dark
+   text on a near-black panel. Pinned to the cream used by the dark theme. */
 .nepal-portal-root .bg-gradient-to-r.from-emerald-800.to-indigo-950 * {
-  color: var(--text-primary) !important;
+  color: #F0EAE0 !important;
+}
+
+/* Secondary lines inside the banner stay slightly dimmer than the headings,
+   while remaining comfortably above the WCAG AA contrast floor. */
+.nepal-portal-root .bg-gradient-to-r.from-emerald-800.to-indigo-950 p,
+.nepal-portal-root .bg-gradient-to-r.from-emerald-800.to-indigo-950 .text-slate-300 {
+  color: rgba(240, 234, 224, 0.78) !important;
+}
+
+/* The gold "Gold Tier" emphasis should survive the blanket rule above. */
+.nepal-portal-root .bg-gradient-to-r.from-emerald-800.to-indigo-950 .text-emerald-400 {
+  color: var(--primary) !important;
 }
 
 .nepal-portal-root .bg-gradient-to-r.from-emerald-800.to-indigo-950 .bg-emerald-600 {

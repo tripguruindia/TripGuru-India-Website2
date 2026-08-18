@@ -196,7 +196,17 @@ export function calculateQuote({
 
   const { adults = 2, cwb = 0, cnb = 0 } = travelers;
   const { single = 0, double: dbl = 1, extra_adult = 0, cwb: roomCwb = 0, cnb: roomCnb = 0 } = roomConfig;
-  const { markup_percent, b2b_admin_margin_percent = 0, b2c_markup_percent = 15, tax_percent = 13 } = settings || {};
+  const {
+    markup_percent,
+    b2b_admin_margin_percent = 0,
+    b2c_markup_percent = 15,
+    tax_percent = 13,
+    // Per-pax, GST-inclusive reduction applied to the final total. Set when a
+    // preset package carries a `starting_price_override` (a "special offer"
+    // headline price) so the advertised rate is actually honoured downstream
+    // instead of only being painted on the package card.
+    offer_discount_per_pax = 0
+  } = settings || {};
   const activeMarkupPercent = markup_percent !== undefined ? markup_percent : b2c_markup_percent;
   const adminMarginFactor = 1 + (b2b_admin_margin_percent / 100);
 
@@ -399,8 +409,22 @@ export function calculateQuote({
   const markup = subtotal * (activeMarkupPercent / 100);
   const subtotalWithMarkup = subtotal + markup;
   const tax = subtotalWithMarkup * (tax_percent / 100);
-  const total = subtotalWithMarkup + tax;
+  const grossTotal = subtotalWithMarkup + tax;
+
+  // The offer discount is GST-inclusive and applied last, so the advertised
+  // per-pax price is what the traveller actually sees at checkout. It never
+  // drives the total below zero, and it scales with pax count rather than
+  // being a flat lump so adding travellers doesn't erase the offer.
+  const offerDiscount = Math.min(
+    Math.max(0, offer_discount_per_pax) * totalPax,
+    grossTotal
+  );
+  const total = grossTotal - offerDiscount;
   const perPerson = totalPax > 0 ? total / totalPax : 0;
+
+  // Ratio used to spread the discount across the adult/child splits so the
+  // per-adult and per-child rates stay consistent with the discounted total.
+  const offerRatio = grossTotal > 0 ? total / grossTotal : 1;
 
   // Proportional breakdown calculations for Adults vs Children
   const subtotalAdult = accommodationCostAdult + transportCostAdult + activityCostAdult;
@@ -412,8 +436,8 @@ export function calculateQuote({
   const taxAdult = (subtotalAdult + markupAdult) * (tax_percent / 100);
   const taxChild = (subtotalChild + markupChild) * (tax_percent / 100);
 
-  const totalAdult = subtotalAdult + markupAdult + taxAdult;
-  const totalChild = subtotalChild + markupChild + taxChild;
+  const totalAdult = (subtotalAdult + markupAdult + taxAdult) * offerRatio;
+  const totalChild = (subtotalChild + markupChild + taxChild) * offerRatio;
 
   const perAdult = adults > 0 ? totalAdult / adults : 0;
   const perChild = (cwb + cnb) > 0 ? totalChild / (cwb + cnb) : 0;
@@ -432,6 +456,8 @@ export function calculateQuote({
       subtotal,
       markup,
       tax,
+      grossTotal,
+      offerDiscount,
       total,
       perPerson,
       perAdult,

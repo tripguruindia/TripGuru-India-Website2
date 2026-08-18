@@ -402,6 +402,12 @@ function App() {
   const [customPackageName, setCustomPackageName] = useState('My Nepal Tour Custom');
   const [customItinerary, setCustomItinerary] = useState([]);
   const [currentPackageId, setCurrentPackageId] = useState(null);
+  // Per-pax, GST-inclusive discount derived from a preset package's
+  // `starting_price_override`. Kept in state (rather than recomputed from
+  // currentPackageId) so it stays pinned to the package's DEFAULT
+  // configuration -- if the traveller then upgrades a hotel, the price rises
+  // from the offer base instead of the discount silently rescaling.
+  const [offerDiscountPerPax, setOfferDiscountPerPax] = useState(0);
 
   // Invoice / Saved Booking State
   const [lastBookingId, setLastBookingId] = useState(null);
@@ -517,6 +523,12 @@ function App() {
     // currentUser, this isn't a login session, so no per-portal leak here.
     return !!localStorage.getItem('nepal_quote_lead_info');
   });
+  // A signed-in traveller has already given us their name, email and phone at
+  // signup, so re-asking for them behind an "Unlock Special Rates" gate is
+  // both redundant and hostile. The gate exists to capture ANONYMOUS visitors'
+  // details -- once we have them, from either source, prices stay unlocked.
+  const hasContactDetails = isLeadCaptured || !!currentUser;
+
   const [leadForm, setLeadForm] = useState({ name: '', email: '', phone: '', countryCode: '+91' });
   const [showLeadCaptureModal, setShowLeadCaptureModal] = useState(false);
   const [pendingLeadAction, setPendingLeadAction] = useState(null);
@@ -1384,14 +1396,56 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     }
   }, [view, db.settings]);
 
+  // The undiscounted quote for a package in its default configuration
+  // (2 adults, 1 double, default hotel tier + vehicle). This is the "calc"
+  // figure shown struck through on the package cards, and the baseline the
+  // special-offer discount is measured against. Shared by the cards and by
+  // the package-open handlers so the two can never disagree.
+  const getPackageDefaultQuote = (pkg) => calculateQuote({
+    travelers: { adults: 2, cwb: 0, cnb: 0 },
+    roomConfig: { single: 0, double: 1, extra_adult: 0, cwb: 0, cnb: 0 },
+    itinerary: pkg.days.map(d => {
+      const h = db.hotels.find(htl => htl.city.toLowerCase() === d.city.toLowerCase() && htl.category === pkg.default_hotel_category);
+      return {
+        ...d,
+        hotelId: h ? h.id : '',
+        meals: d.city.toLowerCase() === 'chitwan' ? 'AP' : 'CP',
+        transfer_route: d.transfer_route !== undefined ? d.transfer_route : '',
+        activity_ids: [...d.activity_ids]
+      };
+    }),
+    vehicleId: pkg.default_vehicle_id,
+    hotelsData: db.hotels,
+    vehiclesData: db.vehicles,
+    activitiesData: db.activities,
+    routesData: db.routes || [],
+    settings: {
+      ...db.settings,
+      markup_percent: view === 'b2b' ? 0 : undefined,
+      b2b_admin_margin_percent: view === 'b2b' ? (db.settings.b2b_markup_percent || 10) : 0
+    },
+    startCity: 'Kathmandu',
+    endCity: 'Kathmandu'
+  });
+
+  // How much per pax the advertised offer price is below the calculated rate.
+  // Zero when the package has no override, or when the override is at/above
+  // the calculated price (never silently marks a package UP).
+  const getPackageOfferDiscountPerPax = (pkg) => {
+    if (!pkg?.starting_price_override) return 0;
+    const calcPerPax = getPackageDefaultQuote(pkg).totals.perPerson;
+    return Math.max(0, calcPerPax - Number(pkg.starting_price_override));
+  };
+
   // Handle Preset Package Selection
   const handleSelectPresetPackage = (pkg, bypassLeadCheck = false) => {
-    if (view === 'b2c' && !isLeadCaptured && !bypassLeadCheck) {
+    if (view === 'b2c' && !hasContactDetails && !bypassLeadCheck) {
       setPendingLeadAction({ type: 'customize', pkg });
       setShowLeadCaptureModal(true);
       return;
     }
     setCurrentPackageId(pkg.id);
+    setOfferDiscountPerPax(getPackageOfferDiscountPerPax(pkg));
     setCustomPackageName(pkg.name);
     setSelectedHotelCategory(pkg.default_hotel_category || '4-Star');
     setSelectedVehicleId(pkg.default_vehicle_id || 'v-suv');
@@ -1428,12 +1482,13 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
   // Handle Preset Package View & Direct Book Selection
   const handleViewAndBookPackage = (pkg, bypassLeadCheck = false) => {
-    if (view === 'b2c' && !isLeadCaptured && !bypassLeadCheck) {
+    if (view === 'b2c' && !hasContactDetails && !bypassLeadCheck) {
       setPendingLeadAction({ type: 'view_book', pkg });
       setShowLeadCaptureModal(true);
       return;
     }
     setCurrentPackageId(pkg.id);
+    setOfferDiscountPerPax(getPackageOfferDiscountPerPax(pkg));
     setCustomPackageName(pkg.name);
     setSelectedHotelCategory(pkg.default_hotel_category || '4-Star');
     setSelectedVehicleId(pkg.default_vehicle_id || 'v-suv');
@@ -1642,7 +1697,6 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     : (currentBooking ? (currentBooking.markup_percent !== undefined ? currentBooking.markup_percent : b2cMarkupInput) : b2cMarkupInput);
 
   // Calculate live numbers (INR)
-  console.log("quoteCalculation input itinerary:", customItinerary);
   const quoteCalculation = calculateQuote({
     rooms,
     itinerary: customItinerary,
@@ -1654,7 +1708,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     settings: {
       markup_percent: activeMarkup,
       b2b_admin_margin_percent: activeB2bAdminMargin,
-      tax_percent: taxInput
+      tax_percent: taxInput,
+      offer_discount_per_pax: offerDiscountPerPax
     },
     startCity,
     endCity
@@ -2528,11 +2583,15 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
   const handleCreateProposal = (e, bypassLeadCheck = false) => {
     if (e) e.preventDefault();
-    if (view === 'b2c' && !isLeadCaptured && !bypassLeadCheck) {
+    if (view === 'b2c' && !hasContactDetails && !bypassLeadCheck) {
       setPendingLeadAction({ type: 'wizard' });
       setShowLeadCaptureModal(true);
       return;
     }
+    // A from-scratch build carries no preset offer -- clear any discount left
+    // over from a package the user opened earlier in this session.
+    setOfferDiscountPerPax(0);
+
     const cities = wizardDestinations;
     const rating = wizardStarRating;
     const addTransfers = wizardAddTransfers;
@@ -4641,7 +4700,13 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
             const displayedTax = Math.round(quoteCalculation.totals.tax);
             const displayedTotal = Math.round(quoteCalculation.totals.total);
-            const subtotalWithMarkupRounded = displayedTotal - displayedTax;
+            const displayedOfferDiscount = Math.round(quoteCalculation.totals.offerDiscount || 0);
+            // Component rows (accommodation / transport / activities) describe
+            // the trip's gross cost, so they're derived from the pre-discount
+            // total. The offer then appears as its own line above the total
+            // rather than being silently buried in one of the components.
+            const displayedGrossTotal = Math.round(quoteCalculation.totals.grossTotal ?? quoteCalculation.totals.total);
+            const subtotalWithMarkupRounded = displayedGrossTotal - displayedTax;
 
             let sidebarAcc = Math.round(quoteCalculation.totals.accommodation);
             let sidebarTrans = Math.round(quoteCalculation.totals.transport);
@@ -4901,7 +4966,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
                                 {/* Premium Starting Price block inside card body */}
                                 <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/50 mt-3 flex items-center justify-between">
-                                  {view === 'b2c' && !isLeadCaptured ? (
+                                  {view === 'b2c' && !hasContactDetails ? (
                                     <div className="w-full flex items-center justify-between">
                                       <div>
                                         <span className="text-[8px] text-slate-405 uppercase font-extrabold tracking-wider block">Pricing</span>
@@ -6037,7 +6102,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                               >
                                                 <option value="">No stay required</option>
                                                 {availableHotels.map(h => {
-                                                  const rateText = view === 'b2c' && !isLeadCaptured ? '🔒 Locked' : `₹${Math.round(h.rates.double.CP * b2bDisplayFactor).toLocaleString()}`;
+                                                  const rateText = view === 'b2c' && !hasContactDetails ? '🔒 Locked' : `₹${Math.round(h.rates.double.CP * b2bDisplayFactor).toLocaleString()}`;
                                                   return (
                                                     <option key={h.id} value={h.id}>{h.name} (CP: {rateText})</option>
                                                   );
@@ -6085,7 +6150,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                           </div>
                                           <div className="text-[10px] text-slate-500">
                                             Double: <strong className="text-slate-800">
-                                              {view === 'b2c' && !isLeadCaptured 
+                                              {view === 'b2c' && !hasContactDetails 
                                                 ? '🔒 Locked' 
                                                 : `₹${Math.round(hotel.rates.double[day.meals || 'CP'] * b2bDisplayFactor).toLocaleString()}`
                                               }
@@ -6126,7 +6191,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                             </div>
                                             <div className="flex items-center gap-3 shrink-0">
                                               <strong className="text-xs text-brand-navy font-bold">
-                                                {view === 'b2c' && !isLeadCaptured 
+                                                {view === 'b2c' && !hasContactDetails 
                                                   ? '🔒 Locked' 
                                                   : `₹${Math.round(act.price_adult * b2bDisplayFactor).toLocaleString()}`
                                                 }
@@ -6176,7 +6241,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                           <span className={`text-xs bg-${themeColor}-650 text-white font-bold px-2 py-0.5 rounded`}>INR (₹)</span>
                         </h3>
                         
-                        {view === 'b2c' && !isLeadCaptured ? (
+                        {view === 'b2c' && !hasContactDetails ? (
                           <div className="mt-4 bg-slate-800 p-5 rounded-2xl border border-slate-700 text-left">
                             <h4 className="text-sm font-bold text-orange-400 mb-2 flex items-center gap-1.5">
                               <Lock size={16} className="text-orange-400" /> Pricing is Locked
@@ -6291,6 +6356,13 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                     <span>GST ({taxInput}%):</span>
                                     <strong>+₹{displayedTax.toLocaleString()}</strong>
                                   </div>
+                                </div>
+                              )}
+
+                              {displayedOfferDiscount > 0 && (
+                                <div className="cost-row text-xs text-emerald-400">
+                                  <span>Special Offer:</span>
+                                  <strong>−₹{displayedOfferDiscount.toLocaleString()}</strong>
                                 </div>
                               )}
 
@@ -8842,7 +8914,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                             <span className="text-[10px] text-slate-500 line-clamp-1">{act.description}</span>
                           </div>
                           <strong className="text-xs text-brand-navy shrink-0">
-                            {view === 'b2c' && !isLeadCaptured ? '🔒 Locked' : `₹${Math.round(act.price_adult * b2bDisplayFactor).toLocaleString()}`}
+                            {view === 'b2c' && !hasContactDetails ? '🔒 Locked' : `₹${Math.round(act.price_adult * b2bDisplayFactor).toLocaleString()}`}
                           </strong>
                         </button>
                       );
