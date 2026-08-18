@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   Plus, Minus, Trash2, Edit3, Save, Settings, Layers, Calendar, Users, 
   MapPin, TrendingUp, Briefcase, Compass, FileText, CheckCircle, Clock, 
@@ -402,6 +402,12 @@ function App() {
   const [customPackageName, setCustomPackageName] = useState('My Nepal Tour Custom');
   const [customItinerary, setCustomItinerary] = useState([]);
   const [currentPackageId, setCurrentPackageId] = useState(null);
+  // Per-pax, GST-inclusive discount derived from a preset package's
+  // `starting_price_override`. Kept in state (rather than recomputed from
+  // currentPackageId) so it stays pinned to the package's DEFAULT
+  // configuration -- if the traveller then upgrades a hotel, the price rises
+  // from the offer base instead of the discount silently rescaling.
+  const [offerDiscountPerPax, setOfferDiscountPerPax] = useState(0);
 
   // Invoice / Saved Booking State
   const [lastBookingId, setLastBookingId] = useState(null);
@@ -517,6 +523,12 @@ function App() {
     // currentUser, this isn't a login session, so no per-portal leak here.
     return !!localStorage.getItem('nepal_quote_lead_info');
   });
+  // A signed-in traveller has already given us their name, email and phone at
+  // signup, so re-asking for them behind an "Unlock Special Rates" gate is
+  // both redundant and hostile. The gate exists to capture ANONYMOUS visitors'
+  // details -- once we have them, from either source, prices stay unlocked.
+  const hasContactDetails = isLeadCaptured || !!currentUser;
+
   const [leadForm, setLeadForm] = useState({ name: '', email: '', phone: '', countryCode: '+91' });
   const [showLeadCaptureModal, setShowLeadCaptureModal] = useState(false);
   const [pendingLeadAction, setPendingLeadAction] = useState(null);
@@ -1377,21 +1389,88 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   useEffect(() => {
     if (view === 'b2c' && db.settings?.popup_poster_active && db.settings?.popup_poster_url) {
       const shown = sessionStorage.getItem('nepal_quote_poster_shown');
-      if (!shown) {
+      if (shown) return;
+      // Hold the promo back until the visitor has actually seen the page.
+      // Firing it immediately covered the hero before anything had rendered,
+      // which reads as an interstitial ad and drives bounces. Shows on the
+      // first scroll, or after a short delay if they never scroll.
+      let done = false;
+      const reveal = () => {
+        if (done) return;
+        done = true;
         setShowPosterPopup(true);
         sessionStorage.setItem('nepal_quote_poster_shown', 'true');
-      }
+        window.removeEventListener('scroll', reveal);
+      };
+      const timer = window.setTimeout(reveal, 6000);
+      window.addEventListener('scroll', reveal, { passive: true, once: true });
+      return () => {
+        window.clearTimeout(timer);
+        window.removeEventListener('scroll', reveal);
+      };
     }
   }, [view, db.settings]);
 
+  // The undiscounted quote for a package in its default configuration
+  // (2 adults, 1 double, default hotel tier + vehicle). This is the "calc"
+  // figure shown struck through on the package cards, and the baseline the
+  // special-offer discount is measured against. Shared by the cards and by
+  // the package-open handlers so the two can never disagree.
+  const getPackageDefaultQuote = (pkg) => calculateQuote({
+    travelers: { adults: 2, cwb: 0, cnb: 0 },
+    roomConfig: { single: 0, double: 1, extra_adult: 0, cwb: 0, cnb: 0 },
+    itinerary: pkg.days.map(d => {
+      const h = db.hotels.find(htl => htl.city.toLowerCase() === d.city.toLowerCase() && htl.category === pkg.default_hotel_category);
+      return {
+        ...d,
+        hotelId: h ? h.id : '',
+        meals: d.city.toLowerCase() === 'chitwan' ? 'AP' : 'CP',
+        transfer_route: d.transfer_route !== undefined ? d.transfer_route : '',
+        activity_ids: [...d.activity_ids]
+      };
+    }),
+    vehicleId: pkg.default_vehicle_id,
+    hotelsData: db.hotels,
+    vehiclesData: db.vehicles,
+    activitiesData: db.activities,
+    routesData: db.routes || [],
+    settings: {
+      ...db.settings,
+      markup_percent: view === 'b2b' ? 0 : undefined,
+      b2b_admin_margin_percent: view === 'b2b' ? (db.settings.b2b_markup_percent || 10) : 0
+    },
+    startCity: 'Kathmandu',
+    endCity: 'Kathmandu'
+  });
+
+  // One default quote per package, computed once per data/view change rather
+  // than once per package on every render. The card display and the price sort
+  // both read from here, which also makes sorting consistent with the prices
+  // actually shown (the sort previously used a different B2B margin).
+  const packageDefaultQuotes = useMemo(() => {
+    const map = {};
+    (db.packages || []).forEach(pkg => { map[pkg.id] = getPackageDefaultQuote(pkg); });
+    return map;
+  }, [db.packages, db.hotels, db.vehicles, db.activities, db.routes, db.settings, view]);
+
+  // How much per pax the advertised offer price is below the calculated rate.
+  // Zero when the package has no override, or when the override is at/above
+  // the calculated price (never silently marks a package UP).
+  const getPackageOfferDiscountPerPax = (pkg) => {
+    if (!pkg?.starting_price_override) return 0;
+    const calcPerPax = getPackageDefaultQuote(pkg).totals.perPerson;
+    return Math.max(0, calcPerPax - Number(pkg.starting_price_override));
+  };
+
   // Handle Preset Package Selection
   const handleSelectPresetPackage = (pkg, bypassLeadCheck = false) => {
-    if (view === 'b2c' && !isLeadCaptured && !bypassLeadCheck) {
+    if (view === 'b2c' && !hasContactDetails && !bypassLeadCheck) {
       setPendingLeadAction({ type: 'customize', pkg });
       setShowLeadCaptureModal(true);
       return;
     }
     setCurrentPackageId(pkg.id);
+    setOfferDiscountPerPax(getPackageOfferDiscountPerPax(pkg));
     setCustomPackageName(pkg.name);
     setSelectedHotelCategory(pkg.default_hotel_category || '4-Star');
     setSelectedVehicleId(pkg.default_vehicle_id || 'v-suv');
@@ -1428,12 +1507,13 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
   // Handle Preset Package View & Direct Book Selection
   const handleViewAndBookPackage = (pkg, bypassLeadCheck = false) => {
-    if (view === 'b2c' && !isLeadCaptured && !bypassLeadCheck) {
+    if (view === 'b2c' && !hasContactDetails && !bypassLeadCheck) {
       setPendingLeadAction({ type: 'view_book', pkg });
       setShowLeadCaptureModal(true);
       return;
     }
     setCurrentPackageId(pkg.id);
+    setOfferDiscountPerPax(getPackageOfferDiscountPerPax(pkg));
     setCustomPackageName(pkg.name);
     setSelectedHotelCategory(pkg.default_hotel_category || '4-Star');
     setSelectedVehicleId(pkg.default_vehicle_id || 'v-suv');
@@ -1464,7 +1544,12 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     } else {
       setB2cSubView('customize');
     }
-    setShowCheckoutModal(true);
+    // Land on the itinerary so the traveller can review the day-by-day plan,
+    // inclusions and live price before committing. Previously this opened the
+    // checkout form immediately, asking someone to confirm a six-figure
+    // booking they had not yet been shown. "Book Vacation Now" in the pricing
+    // sidebar is still one click away.
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
   };
 
   // --- Room-Based Configuration Handlers ---
@@ -1641,9 +1726,12 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     ? (currentBooking ? (currentBooking.markup_percent !== undefined ? currentBooking.markup_percent : 0) : agentMarkupInput)
     : (currentBooking ? (currentBooking.markup_percent !== undefined ? currentBooking.markup_percent : b2cMarkupInput) : b2cMarkupInput);
 
-  // Calculate live numbers (INR)
-  console.log("quoteCalculation input itinerary:", customItinerary);
-  const quoteCalculation = calculateQuote({
+  // Calculate live numbers (INR).
+  // Memoised because this walks the whole itinerary (hotels, routes, activities
+  // per day) and previously re-ran on EVERY render of this ~9.5k-line
+  // component -- including renders triggered by unrelated state such as
+  // keystrokes in a form field.
+  const quoteCalculation = useMemo(() => calculateQuote({
     rooms,
     itinerary: customItinerary,
     vehicleId: selectedVehicleId,
@@ -1654,11 +1742,108 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     settings: {
       markup_percent: activeMarkup,
       b2b_admin_margin_percent: activeB2bAdminMargin,
-      tax_percent: taxInput
+      tax_percent: taxInput,
+      offer_discount_per_pax: offerDiscountPerPax
     },
     startCity,
     endCity
-  });
+  }), [
+    rooms, customItinerary, selectedVehicleId,
+    db.hotels, db.vehicles, db.activities, db.routes,
+    activeMarkup, activeB2bAdminMargin, taxInput, offerDiscountPerPax,
+    startCity, endCity
+  ]);
+
+  // ---------------------------------------------------------------------
+  // Builder draft autosave
+  // ---------------------------------------------------------------------
+  // A five-day custom itinerary represents a lot of choices, and losing it to
+  // an accidental refresh or a closed tab is painful. The in-progress build is
+  // mirrored to localStorage and offered back on return. Draft-only: nothing
+  // here is a booking, and confirming or abandoning clears it.
+  // Drafts are an account feature: they're only kept for a signed-in user, and
+  // the storage key is scoped to that user's id. This keeps a traveller's
+  // in-progress plan off a shared or public computer once they sign out, and
+  // stops two people using the same browser from seeing each other's build.
+  const draftKey = currentUser ? `nepal_quote_builder_draft_${currentUser.id}` : null;
+  const [resumableDraft, setResumableDraft] = useState(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || view === 'admin' || !draftKey) return;
+    if (!customItinerary || customItinerary.length === 0) return;
+    const draft = {
+      savedAt: new Date().toISOString(),
+      view,
+      packageId: currentPackageId,
+      packageName: customPackageName,
+      itinerary: customItinerary,
+      rooms,
+      vehicleId: selectedVehicleId,
+      hotelCategory: selectedHotelCategory,
+      travelDate,
+      startCity,
+      endCity,
+      offerDiscountPerPax
+    };
+    try {
+      localStorage.setItem(draftKey, JSON.stringify(draft));
+    } catch {
+      // Quota or private-mode failures are non-fatal -- autosave is a
+      // convenience, never a precondition for building a quote.
+    }
+  }, [
+    draftKey,
+    view, currentPackageId, customPackageName, customItinerary, rooms,
+    selectedVehicleId, selectedHotelCategory, travelDate, startCity, endCity,
+    offerDiscountPerPax
+  ]);
+
+  // On first load, surface any draft from a previous session.
+  useEffect(() => {
+    if (typeof window === 'undefined' || view === 'admin') return;
+    // Signing out (draftKey -> null) must drop the prompt immediately. The
+    // portal is a SPA, so there's no page reload to clear it for us, and a
+    // banner naming the previous user's trip must not outlive their session.
+    if (!draftKey) {
+      setResumableDraft(null);
+      return;
+    }
+    try {
+      const raw = localStorage.getItem(draftKey);
+      if (!raw) return;
+      const draft = JSON.parse(raw);
+      if (draft?.itinerary?.length) setResumableDraft(draft);
+    } catch {
+      localStorage.removeItem(draftKey);
+    }
+    // Runs on load and on sign-in (draftKey changes), not on every edit --
+    // re-offering the draft mid-build would fight the user's current work.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftKey]);
+
+  const clearBuilderDraft = () => {
+    setResumableDraft(null);
+    if (!draftKey) return;
+    try { localStorage.removeItem(draftKey); } catch { /* no-op */ }
+  };
+
+  const resumeBuilderDraft = () => {
+    const draft = resumableDraft;
+    if (!draft) return;
+    setCurrentPackageId(draft.packageId ?? null);
+    setCustomPackageName(draft.packageName ?? 'My Nepal Tour Custom');
+    setCustomItinerary(draft.itinerary || []);
+    if (draft.rooms) setRooms(draft.rooms);
+    if (draft.vehicleId) setSelectedVehicleId(draft.vehicleId);
+    if (draft.hotelCategory) setSelectedHotelCategory(draft.hotelCategory);
+    if (draft.travelDate) setTravelDate(draft.travelDate);
+    if (draft.startCity) setStartCity(draft.startCity);
+    if (draft.endCity) setEndCity(draft.endCity);
+    setOfferDiscountPerPax(draft.offerDiscountPerPax || 0);
+    if (view === 'b2b') setB2bSubView('customize'); else setB2cSubView('customize');
+    setResumableDraft(null);
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
+  };
 
   const hasNoStayTransfer = quoteCalculation.dayWiseBreakdown.some(day => 
     (!day.hotelId || day.hotelId === 'no_stay') && day.transportRoute
@@ -1751,6 +1936,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
     setLastBookingId(newBooking.id);
     setShowCheckoutModal(false);
+    // The build is now a real booking -- the draft has served its purpose.
+    clearBuilderDraft();
     if (isB2B) {
       setB2bSubView('invoice');
     } else {
@@ -2528,11 +2715,15 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
   const handleCreateProposal = (e, bypassLeadCheck = false) => {
     if (e) e.preventDefault();
-    if (view === 'b2c' && !isLeadCaptured && !bypassLeadCheck) {
+    if (view === 'b2c' && !hasContactDetails && !bypassLeadCheck) {
       setPendingLeadAction({ type: 'wizard' });
       setShowLeadCaptureModal(true);
       return;
     }
+    // A from-scratch build carries no preset offer -- clear any discount left
+    // over from a package the user opened earlier in this session.
+    setOfferDiscountPerPax(0);
+
     const cities = wizardDestinations;
     const rating = wizardStarRating;
     const addTransfers = wizardAddTransfers;
@@ -4641,7 +4832,13 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
             const displayedTax = Math.round(quoteCalculation.totals.tax);
             const displayedTotal = Math.round(quoteCalculation.totals.total);
-            const subtotalWithMarkupRounded = displayedTotal - displayedTax;
+            const displayedOfferDiscount = Math.round(quoteCalculation.totals.offerDiscount || 0);
+            // Component rows (accommodation / transport / activities) describe
+            // the trip's gross cost, so they're derived from the pre-discount
+            // total. The offer then appears as its own line above the total
+            // rather than being silently buried in one of the components.
+            const displayedGrossTotal = Math.round(quoteCalculation.totals.grossTotal ?? quoteCalculation.totals.total);
+            const subtotalWithMarkupRounded = displayedGrossTotal - displayedTax;
 
             let sidebarAcc = Math.round(quoteCalculation.totals.accommodation);
             let sidebarTrans = Math.round(quoteCalculation.totals.transport);
@@ -4661,6 +4858,34 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                 {currentSubView === 'dashboard' ? null : (currentSubView === 'packages' || currentSubView === 'wizard') && (
                 <div className="max-w-6xl mx-auto py-4">
 
+                  {/* Resume an unfinished build from a previous session. */}
+                  {resumableDraft && (
+                    <div className="draft-resume-banner mb-6 no-print border rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+                      <div className="text-left">
+                        <span className="draft-resume-eyebrow text-[9px] uppercase font-black tracking-widest block">Unfinished quote</span>
+                        <p className="draft-resume-copy text-xs mt-1">
+                          You have a saved draft
+                          {resumableDraft.packageName ? <strong> — {resumableDraft.packageName}</strong> : null}
+                          {' '}({resumableDraft.itinerary.length} days), last edited{' '}
+                          {new Date(resumableDraft.savedAt).toLocaleDateString()}.
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          onClick={resumeBuilderDraft}
+                          className="draft-resume-primary font-extrabold text-[10px] uppercase tracking-wider py-2 px-4 rounded-xl transition"
+                        >
+                          Resume
+                        </button>
+                        <button
+                          onClick={clearBuilderDraft}
+                          className="draft-resume-secondary font-bold text-[10px] uppercase tracking-wider py-2 px-3 transition"
+                        >
+                          Discard
+                        </button>
+                      </div>
+                    </div>
+                  )}
 
                   {currentSubView === 'packages' && (
                     <div className="fade-in">
@@ -4792,28 +5017,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                             filteredPackages.sort((a, b) => {
                               const getPrice = (p) => {
                                 if (p.starting_price_override) return Number(p.starting_price_override);
-                                const q = calculateQuote({
-                                  travelers: { adults: 2, cwb: 0, cnb: 0 },
-                                  roomConfig: { single: 0, double: 1, extra_adult: 0, cwb: 0, cnb: 0 },
-                                  itinerary: p.days.map(d => {
-                                    const h = db.hotels.find(htl => htl.city.toLowerCase() === d.city.toLowerCase() && htl.category === p.default_hotel_category);
-                                    return {
-                                      ...d,
-                                      hotelId: h ? h.id : '',
-                                      meals: d.city.toLowerCase() === 'chitwan' ? 'AP' : 'CP',
-                                      transfer_route: d.transfer_route !== undefined ? d.transfer_route : '',
-                                      activity_ids: [...d.activity_ids]
-                                    };
-                                  }),
-                                  vehicleId: p.default_vehicle_id,
-                                  hotelsData: db.hotels,
-                                  vehiclesData: db.vehicles,
-                                  activitiesData: db.activities,
-                                  settings: { ...db.settings, markup_percent: view === 'b2b' ? 0 : undefined, b2b_admin_margin_percent: 0 },
-                                  startCity: 'Kathmandu',
-                                  endCity: 'Kathmandu'
-                                });
-                                return q.totals.perPerson;
+                                return (packageDefaultQuotes[p.id] || getPackageDefaultQuote(p)).totals.perPerson;
                               };
                               const priceA = getPrice(a);
                               const priceB = getPrice(b);
@@ -4830,32 +5034,9 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                           }
 
                           return filteredPackages.map(pkg => {
-                          // Calculate default approximate price for cards in INR (2 pax default)
-                          const defaultQuote = calculateQuote({
-                            travelers: { adults: 2, cwb: 0, cnb: 0 },
-                            roomConfig: { single: 0, double: 1, extra_adult: 0, cwb: 0, cnb: 0 },
-                            itinerary: pkg.days.map(d => {
-                              const h = db.hotels.find(htl => htl.city.toLowerCase() === d.city.toLowerCase() && htl.category === pkg.default_hotel_category);
-                              return {
-                                ...d,
-                                hotelId: h ? h.id : '',
-                                meals: d.city.toLowerCase() === 'chitwan' ? 'AP' : 'CP',
-                                transfer_route: d.transfer_route !== undefined ? d.transfer_route : '',
-                                activity_ids: [...d.activity_ids]
-                              };
-                            }),
-                            vehicleId: pkg.default_vehicle_id,
-                            hotelsData: db.hotels,
-                            vehiclesData: db.vehicles,
-                            activitiesData: db.activities,
-                            settings: {
-                              ...db.settings,
-                              markup_percent: view === 'b2b' ? 0 : undefined,
-                              b2b_admin_margin_percent: view === 'b2b' ? (db.settings.b2b_markup_percent || 10) : 0
-                            },
-                            startCity: 'Kathmandu',
-                            endCity: 'Kathmandu'
-                          });
+                          // Default approximate price for cards in INR (2 pax
+                          // default), read from the memoised map above.
+                          const defaultQuote = packageDefaultQuotes[pkg.id] || getPackageDefaultQuote(pkg);
 
                           return (
                             <div key={pkg.id} className="premium-card bg-white flex flex-col justify-between min-h-[520px] md:h-[520px] relative border border-slate-200 rounded-2xl overflow-hidden hover:shadow-lg hover:-translate-y-1 transition-all duration-300">
@@ -4901,12 +5082,26 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
                                 {/* Premium Starting Price block inside card body */}
                                 <div className="bg-slate-50 p-2.5 rounded-xl border border-slate-200/50 mt-3 flex items-center justify-between">
-                                  {view === 'b2c' && !isLeadCaptured ? (
+                                  {view === 'b2c' && !hasContactDetails ? (
                                     <div className="w-full flex items-center justify-between">
+                                      {/* Anonymous visitors see the headline "from" rate openly --
+                                          hiding every price behind a form is a heavy first
+                                          impression and gives no basis to compare packages.
+                                          The day-wise breakdown stays gated. */}
                                       <div>
-                                        <span className="text-[8px] text-slate-405 uppercase font-extrabold tracking-wider block">Pricing</span>
-                                        <span className="text-xs font-bold text-orange-655 flex items-center gap-1 mt-1">
-                                          <Lock size={12} className="text-orange-600" /> Locked
+                                        <span className="text-[8px] text-slate-405 uppercase font-extrabold tracking-wider block">
+                                          From {pkg.starting_price_override ? "(Special Offer)" : ""}
+                                        </span>
+                                        <span className="text-base font-black text-[#0f2942] font-heading">
+                                          ₹{Math.round(
+                                            pkg.starting_price_override
+                                              ? Number(pkg.starting_price_override)
+                                              : defaultQuote.totals.perPerson
+                                          ).toLocaleString()}
+                                          <span className="text-[9px] text-slate-500 font-medium ml-0.5">/ pax</span>
+                                        </span>
+                                        <span className="text-[8px] text-slate-405 flex items-center gap-1 mt-0.5">
+                                          <Lock size={10} className="text-orange-600" /> Full breakdown locked
                                         </span>
                                       </div>
                                       <button 
@@ -4915,9 +5110,9 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                           setPendingLeadAction({ type: 'customize', pkg });
                                           setShowLeadCaptureModal(true);
                                         }}
-                                        className="bg-orange-650 hover:bg-orange-700 text-white font-extrabold text-[9px] uppercase tracking-wider py-1.5 px-3 rounded-lg shadow-sm transition"
+                                        className="bg-orange-650 hover:bg-orange-700 text-white font-extrabold text-[9px] uppercase tracking-wider py-1.5 px-3 rounded-lg shadow-sm transition shrink-0"
                                       >
-                                        Unlock Rates
+                                        See Details
                                       </button>
                                     </div>
                                   ) : (
@@ -5013,7 +5208,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                   onClick={() => handleViewAndBookPackage(pkg)}
                                   className="flex-1 bg-[#0f2942] hover:bg-orange-600 hover:text-white text-white font-extrabold text-[10px] uppercase tracking-wider py-2.5 rounded-xl shadow-sm transition-all duration-300 flex items-center justify-center gap-1"
                                 >
-                                  <span>View & Book</span>
+                                  <span>View Itinerary</span>
                                   <CheckCircle size={12} />
                                 </button>
                                 <button 
@@ -6037,7 +6232,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                               >
                                                 <option value="">No stay required</option>
                                                 {availableHotels.map(h => {
-                                                  const rateText = view === 'b2c' && !isLeadCaptured ? '🔒 Locked' : `₹${Math.round(h.rates.double.CP * b2bDisplayFactor).toLocaleString()}`;
+                                                  const rateText = view === 'b2c' && !hasContactDetails ? '🔒 Locked' : `₹${Math.round(h.rates.double.CP * b2bDisplayFactor).toLocaleString()}`;
                                                   return (
                                                     <option key={h.id} value={h.id}>{h.name} (CP: {rateText})</option>
                                                   );
@@ -6085,7 +6280,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                           </div>
                                           <div className="text-[10px] text-slate-500">
                                             Double: <strong className="text-slate-800">
-                                              {view === 'b2c' && !isLeadCaptured 
+                                              {view === 'b2c' && !hasContactDetails 
                                                 ? '🔒 Locked' 
                                                 : `₹${Math.round(hotel.rates.double[day.meals || 'CP'] * b2bDisplayFactor).toLocaleString()}`
                                               }
@@ -6126,7 +6321,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                             </div>
                                             <div className="flex items-center gap-3 shrink-0">
                                               <strong className="text-xs text-brand-navy font-bold">
-                                                {view === 'b2c' && !isLeadCaptured 
+                                                {view === 'b2c' && !hasContactDetails 
                                                   ? '🔒 Locked' 
                                                   : `₹${Math.round(act.price_adult * b2bDisplayFactor).toLocaleString()}`
                                                 }
@@ -6176,7 +6371,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                           <span className={`text-xs bg-${themeColor}-650 text-white font-bold px-2 py-0.5 rounded`}>INR (₹)</span>
                         </h3>
                         
-                        {view === 'b2c' && !isLeadCaptured ? (
+                        {view === 'b2c' && !hasContactDetails ? (
                           <div className="mt-4 bg-slate-800 p-5 rounded-2xl border border-slate-700 text-left">
                             <h4 className="text-sm font-bold text-orange-400 mb-2 flex items-center gap-1.5">
                               <Lock size={16} className="text-orange-400" /> Pricing is Locked
@@ -6291,6 +6486,13 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                     <span>GST ({taxInput}%):</span>
                                     <strong>+₹{displayedTax.toLocaleString()}</strong>
                                   </div>
+                                </div>
+                              )}
+
+                              {displayedOfferDiscount > 0 && (
+                                <div className="cost-row text-xs text-emerald-400">
+                                  <span>Special Offer:</span>
+                                  <strong>−₹{displayedOfferDiscount.toLocaleString()}</strong>
                                 </div>
                               )}
 
@@ -8842,7 +9044,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                             <span className="text-[10px] text-slate-500 line-clamp-1">{act.description}</span>
                           </div>
                           <strong className="text-xs text-brand-navy shrink-0">
-                            {view === 'b2c' && !isLeadCaptured ? '🔒 Locked' : `₹${Math.round(act.price_adult * b2bDisplayFactor).toLocaleString()}`}
+                            {view === 'b2c' && !hasContactDetails ? '🔒 Locked' : `₹${Math.round(act.price_adult * b2bDisplayFactor).toLocaleString()}`}
                           </strong>
                         </button>
                       );

@@ -955,8 +955,24 @@
   border: 1px solid var(--border-color) !important;
 }
 
+/* This banner keeps its dark gradient in BOTH themes, so its contents must
+   NOT follow --text-primary: in light mode that token is dark brown (#2C2415),
+   which rendered the agent's name, intro copy and agency/ID/tier row as dark
+   text on a near-black panel. Pinned to the cream used by the dark theme. */
 .nepal-portal-root .bg-gradient-to-r.from-emerald-800.to-indigo-950 * {
-  color: var(--text-primary) !important;
+  color: #F0EAE0 !important;
+}
+
+/* Secondary lines inside the banner stay slightly dimmer than the headings,
+   while remaining comfortably above the WCAG AA contrast floor. */
+.nepal-portal-root .bg-gradient-to-r.from-emerald-800.to-indigo-950 p,
+.nepal-portal-root .bg-gradient-to-r.from-emerald-800.to-indigo-950 .text-slate-300 {
+  color: rgba(240, 234, 224, 0.78) !important;
+}
+
+/* The gold "Gold Tier" emphasis should survive the blanket rule above. */
+.nepal-portal-root .bg-gradient-to-r.from-emerald-800.to-indigo-950 .text-emerald-400 {
+  color: var(--primary) !important;
 }
 
 .nepal-portal-root .bg-gradient-to-r.from-emerald-800.to-indigo-950 .bg-emerald-600 {
@@ -1385,3 +1401,45 @@
 
 
 
+
+/* ── Draft resume banner ─────────────────────────────────────────────────── */
+/* Uses theme tokens rather than fixed Tailwind palette classes: the portal's
+   global rules force descendant text to --text-primary, which turned a light
+   amber banner into cream-on-cream in dark mode. Deriving both surface and
+   text from the same token set keeps it legible in either theme. */
+.nepal-portal-root .draft-resume-banner {
+  background: rgba(201, 168, 76, 0.10) !important;
+  border-color: var(--border-color) !important;
+}
+
+.nepal-portal-root .draft-resume-eyebrow {
+  color: var(--primary) !important;
+}
+
+.nepal-portal-root .draft-resume-copy {
+  color: var(--text-primary) !important;
+  opacity: 0.85;
+}
+
+.nepal-portal-root .draft-resume-copy strong {
+  color: var(--primary-light) !important;
+  opacity: 1;
+}
+
+.nepal-portal-root .draft-resume-primary {
+  background: var(--primary) !important;
+  color: #0D0B08 !important;
+}
+
+.nepal-portal-root .draft-resume-primary:hover {
+  filter: brightness(1.08);
+}
+
+.nepal-portal-root .draft-resume-secondary {
+  background: transparent !important;
+  color: var(--text-muted) !important;
+}
+
+.nepal-portal-root .draft-resume-secondary:hover {
+  color: var(--text-primary) !important;
+}
