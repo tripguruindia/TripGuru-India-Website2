@@ -135,3 +135,52 @@ CREATE TABLE IF NOT EXISTS users (
   address        TEXT,
   created_at     TEXT NOT NULL
 );
+
+-- Saved quotes: an agent's (or logged-in traveler's) work-in-progress
+-- proposals, before any of them become a real booking.
+--
+-- Deliberately NOT stored in `bookings` with a draft status: a quote has no
+-- commission owed, must not count toward an agent's sales volume, and is
+-- edited repeatedly. Folding the two together would corrupt the dashboard
+-- totals. On acceptance a quote is CONVERTED into a booking, and
+-- `converted_booking_id` preserves the link so win rates stay measurable.
+--
+-- Ownership (agent_id / user_id) is always assigned server-side from the
+-- authenticated session, never from the request body -- same rule that
+-- governs bookings.agent_id.
+CREATE TABLE IF NOT EXISTS quotes (
+  id                    TEXT PRIMARY KEY,
+  agent_id              TEXT,     -- FK to users.id, set for B2B quotes
+  user_id               TEXT,     -- FK to users.id, set for B2C quotes
+  client_name           TEXT,
+  client_email          TEXT,
+  client_phone          TEXT,
+  country_code          TEXT,
+  package_name          TEXT,
+  travel_date           TEXT,
+  total_price           REAL,
+  -- Draft -> Sent -> Won | Lost. 'Won' is set by the convert endpoint.
+  status                TEXT NOT NULL DEFAULT 'Draft',
+  valid_until           TEXT,
+  adults                INTEGER DEFAULT 0,
+  cwb                   INTEGER DEFAULT 0,
+  cnb                   INTEGER DEFAULT 0,
+  vehicle_id            TEXT,
+  hotel_category        TEXT,
+  start_city            TEXT,
+  end_city              TEXT,
+  markup_percent            REAL,
+  b2b_admin_margin_percent  REAL,
+  offer_discount_per_pax    REAL DEFAULT 0,
+  itinerary             TEXT,     -- JSON
+  rooms                 TEXT,     -- JSON
+  passengers            TEXT,     -- JSON
+  notes                 TEXT,
+  converted_booking_id  TEXT,     -- set when this quote became a booking
+  last_sent_at          TEXT,
+  created_at            TEXT NOT NULL,
+  updated_at            TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_quotes_agent ON quotes (agent_id);
+CREATE INDEX IF NOT EXISTS idx_quotes_user  ON quotes (user_id);
