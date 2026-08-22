@@ -1608,3 +1608,73 @@
 .nepal-portal-root .wallet-icon-debit {
   color: var(--error) !important;
 }
+
+/* ── Road / Flight travel mode (quote builder) ───────────────────────────── */
+/* Token-driven for the usual reason: the portal forces descendant text to
+   --text-primary, so a fixed light Tailwind background (bg-sky-50 and friends)
+   renders cream-on-cream in dark mode. Unlike bg-white / bg-slate-50, the sky
+   palette has no global override above, so these need their own classes.
+   Verified by measuring computed styles in both themes. */
+.nepal-portal-root .travel-mode-box {
+  background: rgba(201, 168, 76, 0.07) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: var(--radius-md);
+}
+
+.nepal-portal-root .travel-mode-label {
+  color: var(--primary) !important;
+}
+
+.nepal-portal-root .travel-mode-btn {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border-color) !important;
+  color: var(--text-muted) !important;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.nepal-portal-root .travel-mode-btn:hover {
+  color: var(--text-primary) !important;
+  border-color: var(--primary) !important;
+}
+
+.nepal-portal-root .travel-mode-btn.is-active {
+  background: var(--primary) !important;
+  border-color: var(--primary) !important;
+  color: #0D0B08 !important;
+}
+
+.nepal-portal-root .travel-mode-note {
+  color: var(--text-primary) !important;
+  opacity: 0.8;
+}
+
+.nepal-portal-root .travel-mode-note strong {
+  color: var(--primary-light) !important;
+  opacity: 1;
+}
+
+.nepal-portal-root .travel-mode-restore {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border-color) !important;
+  color: var(--primary) !important;
+  cursor: pointer;
+}
+
+.nepal-portal-root .travel-mode-restore:hover {
+  border-color: var(--primary) !important;
+}
+
+.nepal-portal-root .travel-mode-airports {
+  color: var(--text-muted) !important;
+}
+
+/* Airport-run badge on a transfer row. The sibling "Transfer" badge uses
+   bg-indigo-100, which the metric-card block above already remaps. */
+/* --primary rather than --primary-light: the light theme maps --primary to a
+   darker gold (#B8860B), which this 10px badge needs to stay readable against
+   its own translucent gold wash. */
+.nepal-portal-root .transfer-pip-airport {
+  background: rgba(201, 168, 76, 0.16) !important;
+  color: var(--primary) !important;
+}

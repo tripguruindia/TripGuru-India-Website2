@@ -4,11 +4,23 @@ import {
   MapPin, TrendingUp, Briefcase, Compass, FileText, CheckCircle, Clock, 
   Printer, ArrowLeft, ArrowRight, Hotel, Car, Coffee, ShieldCheck, Check, Info, AlertTriangle,
   Download, Upload, Lock, Unlock, Image, User, Mail, Phone, Globe, X, MessageSquare, LogOut,
-  Wallet, ArrowUpCircle, ArrowDownCircle
+  Wallet, ArrowUpCircle, ArrowDownCircle, Plane
 } from 'lucide-react';
 import { syncUserToSheet, syncLeadToSheet, syncBookingToSheet } from './utils/dbSync';
 import { initializeDB, saveDB, INITIAL_ROUTES } from './data/seedData';
 import { calculateQuote, validateRoomCapacity, deriveFromRooms } from './utils/calculator';
+import {
+  getDayTransfers,
+  withDayTransfers,
+  getAirportForCity,
+  cityHasAirport,
+  canFlyBetween,
+  airportTransferKey,
+  cityToCityRouteKey,
+  flightLegTransfers,
+  TRAVEL_MODE_CAR,
+  TRAVEL_MODE_FLIGHT,
+} from './utils/transfers';
 import { requireXLSX } from './utils/loadXlsx';
 import {
   apiLogin,
@@ -68,23 +80,39 @@ const formatCityName = (c) => {
   return c.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 };
 
+// Human label for a route key, used when the builder has to create a route
+// the master list doesn't have yet (see ensureRoutesExist).
+const routeLabelFromKey = (key) => {
+  if (!key) return '';
+  if (key.endsWith('_airport_transfer')) {
+    return `${formatCityName(key.replace(/_airport_transfer$/, ''))} Airport Transfer`;
+  }
+  if (key.includes('_to_')) {
+    const [from, to] = key.split('_to_');
+    return `${formatCityName(from)} to ${formatCityName(to)}`;
+  }
+  return formatCityName(key.replace(/_/g, ' '));
+};
+
 const getTransferDesc = (routeKey, startCity, endCity, dayCity, isFirstDay, isLastDay) => {
   if (!routeKey || routeKey === 'local_sightseeing') return '';
-  
-  if (routeKey === 'ktm_airport_transfer') {
-    if (isLastDay) {
-      return `Private transfer: Kathmandu to Kathmandu Airport.`;
-    }
-    return `Private transfer: Kathmandu Airport to Kathmandu.`;
+
+  // Airport runs are keyed per city as `<citykey>_airport_transfer`; the last
+  // day is a departure (hotel -> airport), anything else is an arrival.
+  if (routeKey.endsWith('_airport_transfer')) {
+    const city = formatCityName(routeKey.replace(/_airport_transfer$/, ''));
+    return isLastDay
+      ? `Private transfer: ${city} hotel to ${city} Airport.`
+      : `Private transfer: ${city} Airport to your ${city} hotel.`;
   }
-  
+
   if (routeKey.includes('_to_')) {
     const parts = routeKey.split('_to_');
     const fromCity = formatCityName(parts[0]);
     const toCity = formatCityName(parts[1]);
     return `Private transfer: ${fromCity} to ${toCity}.`;
   }
-  
+
   return `Private transfer: ${formatCityName(routeKey.replace(/_/g, ' '))}.`;
 };
 
@@ -192,7 +220,14 @@ function App() {
     let cancelled = false;
     getAdminDb()
       .then((fresh) => {
-        if (!cancelled) setDb(fresh);
+        // Frontend (Vercel) and API (Render) deploy independently, so a build
+        // of this app can briefly run against an API that predates a field.
+        // Keep whatever we already had for `airports` in that window rather
+        // than blanking the master and silently disabling every flight leg.
+        if (!cancelled) setDb((prev) => ({
+          ...fresh,
+          airports: fresh.airports ?? prev?.airports ?? [],
+        }));
       })
       .catch((err) => {
         console.error('Failed to load admin data from the server', err);
@@ -227,6 +262,10 @@ function App() {
           activities: fresh.activities,
           packages: fresh.packages,
           settings: fresh.settings,
+          // ?? not ||: an API that has deployed and genuinely has no airports
+          // configured returns [], which must win over stale local fixtures.
+          // Only a missing field (older API) falls back to what we had.
+          airports: fresh.airports ?? prev.airports ?? [],
         }));
       })
       .catch((err) => {
@@ -586,6 +625,7 @@ function App() {
   });
   const [showAddActivityModal, setShowAddActivityModal] = useState(false);
   const [newCityName, setNewCityName] = useState('');
+  const [newAirportForm, setNewAirportForm] = useState({ name: '', code: '', cities: [] });
 
   const [editingVehicleId, setEditingVehicleId] = useState(null);
   const [vehicleEditState, setVehicleEditState] = useState({});
@@ -1349,33 +1389,30 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   };
 
   const handlePackageDayFieldChange = (dayIndex, field, value) => {
+    // The admin package editor deliberately stays single-transfer -- flight
+    // legs are a per-quote decision made in the builder, not baked into a
+    // template. It still has to write through withDayTransfers so the
+    // `transfers` array can't go stale against `transfer_route`; a package day
+    // carrying both a leftover array and a newly picked route would price the
+    // array and display the route.
+    const applyChange = (day) => {
+      let updatedDay = { ...day, [field]: value };
+      if (field === 'city') {
+        updatedDay.activity_ids = [];
+        updatedDay = withDayTransfers(updatedDay, []);
+      } else if (field === 'transfer_route') {
+        updatedDay = withDayTransfers(updatedDay, value ? [value] : []);
+      }
+      return updatedDay;
+    };
+
     if (editingPackage) {
       setEditingPackage(prev => {
         if (!prev) return prev;
-        const updatedDays = prev.days.map((day, idx) => {
-          if (idx !== dayIndex) return day;
-          let updatedDay = { ...day, [field]: value };
-          if (field === 'city') {
-            updatedDay.activity_ids = [];
-            updatedDay.transfer_route = '';
-          }
-          return updatedDay;
-        });
-        return { ...prev, days: updatedDays };
+        return { ...prev, days: prev.days.map((day, idx) => (idx === dayIndex ? applyChange(day) : day)) };
       });
     } else {
-      setWizardDefaultDays(prev => {
-        const updatedDays = prev.map((day, idx) => {
-          if (idx !== dayIndex) return day;
-          let updatedDay = { ...day, [field]: value };
-          if (field === 'city') {
-            updatedDay.activity_ids = [];
-            updatedDay.transfer_route = '';
-          }
-          return updatedDay;
-        });
-        return updatedDays;
-      });
+      setWizardDefaultDays(prev => prev.map((day, idx) => (idx === dayIndex ? applyChange(day) : day)));
     }
   };
 
@@ -1595,6 +1632,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     vehiclesData: db.vehicles,
     activitiesData: db.activities,
     routesData: db.routes || [],
+    airportsData: db.airports || [],
     settings: {
       ...db.settings,
       markup_percent: view === 'b2b' ? 0 : undefined,
@@ -1644,17 +1682,22 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       const cityHotels = db.hotels.filter(h => h.city.toLowerCase() === day.city.toLowerCase() && h.category === pkg.default_hotel_category);
       const defaultHotel = cityHotels.length > 0 ? cityHotels[0].id : '';
 
-      return {
+      // Rebuilt field-by-field rather than spread, so the day's transfers and
+      // any flight leg have to be carried across explicitly -- dropping them
+      // here would silently un-book the airport runs a package was priced with.
+      return withDayTransfers({
         day: day.day,
         city: day.city,
         title: day.title,
         description: day.description,
         hotelId: defaultHotel,
         meals: day.city.toLowerCase() === 'chitwan' ? 'AP' : 'CP', // Chitwan defaults to Full Board
-        transfer_route: day.transfer_route !== undefined ? day.transfer_route : '',
         is_sightseeing: day.is_sightseeing || false,
-        activity_ids: [...day.activity_ids]
-      };
+        activity_ids: [...day.activity_ids],
+        travel_mode: day.travel_mode || '',
+        flight_from_city: day.flight_from_city || '',
+        flight_to_city: day.flight_to_city || ''
+      }, getDayTransfers(day));
     });
 
     setCustomItinerary(generatedItinerary);
@@ -1686,17 +1729,21 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       const cityHotels = db.hotels.filter(h => h.city.toLowerCase() === day.city.toLowerCase() && h.category === pkg.default_hotel_category);
       const defaultHotel = cityHotels.length > 0 ? cityHotels[0].id : '';
 
-      return {
+      // See the sibling handler above: transfers and flight legs must be
+      // carried explicitly because this rebuilds the day rather than spreading.
+      return withDayTransfers({
         day: day.day,
         city: day.city,
         title: day.title,
         description: day.description,
         hotelId: defaultHotel,
         meals: day.city.toLowerCase() === 'chitwan' ? 'AP' : 'CP',
-        transfer_route: day.transfer_route !== undefined ? day.transfer_route : '',
         is_sightseeing: day.is_sightseeing || false,
-        activity_ids: [...day.activity_ids]
-      };
+        activity_ids: [...day.activity_ids],
+        travel_mode: day.travel_mode || '',
+        flight_from_city: day.flight_from_city || '',
+        flight_to_city: day.flight_to_city || ''
+      }, getDayTransfers(day));
     });
 
     setCustomItinerary(generatedItinerary);
@@ -1817,10 +1864,109 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           const cityHotels = db.hotels.filter(h => h.city.toLowerCase() === value.toLowerCase() && h.category === selectedHotelCategory);
           updatedDay.hotelId = cityHotels.length > 0 ? cityHotels[0].id : '';
           updatedDay.activity_ids = [];
-          updatedDay.transfer_route = '';
+          // Changing the city invalidates every transfer on the day (they were
+          // priced for the old city) and the flight leg it belonged to.
+          updatedDay = withDayTransfers(updatedDay, []);
+          updatedDay.travel_mode = '';
+          updatedDay.flight_from_city = '';
         }
         return updatedDay;
       });
+    });
+  };
+
+  // ---------------------------------------------------------------------
+  // Day transfers (quote builder)
+  // ---------------------------------------------------------------------
+  // A day can hold several transfers. Flying between cities needs two on the
+  // same day -- a drop at the origin airport and a pickup at the destination
+  // -- and each must be removable on its own, because a client may arrange
+  // one end themselves. Everything below goes through withDayTransfers() so
+  // the legacy `transfer_route` string stays in step for saved quotes,
+  // bookings, and the PDF/WhatsApp exports that still read it.
+
+  const setDayTransfers = (dayIndex, nextTransfers, extraFields = {}) => {
+    setCustomItinerary(prev => prev.map((day, idx) => (
+      idx === dayIndex ? { ...withDayTransfers(day, nextTransfers), ...extraFields } : day
+    )));
+  };
+
+  const handleRemoveDayTransfer = (dayIndex, transferIdx) => {
+    setCustomItinerary(prev => prev.map((day, idx) => {
+      if (idx !== dayIndex) return day;
+      const next = getDayTransfers(day).filter((_, i) => i !== transferIdx);
+      return withDayTransfers(day, next);
+    }));
+  };
+
+  // Switches a city-transition day between driving and flying. Car mode is a
+  // single point-to-point road transfer; flight mode swaps that for the two
+  // airport runs and records which city they flew from, which is what the
+  // itinerary text and the "airfare not included" note are built from.
+  const handleSetTravelMode = (dayIndex, mode, fromCity, toCity) => {
+    if (mode === TRAVEL_MODE_FLIGHT) {
+      const legs = flightLegTransfers(fromCity, toCity);
+      ensureRoutesExist(legs);
+      setDayTransfers(dayIndex, legs, {
+        travel_mode: TRAVEL_MODE_FLIGHT,
+        flight_from_city: fromCity,
+        flight_to_city: toCity,
+      });
+    } else {
+      const roadKey = cityToCityRouteKey(fromCity, toCity);
+      ensureRoutesExist([roadKey]);
+      setDayTransfers(dayIndex, [roadKey], {
+        travel_mode: TRAVEL_MODE_CAR,
+        flight_from_city: '',
+        flight_to_city: '',
+      });
+    }
+  };
+
+  // Re-adds one half of a flight leg the agent removed earlier.
+  const handleRestoreFlightTransfer = (dayIndex, routeKey) => {
+    setCustomItinerary(prev => prev.map((day, idx) => {
+      if (idx !== dayIndex) return day;
+      const current = getDayTransfers(day);
+      if (current.includes(routeKey)) return day;
+      // Keep drop-then-pickup order regardless of which one was restored.
+      const dropKey = airportTransferKey(day.flight_from_city);
+      const next = routeKey === dropKey ? [routeKey, ...current] : [...current, routeKey];
+      return withDayTransfers(day, next);
+    }));
+  };
+
+  // A route the builder needs may not exist in the master list yet (a city
+  // pair nobody has priced, or a newly added airport). Create it at ₹0 so it
+  // shows up in Admin > Vehicles & Routes to be priced, rather than silently
+  // costing nothing with no trace. Mirrors the same behaviour the wizard
+  // already had for overland sectors.
+  const ensureRoutesExist = (routeKeys) => {
+    const missing = (routeKeys || []).filter(
+      (key) => key && !(db.routes || []).some((r) => r.key === key)
+    );
+    if (missing.length === 0) return;
+
+    setDb(prev => {
+      const stillMissing = missing.filter(
+        (key) => !(prev.routes || []).some((r) => r.key === key)
+      );
+      if (stillMissing.length === 0) return prev;
+
+      const newRoutes = stillMissing.map((key) => ({
+        key,
+        name: routeLabelFromKey(key),
+        description: `Private transfer: ${routeLabelFromKey(key)}.`,
+      }));
+      const updatedVehicles = (prev.vehicles || []).map((v) => {
+        const rates = { ...v.route_rates };
+        stillMissing.forEach((key) => { if (rates[key] === undefined) rates[key] = 0; });
+        return { ...v, route_rates: rates };
+      });
+      const newDb = { ...prev, routes: [...(prev.routes || []), ...newRoutes], vehicles: updatedVehicles };
+      localStorage.setItem('nepal_quote_routes_v2', JSON.stringify(newDb.routes));
+      localStorage.setItem('nepal_quote_vehicles_v2', JSON.stringify(newDb.vehicles));
+      return newDb;
     });
   };
 
@@ -1900,6 +2046,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     vehiclesData: db.vehicles,
     activitiesData: db.activities,
     routesData: db.routes || [],
+    airportsData: db.airports || [],
     settings: {
       markup_percent: activeMarkup,
       b2b_admin_margin_percent: activeB2bAdminMargin,
@@ -1910,7 +2057,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     endCity
   }), [
     rooms, customItinerary, selectedVehicleId,
-    db.hotels, db.vehicles, db.activities, db.routes,
+    db.hotels, db.vehicles, db.activities, db.routes, db.airports,
     activeMarkup, activeB2bAdminMargin, taxInput, offerDiscountPerPax,
     startCity, endCity
   ]);
@@ -2875,6 +3022,76 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     updateDBState({ ...db, cities: (db.cities || []).filter(c => c !== cityName) });
   };
 
+  // Airports Master helpers. An airport serves a LIST of cities -- Bhairahawa
+  // is the airport for Lumbini, Butwal and Bhairahawa alike -- which is why
+  // this is its own master rather than a field on a city.
+  const handleAddAirport = (e) => {
+    e.preventDefault();
+    const name = newAirportForm.name.trim();
+    if (!name) {
+      window.alert('Enter the airport name.');
+      return;
+    }
+    if (newAirportForm.cities.length === 0) {
+      window.alert('Select at least one city this airport serves.');
+      return;
+    }
+    if ((db.airports || []).some(a => a.name.toLowerCase() === name.toLowerCase())) {
+      window.alert('An airport with this name already exists.');
+      return;
+    }
+
+    const newAirport = {
+      id: `apt-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`,
+      name,
+      code: newAirportForm.code.trim().toUpperCase(),
+      cities: [...newAirportForm.cities],
+    };
+
+    // Each served city needs its own airport<->hotel route so it can be
+    // priced per vehicle -- the drive from one shared airport differs by city.
+    const missingRoutes = newAirport.cities
+      .map(city => ({ key: airportTransferKey(city), city }))
+      .filter(({ key }) => key && !(db.routes || []).some(r => r.key === key))
+      .map(({ key, city }) => ({
+        key,
+        name: `${formatCityName(city)} Airport Transfer`,
+        description: `Private transfer between ${formatCityName(city)} airport and your hotel.`,
+      }));
+
+    const updatedVehicles = (db.vehicles || []).map(v => {
+      const rates = { ...v.route_rates };
+      missingRoutes.forEach(r => { if (rates[r.key] === undefined) rates[r.key] = 0; });
+      return { ...v, route_rates: rates };
+    });
+
+    updateDBState({
+      ...db,
+      airports: [...(db.airports || []), newAirport],
+      routes: [...(db.routes || []), ...missingRoutes],
+      vehicles: updatedVehicles,
+    });
+    setNewAirportForm({ name: '', code: '', cities: [] });
+  };
+
+  const handleDeleteAirport = (airportId) => {
+    const airport = (db.airports || []).find(a => a.id === airportId);
+    if (!airport) return;
+    if (!window.confirm(
+      `Remove ${airport.name}?\n\nThe flight option will no longer be offered for ${airport.cities.join(', ')}. Existing transfer rates are kept.`
+    )) return;
+    updateDBState({ ...db, airports: (db.airports || []).filter(a => a.id !== airportId) });
+  };
+
+  const handleToggleNewAirportCity = (city) => {
+    setNewAirportForm(prev => ({
+      ...prev,
+      cities: prev.cities.includes(city)
+        ? prev.cities.filter(c => c !== city)
+        : [...prev.cities, city],
+    }));
+  };
+
   // Vehicle rate edit helpers
   const handleStartEditVehicle = (v) => {
     setEditingVehicleId(v.id);
@@ -3123,13 +3340,31 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       }
     };
 
+    // An airport <-> hotel run for a city that has air access. Same purpose as
+    // checkAndAddRoute above: make sure the key exists so it appears in
+    // Admin > Vehicles & Routes to be priced, instead of silently costing ₹0.
+    const checkAndAddAirportRoute = (city, currentRoutes, newRoutesAccumulator) => {
+      if (!city || !cityHasAirport(db.airports || [], city)) return;
+      const key = airportTransferKey(city);
+      const exists = currentRoutes.some(r => r.key === key) || newRoutesAccumulator.some(r => r.key === key);
+      if (!exists) {
+        newRoutesAccumulator.push({
+          key,
+          name: `${formatCityName(city)} Airport Transfer`,
+          description: `Private transfer between ${formatCityName(city)} airport and your hotel.`
+        });
+      }
+    };
+
     if (addTransfers) {
       // Day 1 Route check
       const firstCity = cities[0]?.city;
       if (firstCity && wizardStartCity.toLowerCase().trim() !== firstCity.toLowerCase().trim()) {
         checkAndAddRoute(wizardStartCity, firstCity, db.routes, neededRoutes);
+      } else if (firstCity) {
+        checkAndAddAirportRoute(firstCity, db.routes, neededRoutes);
       }
-      
+
       // Transitions between cities route check
       let tempLastCity = null;
       cities.forEach((dest, cityIndex) => {
@@ -3138,10 +3373,16 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
         }
         tempLastCity = dest.city;
       });
-      
+
+      // Every city on the trip may later be switched to a flight leg in the
+      // builder, which needs that city's airport run to exist and be priced.
+      cities.forEach((dest) => checkAndAddAirportRoute(dest.city, db.routes, neededRoutes));
+
       // Departure Day route check
       if (tempLastCity && tempLastCity.toLowerCase().trim() !== wizardEndCity.toLowerCase().trim()) {
         checkAndAddRoute(tempLastCity, wizardEndCity, db.routes, neededRoutes);
+      } else if (tempLastCity) {
+        checkAndAddAirportRoute(tempLastCity, db.routes, neededRoutes);
       }
     }
 
@@ -3180,12 +3421,16 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
         if (dayCounter === 1) {
           if (wizardStartCity.toLowerCase().trim() !== dest.city.toLowerCase().trim()) {
             route = `${getCityKey(wizardStartCity)}_to_${getCityKey(dest.city)}`;
-          } else if (dest.city.toLowerCase() === 'kathmandu') {
-            route = 'ktm_airport_transfer';
+          } else if (cityHasAirport(db.airports || [], dest.city)) {
+            // Flying straight into the first city: charge that city's own
+            // airport pickup. Previously hardcoded to Kathmandu, so arriving
+            // anywhere else silently added no transfer at all and the quote
+            // came out short by that leg.
+            route = airportTransferKey(dest.city);
           } else {
-            route = ''; 
+            route = '';
           }
-        } 
+        }
         else if (night === 1 && lastCity) {
           if (lastCity.toLowerCase().trim() !== dest.city.toLowerCase().trim()) {
             const sectorKey = `${getCityKey(lastCity)}_to_${getCityKey(dest.city)}`;
@@ -3227,17 +3472,22 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           description = `Enjoy your day in ${dest.city} at leisure. Explore the local markets or relax.`;
         }
 
-        itinerary.push({
+        const dayRoute = addTransfers ? route : '';
+        itinerary.push(withDayTransfers({
           day: dayCounter,
           city: dest.city,
           title: title,
           description: description,
           hotelId: defaultHotel,
           meals: dest.city.toLowerCase() === 'chitwan' ? 'AP' : 'CP',
-          transfer_route: addTransfers ? route : '',
           is_sightseeing: !isTransitionDay,
-          activity_ids: assignActivity ? activityIds : []
-        });
+          activity_ids: assignActivity ? activityIds : [],
+          // The wizard always generates road travel; switching a leg to a
+          // flight is done later in the builder, where the agent can see the
+          // whole trip. Keeping it out of the intake form was deliberate --
+          // it is an operator decision, not something to ask a traveller.
+          travel_mode: TRAVEL_MODE_CAR,
+        }, dayRoute ? [dayRoute] : []));
 
         dayCounter++;
       }
@@ -3248,24 +3498,25 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     if (addTransfers && lastCity) {
       if (lastCity.toLowerCase().trim() !== wizardEndCity.toLowerCase().trim()) {
         departureRoute = `${getCityKey(lastCity)}_to_${getCityKey(wizardEndCity)}`;
-      } else if (lastCity.toLowerCase() === 'kathmandu') {
-        departureRoute = 'ktm_airport_transfer';
+      } else if (cityHasAirport(db.airports || [], lastCity)) {
+        // Departing by air from the last city -- its own airport drop, not
+        // Kathmandu's (which is what this used to assume).
+        departureRoute = airportTransferKey(lastCity);
       } else {
         departureRoute = '';
       }
     }
 
-    itinerary.push({
+    itinerary.push(withDayTransfers({
       day: dayCounter,
       city: lastCity || 'Kathmandu',
       title: 'Departure from Nepal',
       description: `Check out from hotel. Return transfer to your international departure.`,
       hotelId: '',
       meals: 'CP',
-      transfer_route: departureRoute,
       is_sightseeing: false,
       activity_ids: []
-    });
+    }, departureRoute ? [departureRoute] : []));
 
     setCustomPackageName(`${cities.map(c => c.city).join(' & ')} Custom Itinerary`);
     setSelectedHotelCategory(rating);
@@ -6860,82 +7111,21 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                       <div>
                                         <label className="text-[10px] font-extrabold text-indigo-650 uppercase tracking-wider block mb-1">Generated Tour Day Heading</label>
                                         <div className="text-xs font-black text-slate-800 leading-snug font-heading bg-white py-2 px-3 border border-slate-200/60 rounded-lg select-all">
-                                          {(() => {
-                                            const routeObj = db.routes.find(r => r.key === day.transfer_route);
-                                            const selectedActs = (day.activity_ids || [])
-                                              .map(actId => db.activities.find(a => a.id === actId))
-                                              .filter(Boolean);
-                                            
-                                            const effectiveRouteObj = routeObj;
-
-                                            let heading = "";
-                                            if (effectiveRouteObj && selectedActs.length > 0) {
-                                              heading = `${effectiveRouteObj.name} & ${selectedActs.map(a => a.name).join(' + ')}`;
-                                            } else if (effectiveRouteObj) {
-                                              heading = effectiveRouteObj.name;
-                                            } else if (selectedActs.length > 0) {
-                                              heading = selectedActs.map(a => a.name).join(' + ');
-                                            } else {
-                                              heading = isLast ? `Departure from ${day.city}` : `Leisure day in ${day.city}`;
-                                            }
-                                            return heading.length > 85 ? heading.substring(0, 82) + "..." : heading;
-                                          })()}
+                                          {/* Read straight from the pricing engine's own output
+                                              rather than recomputing here -- this preview and the
+                                              exported itinerary must never word a day differently
+                                              (flight days especially, which narrate drop, flight
+                                              and pickup as one story). */}
+                                          {quoteCalculation.dayWiseBreakdown?.[idx]?.title || ''}
                                         </div>
                                       </div>
 
                                       <div>
                                         <label className="text-[10px] font-extrabold text-indigo-650 uppercase tracking-wider block mb-1">Generated Tour Day Description</label>
                                         <div className="text-[11px] text-slate-600 leading-relaxed bg-white py-2.5 px-3 border border-slate-200/60 rounded-lg min-h-[75px] select-all whitespace-pre-line">
-                                          {(() => {
-                                            const routeObj = db.routes.find(r => r.key === day.transfer_route);
-                                            const selectedActs = (day.activity_ids || [])
-                                              .map(actId => db.activities.find(a => a.id === actId))
-                                              .filter(Boolean);
-                                            
-                                            let descParts = [];
-                                            
-                                            // 1. Transfer
-                                            if (day.transfer_route && day.transfer_route !== 'local_sightseeing') {
-                                              const transferText = getTransferDesc(
-                                                day.transfer_route,
-                                                startCity,
-                                                endCity,
-                                                day.city,
-                                                day.day === 1,
-                                                isLast
-                                              );
-                                              if (transferText) {
-                                                descParts.push(transferText);
-                                              }
-                                            }
-
-                                            // 2. Activity / Leisure
-                                            if (selectedActs.length > 0) {
-                                              selectedActs.forEach(act => {
-                                                descParts.push(act.description);
-                                              });
-                                            } else {
-                                              if (isLast) {
-                                                descParts.push(`Check out from your accommodation in ${day.city}.`);
-                                              } else {
-                                                descParts.push(`Enjoy your day in ${day.city}.`);
-                                              }
-                                            }
-                                            // 3. Hotel
-                                            if (!isLast) {
-                                              if (hotel) {
-                                                descParts.push(`Overnight accommodation at ${hotel.name} (${hotel.category}) on ${day.meals || 'CP'} basis.`);
-                                              } else {
-                                                if (day.stay_address) {
-                                                  descParts.push(`Overnight stay at ${day.stay_address} (self-arranged).`);
-                                                } else {
-                                                  descParts.push(`Overnight stay self-arranged (no hotel stay booked).`);
-                                                }
-                                              }
-                                            }
-
-                                            return descParts.join('\n');
-                                          })()}
+                                          {/* Same source as the heading above: the engine's own
+                                              generated copy, so preview and export always agree. */}
+                                          {quoteCalculation.dayWiseBreakdown?.[idx]?.description || ''}
                                         </div>
                                         <span className="text-[9px] text-slate-450 mt-1.5 block italic leading-normal">★ Title & description generate automatically from selected hotel, transfers, and activities. Edit core descriptions in Admin panel.</span>
                                       </div>
@@ -6981,7 +7171,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                                     placeholder="Enter address for transfers..."
                                                     className="text-xs py-1.5 px-2.5 bg-slate-50 border border-slate-200 rounded focus:ring-2 focus:ring-blue-500/15 focus:bg-white outline-none w-full transition"
                                                   />
-                                                  {day.transfer_route && (
+                                                  {getDayTransfers(day).length > 0 && (
                                                     <div className="text-[9px] text-amber-600 bg-amber-50 border border-amber-100 p-1.5 rounded flex items-start gap-1 leading-normal font-medium mt-1">
                                                       <AlertTriangle size={11} className="shrink-0 text-amber-500 mt-0.5" />
                                                       <span>Remark: Transfer cost may change at the time of final booking because the distance needs to be checked.</span>
@@ -7022,21 +7212,115 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
                                     {/* Bottom: Transfers & Activities Buttons and Selections */}
                                     <div className="flex flex-col gap-3">
-                                      {/* Display selected transfer */}
+                                      {/* How the traveller moves between cities on this day.
+                                          Only rendered on a day where the city actually changes
+                                          AND both cities have (different) airports -- otherwise
+                                          there is no choice to make and the road transfer below
+                                          stands on its own. Deliberately lives here in the final
+                                          builder rather than the intake wizard: it is an
+                                          operator decision, and putting it up front confused
+                                          travellers filling in the initial form. */}
                                       {(() => {
-                                        const routeObj = db.routes.find(r => r.key === day.transfer_route);
-                                        return routeObj ? (
-                                          <div className="flex items-center justify-between gap-2 w-full min-w-0 bg-white border border-slate-200 p-2.5 rounded-lg shadow-sm">
+                                        const fromCity = isLast
+                                          ? day.city
+                                          : (idx === 0 ? startCity : customItinerary[idx - 1]?.city);
+                                        const toCity = isLast ? endCity : day.city;
+                                        if (!fromCity || !toCity) return null;
+                                        if (String(fromCity).toLowerCase().trim() === String(toCity).toLowerCase().trim()) return null;
+                                        if (!canFlyBetween(db.airports || [], fromCity, toCity)) return null;
+
+                                        const isFlight = day.travel_mode === TRAVEL_MODE_FLIGHT;
+                                        const fromAirport = getAirportForCity(db.airports || [], fromCity);
+                                        const toAirport = getAirportForCity(db.airports || [], toCity);
+                                        const currentTransfers = getDayTransfers(day);
+                                        const dropKey = airportTransferKey(fromCity);
+                                        const pickupKey = airportTransferKey(toCity);
+
+                                        return (
+                                          <div className="travel-mode-box p-3.5 flex flex-col gap-3">
+                                            <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                                              <span className="travel-mode-label text-[10px] font-extrabold uppercase tracking-wider shrink-0">
+                                                {fromCity} ➔ {toCity} by
+                                              </span>
+                                              <div className="flex gap-2">
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleSetTravelMode(idx, TRAVEL_MODE_CAR, fromCity, toCity)}
+                                                  className={`travel-mode-btn ${!isFlight ? 'is-active' : ''} text-[11px] font-extrabold uppercase tracking-wide py-1.5 px-3.5 rounded-lg flex items-center gap-1.5`}
+                                                >
+                                                  <Car size={13} /> Road
+                                                </button>
+                                                <button
+                                                  type="button"
+                                                  onClick={() => handleSetTravelMode(idx, TRAVEL_MODE_FLIGHT, fromCity, toCity)}
+                                                  className={`travel-mode-btn ${isFlight ? 'is-active' : ''} text-[11px] font-extrabold uppercase tracking-wide py-1.5 px-3.5 rounded-lg flex items-center gap-1.5`}
+                                                >
+                                                  <Plane size={13} /> Flight
+                                                </button>
+                                              </div>
+                                            </div>
+
+                                            {isFlight && (
+                                              <div className="flex flex-col gap-2">
+                                                <p className="travel-mode-note text-[10px] leading-relaxed">
+                                                  Airport transfers below are charged. <strong>The airfare itself is not
+                                                  included</strong> in this quote — it appears on the itinerary as a note
+                                                  to the client. Remove either transfer if the client arranges that end
+                                                  themselves.
+                                                </p>
+                                                {/* Re-add either half if it was removed. */}
+                                                <div className="flex flex-wrap gap-2">
+                                                  {!currentTransfers.includes(dropKey) && (
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => handleRestoreFlightTransfer(idx, dropKey)}
+                                                      className="travel-mode-restore text-[10px] font-bold rounded-lg py-1 px-2.5 transition flex items-center gap-1"
+                                                    >
+                                                      <Plus size={11} /> Add {fromCity} airport drop
+                                                    </button>
+                                                  )}
+                                                  {!currentTransfers.includes(pickupKey) && (
+                                                    <button
+                                                      type="button"
+                                                      onClick={() => handleRestoreFlightTransfer(idx, pickupKey)}
+                                                      className="travel-mode-restore text-[10px] font-bold rounded-lg py-1 px-2.5 transition flex items-center gap-1"
+                                                    >
+                                                      <Plus size={11} /> Add {toCity} airport pickup
+                                                    </button>
+                                                  )}
+                                                </div>
+                                                <p className="travel-mode-airports text-[9px] italic">
+                                                  Flying {fromAirport ? `${fromAirport.name} (${fromAirport.code})` : `${fromCity} airport`}
+                                                  {' ➔ '}
+                                                  {toAirport ? `${toAirport.name} (${toAirport.code})` : `${toCity} airport`}
+                                                </p>
+                                              </div>
+                                            )}
+                                          </div>
+                                        );
+                                      })()}
+
+                                      {/* Selected transfers for the day. A flight day carries two
+                                          (origin drop + destination pickup); every other day
+                                          normally carries one. Each is removable on its own. */}
+                                      {getDayTransfers(day).map((routeKey, transferIdx) => {
+                                        const routeObj = db.routes.find(r => r.key === routeKey);
+                                        if (!routeObj) return null;
+                                        const isAirportRun = routeKey.endsWith('_airport_transfer');
+                                        return (
+                                          <div key={`${routeKey}-${transferIdx}`} className="flex items-center justify-between gap-2 w-full min-w-0 bg-white border border-slate-200 p-2.5 rounded-lg shadow-sm">
                                             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 flex-1 min-w-0 pr-2">
-                                              <span className="bg-indigo-100 text-indigo-700 text-[10px] font-bold px-2 py-0.5 rounded uppercase shrink-0">Transfer</span>
+                                              <span className={`${isAirportRun ? 'transfer-pip-airport' : 'bg-indigo-100 text-indigo-700'} text-[10px] font-bold px-2 py-0.5 rounded uppercase shrink-0`}>
+                                                {isAirportRun ? 'Airport' : 'Transfer'}
+                                              </span>
                                               <span className="text-xs text-slate-700 font-medium break-words text-left min-w-0">{routeObj.name} - {routeObj.description}</span>
                                             </div>
-                                            <button type="button" onClick={() => handleDayFieldChange(idx, 'transfer_route', '')} className="text-slate-400 hover:text-red-500 p-1 shrink-0">
+                                            <button type="button" onClick={() => handleRemoveDayTransfer(idx, transferIdx)} className="text-slate-400 hover:text-red-500 p-1 shrink-0">
                                               <Trash2 size={14}/>
                                             </button>
                                           </div>
-                                        ) : null;
-                                      })()}
+                                        );
+                                      })}
 
                                       {/* Display selected activities */}
                                       {(() => {
@@ -8077,18 +8361,127 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
                   {/* Cities List */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    {(db.cities || []).map(city => (
-                      <div key={city} className="bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between group hover:border-indigo-200 transition-colors">
-                        <span className="font-semibold text-slate-800">{city}</span>
-                        <button
-                          onClick={() => handleDeleteCity(city)}
-                          className="text-slate-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition"
-                          title="Delete City"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+                    {(db.cities || []).map(city => {
+                      const airport = getAirportForCity(db.airports || [], city);
+                      return (
+                        <div key={city} className="bg-white border border-slate-200 rounded-xl p-4 flex items-center justify-between group hover:border-indigo-200 transition-colors">
+                          <div className="min-w-0">
+                            <span className="font-semibold text-slate-800 block truncate">{city}</span>
+                            {airport && (
+                              <span className="text-[10px] text-sky-700 font-bold flex items-center gap-1 mt-0.5">
+                                <Plane size={10} /> {airport.code || 'Air'}
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            onClick={() => handleDeleteCity(city)}
+                            className="text-slate-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition shrink-0"
+                            title="Delete City"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Airports Master. Separate from cities because one airport
+                      can serve several of them (Bhairahawa covers Lumbini,
+                      Butwal and Bhairahawa) and its name often differs from
+                      the city it serves (Chitwan flies via Bharatpur). */}
+                  <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm mt-4">
+                    <h3 className="text-xl font-bold font-heading text-slate-800 flex items-center gap-2">
+                      <Plane size={18} className="text-sky-600" /> Airports
+                    </h3>
+                    <p className="text-xs text-slate-500 mt-1 leading-relaxed max-w-3xl">
+                      Which cities can be reached by air, and through which airport. The quote builder
+                      offers a <strong>Flight</strong> option between two cities only when both appear
+                      here under <em>different</em> airports. One airport can serve several cities —
+                      each still gets its own airport transfer price under Vehicles &amp; Routes,
+                      because the drive from the airport differs per city.
+                    </p>
+
+                    <form onSubmit={handleAddAirport} className="mt-5 bg-sky-50/50 border border-sky-100 rounded-xl p-4 flex flex-col gap-3">
+                      <div className="flex flex-col md:flex-row gap-3">
+                        <div className="flex-1">
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Airport Name</label>
+                          <input
+                            type="text"
+                            value={newAirportForm.name}
+                            onChange={(e) => setNewAirportForm({ ...newAirportForm, name: e.target.value })}
+                            placeholder="e.g. Pokhara International Airport"
+                            className="form-input text-xs py-2 px-3 w-full border border-slate-300 rounded-lg"
+                          />
+                        </div>
+                        <div className="w-full md:w-32">
+                          <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Code</label>
+                          <input
+                            type="text"
+                            value={newAirportForm.code}
+                            onChange={(e) => setNewAirportForm({ ...newAirportForm, code: e.target.value })}
+                            placeholder="PKR"
+                            maxLength={5}
+                            className="form-input text-xs py-2 px-3 w-full border border-slate-300 rounded-lg uppercase"
+                          />
+                        </div>
                       </div>
-                    ))}
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5">Cities This Airport Serves</label>
+                        <div className="flex flex-wrap gap-2">
+                          {(db.cities || []).map(city => {
+                            const selected = newAirportForm.cities.includes(city);
+                            return (
+                              <button
+                                key={city}
+                                type="button"
+                                onClick={() => handleToggleNewAirportCity(city)}
+                                className={`text-[11px] font-bold py-1.5 px-3 rounded-lg border transition ${
+                                  selected
+                                    ? 'bg-sky-600 border-sky-600 text-white shadow-sm'
+                                    : 'bg-white border-slate-300 text-slate-600 hover:border-sky-400'
+                                }`}
+                              >
+                                {city}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                      <div className="flex justify-end">
+                        <button type="submit" className="btn btn-primary text-xs py-2 px-5">Add Airport</button>
+                      </div>
+                    </form>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-5">
+                      {(db.airports || []).length === 0 ? (
+                        <p className="text-xs text-slate-400 italic col-span-full">
+                          No airports configured yet — every city pair will be road-only.
+                        </p>
+                      ) : (
+                        (db.airports || []).map(airport => (
+                          <div key={airport.id} className="bg-white border border-slate-200 rounded-xl p-4 flex items-start justify-between gap-3 group hover:border-sky-200 transition-colors">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-slate-800 text-sm break-words">{airport.name}</span>
+                                {airport.code && (
+                                  <span className="bg-sky-100 text-sky-700 text-[10px] font-black px-1.5 py-0.5 rounded shrink-0">{airport.code}</span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-slate-500 mt-1">
+                                Serves: <strong className="text-slate-700">{(airport.cities || []).join(', ') || '—'}</strong>
+                              </p>
+                            </div>
+                            <button
+                              onClick={() => handleDeleteAirport(airport.id)}
+                              className="text-slate-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition shrink-0"
+                              title="Remove Airport"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        ))
+                      )}
+                    </div>
                   </div>
                 </div>
               )}
@@ -9730,7 +10123,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col max-h-[80vh]">
             <div className="px-5 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-              <h3 className="font-bold text-slate-800">Select Transfer</h3>
+              <h3 className="font-bold text-slate-800">Add Transfer</h3>
               <button onClick={() => setShowTransferModal({ open: false, dayIndex: null })} className="text-slate-400 hover:text-slate-700 transition">✕</button>
             </div>
             <div className="p-2 flex-1 overflow-y-auto">
@@ -9738,7 +10131,14 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                 <button
                   type="button"
                   onClick={() => {
-                    handleDayFieldChange(showTransferModal.dayIndex, 'transfer_route', '');
+                    // Clears every transfer on the day, and the flight leg with
+                    // them -- leaving travel_mode set would show a Flight
+                    // toggle with nothing behind it.
+                    setDayTransfers(showTransferModal.dayIndex, [], {
+                      travel_mode: '',
+                      flight_from_city: '',
+                      flight_to_city: '',
+                    });
                     setShowTransferModal({ open: false, dayIndex: null });
                   }}
                   className="w-full text-left px-4 py-3 text-xs rounded-lg hover:bg-slate-50 transition text-slate-600 border border-transparent hover:border-slate-200"
@@ -9750,7 +10150,13 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                     key={r.key}
                     type="button"
                     onClick={() => {
-                      handleDayFieldChange(showTransferModal.dayIndex, 'transfer_route', r.key);
+                      // Appends rather than replaces: a day can legitimately
+                      // hold more than one transfer (see the flight legs).
+                      const dayIdx = showTransferModal.dayIndex;
+                      const current = getDayTransfers(customItinerary[dayIdx]);
+                      if (!current.includes(r.key)) {
+                        setDayTransfers(dayIdx, [...current, r.key]);
+                      }
                       setShowTransferModal({ open: false, dayIndex: null });
                     }}
                     className="w-full text-left px-4 py-3 rounded-lg hover:bg-slate-50 transition border border-transparent hover:border-slate-200 flex flex-col gap-1"

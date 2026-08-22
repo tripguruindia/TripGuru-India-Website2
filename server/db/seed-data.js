@@ -4,7 +4,23 @@
 // the database is the source of truth -- this file is not imported at
 // request time.
 
-const INITIAL_CITIES = ['Kathmandu', 'Pokhara', 'Chitwan', 'Nagarkot', 'Lumbini'];
+const INITIAL_CITIES = [
+  'Kathmandu', 'Pokhara', 'Chitwan', 'Nagarkot', 'Lumbini',
+  'Butwal', 'Bhairahawa', 'Jomsom',
+];
+
+// One airport can serve several cities (Bhairahawa serves Lumbini, Butwal
+// and Bhairahawa itself), and the airport name often differs from the city
+// (Chitwan flies via Bharatpur). The quote builder offers a flight leg only
+// between two cities whose airports differ -- so Lumbini->Butwal, which share
+// Bhairahawa, correctly stays road-only.
+const INITIAL_AIRPORTS = [
+  { id: 'apt-ktm', name: 'Tribhuvan International Airport', code: 'KTM', cities: ['Kathmandu'] },
+  { id: 'apt-pkr', name: 'Pokhara International Airport', code: 'PKR', cities: ['Pokhara'] },
+  { id: 'apt-bhr', name: 'Bharatpur Airport', code: 'BHR', cities: ['Chitwan'] },
+  { id: 'apt-bwa', name: 'Gautam Buddha International Airport (Bhairahawa)', code: 'BWA', cities: ['Lumbini', 'Butwal', 'Bhairahawa'] },
+  { id: 'apt-jmo', name: 'Jomsom Airport', code: 'JMO', cities: ['Jomsom'] },
+];
 
 const INITIAL_HOTELS = [
   { id: 'h-ktm-3', name: 'Hotel Tibet', city: 'Kathmandu', category: '3-Star', description: 'A charming boutique hotel decorated in authentic Tibetan style, located near Lazimpat.', rates: { single: { CP: 3800, MAP: 4800, AP: 5800 }, double: { CP: 4500, MAP: 6000, AP: 7500 }, extra_adult: { CP: 1400, MAP: 2200, AP: 3000 }, cwb: { CP: 1000, MAP: 1800, AP: 2600 }, cnb: { CP: 400, MAP: 1000, AP: 1600 } } },
@@ -85,7 +101,17 @@ const INITIAL_BOOKINGS = [
 
 const INITIAL_ROUTES = [
   { key: 'local_sightseeing', name: 'Local Sightseeing', description: 'Enjoy full-day private vehicle sightseeing around local monuments, shopping, and scenic spots.' },
+  // Airport <-> hotel runs, one per city with air access. Keyed
+  // `<citykey>_airport_transfer` so the quote builder can look one up from a
+  // city name alone. Priced per CITY, not per airport, because the drive from
+  // a shared airport differs by city (Bhairahawa->Lumbini vs ->Butwal).
   { key: 'ktm_airport_transfer', name: 'Kathmandu Airport Transfer', description: 'Receive private vehicle airport pickup or departure transfer in Kathmandu.' },
+  { key: 'pokhara_airport_transfer', name: 'Pokhara Airport Transfer', description: 'Private vehicle transfer between Pokhara airport and your Pokhara hotel.' },
+  { key: 'chitwan_airport_transfer', name: 'Chitwan (Bharatpur) Airport Transfer', description: 'Private vehicle transfer between Bharatpur airport and your Chitwan resort.' },
+  { key: 'lumbini_airport_transfer', name: 'Lumbini Airport Transfer', description: 'Private vehicle transfer between Bhairahawa airport and your Lumbini hotel.' },
+  { key: 'butwal_airport_transfer', name: 'Butwal Airport Transfer', description: 'Private vehicle transfer between Bhairahawa airport and your Butwal hotel.' },
+  { key: 'bhairahawa_airport_transfer', name: 'Bhairahawa Airport Transfer', description: 'Private vehicle transfer between Bhairahawa airport and your Bhairahawa hotel.' },
+  { key: 'jomsom_airport_transfer', name: 'Jomsom Airport Transfer', description: 'Private vehicle transfer between Jomsom airport and your Jomsom hotel.' },
   { key: 'ktm_to_pokhara', name: 'Kathmandu to Pokhara Overland', description: 'Scenic highway transfer from Kathmandu to Pokhara with views of Trishuli river.' },
   { key: 'pokhara_to_chitwan', name: 'Pokhara to Chitwan Overland', description: 'Drive from Pokhara down to the subtropical plains of Chitwan National Park.' },
   { key: 'chitwan_to_ktm', name: 'Chitwan to Kathmandu Overland', description: 'Drive from Chitwan safari wilderness back to Kathmandu valley.' },
@@ -108,6 +134,7 @@ const INITIAL_USERS = [
 
 module.exports = {
   INITIAL_CITIES,
+  INITIAL_AIRPORTS,
   INITIAL_HOTELS,
   INITIAL_VEHICLES,
   INITIAL_ACTIVITIES,

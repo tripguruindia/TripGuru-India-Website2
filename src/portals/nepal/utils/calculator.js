@@ -1,5 +1,12 @@
 // calculator.js - Core pricing calculations in INR with room-based occupancy model
 
+import {
+  getDayTransfers,
+  getAirportForCity,
+  airportTransferKey,
+  TRAVEL_MODE_FLIGHT,
+} from './transfers';
+
 /**
  * Converts a rooms array into flat travelers and roomConfig objects
  * that the pricing engine uses internally.
@@ -144,22 +151,58 @@ const formatCityName = (c) => {
 
 const getTransferDesc = (routeKey, startCity, endCity, dayCity, isFirstDay, isLastDay) => {
   if (!routeKey || routeKey === 'local_sightseeing') return '';
-  
-  if (routeKey === 'ktm_airport_transfer') {
-    if (isLastDay) {
-      return `Private transfer: Kathmandu to Kathmandu Airport.`;
-    }
-    return `Private transfer: Kathmandu Airport to Kathmandu.`;
+
+  // Airport runs are written per city as `<citykey>_airport_transfer`. The
+  // direction is implied by where the day sits: the last day is a departure
+  // (hotel -> airport), anything else is an arrival (airport -> hotel).
+  if (routeKey.endsWith('_airport_transfer')) {
+    const city = formatCityName(routeKey.replace(/_airport_transfer$/, ''));
+    return isLastDay
+      ? `Private transfer: ${city} hotel to ${city} Airport.`
+      : `Private transfer: ${city} Airport to your ${city} hotel.`;
   }
-  
+
   if (routeKey.includes('_to_')) {
     const parts = routeKey.split('_to_');
     const fromCity = formatCityName(parts[0]);
     const toCity = formatCityName(parts[1]);
     return `Private transfer: ${fromCity} to ${toCity}.`;
   }
-  
+
   return `Private transfer: ${formatCityName(routeKey.replace(/_/g, ' '))}.`;
+};
+
+// A day the traveller flies on. Spells out drop -> flight -> pickup so the
+// client can see exactly which ground transfers are covered, and states
+// plainly that the airfare itself is not part of this quote (the portal has
+// no flight inventory -- see the `travel_mode` handling in App.jsx).
+const getFlightDayDesc = (day, transfers, airportsData) => {
+  const fromCity = day.flight_from_city || '';
+  // On the final day the traveller flies OUT to the trip's end city, which is
+  // not the city the day itself sits in -- hence an explicit destination
+  // rather than assuming day.city.
+  const toCity = day.flight_to_city || day.city || '';
+  const fromAirport = getAirportForCity(airportsData, fromCity);
+  const toAirport = getAirportForCity(airportsData, toCity);
+
+  const hasDrop = transfers.includes(airportTransferKey(fromCity));
+  const hasPickup = transfers.includes(airportTransferKey(toCity));
+
+  const parts = [];
+  if (hasDrop) {
+    parts.push(
+      `Private transfer from your ${fromCity} hotel to ${fromAirport ? fromAirport.name : `${fromCity} Airport`}.`
+    );
+  }
+  parts.push(
+    `Fly ${fromCity} to ${toCity}. Airfare is not included in this quote.`
+  );
+  if (hasPickup) {
+    parts.push(
+      `On arrival at ${toAirport ? toAirport.name : `${toCity} Airport`}, private transfer to your hotel.`
+    );
+  }
+  return parts;
 };
 
 /**
@@ -176,6 +219,7 @@ export function calculateQuote({
   vehiclesData,
   activitiesData,
   routesData = [],
+  airportsData = [],
   settings,
   startCity = 'Kathmandu',
   endCity = 'Kathmandu'
@@ -265,14 +309,18 @@ export function calculateQuote({
       }
     }
 
-    // 2. Transport cost
-    if (vehicle && day.transfer_route) {
-      const route = day.transfer_route;
-      if (route === "local_sightseeing") {
-        dayTransportCost = (vehicle.daily_sightseeing_rate || 0) * adminMarginFactor;
-      } else if (vehicle.route_rates && vehicle.route_rates[route] !== undefined) {
-        dayTransportCost = vehicle.route_rates[route] * adminMarginFactor;
-      }
+    // 2. Transport cost -- a day can hold several transfers (a flight day has
+    // an airport drop at the origin AND a pickup at the destination), so this
+    // sums every one rather than pricing a single route.
+    const dayTransfers = getDayTransfers(day);
+    if (vehicle) {
+      dayTransfers.forEach((route) => {
+        if (route === "local_sightseeing") {
+          dayTransportCost += (vehicle.daily_sightseeing_rate || 0) * adminMarginFactor;
+        } else if (vehicle.route_rates && vehicle.route_rates[route] !== undefined) {
+          dayTransportCost += vehicle.route_rates[route] * adminMarginFactor;
+        }
+      });
     }
 
     // 3. Activities cost (INR)
@@ -304,17 +352,25 @@ export function calculateQuote({
     }
 
     // Dynamic Heading & Description Generation
-    const routeObj = routesData.find(r => r.key === day.transfer_route);
+    const isFlightDay = day.travel_mode === TRAVEL_MODE_FLIGHT && !!day.flight_from_city;
+    const routeObj = routesData.find(r => r.key === dayTransfers[0]);
     const selectedActs = (day.activity_ids || [])
       .map(actId => activitiesData.find(a => a.id === actId))
       .filter(Boolean);
-    
-    const effectiveRouteObj = (day.transfer_route === 'local_sightseeing' && selectedActs.length === 0)
+
+    const effectiveRouteObj = (dayTransfers[0] === 'local_sightseeing' && selectedActs.length === 0)
       ? null
       : routeObj;
 
     let heading = "";
-    if (effectiveRouteObj && selectedActs.length > 0) {
+    if (isFlightDay) {
+      // A flight day's own transfers are just airport runs, so naming them
+      // ("Pokhara Airport Transfer") would bury the actual movement.
+      heading = `Fly ${day.flight_from_city} to ${day.flight_to_city || day.city}`;
+      if (selectedActs.length > 0) {
+        heading += ` & ${selectedActs.map(a => a.name).join(' + ')}`;
+      }
+    } else if (effectiveRouteObj && selectedActs.length > 0) {
       heading = `${effectiveRouteObj.name} & ${selectedActs.map(a => a.name).join(' + ')}`;
     } else if (effectiveRouteObj) {
       heading = effectiveRouteObj.name;
@@ -330,19 +386,25 @@ export function calculateQuote({
 
     let descParts = [];
 
-    // 1. Transfer
-    if (day.transfer_route && day.transfer_route !== 'local_sightseeing') {
-      const transferText = getTransferDesc(
-        day.transfer_route,
-        startCity,
-        endCity,
-        day.city,
-        day.day === 1,
-        isLastDay
-      );
-      if (transferText) {
-        descParts.push(transferText);
-      }
+    // 1. Transfers. A flight day gets its own narration (drop, flight,
+    // pickup); otherwise each transfer on the day is described in turn.
+    if (isFlightDay) {
+      descParts.push(...getFlightDayDesc(day, dayTransfers, airportsData));
+    } else {
+      dayTransfers.forEach((routeKey) => {
+        if (routeKey === 'local_sightseeing') return;
+        const transferText = getTransferDesc(
+          routeKey,
+          startCity,
+          endCity,
+          day.city,
+          day.day === 1,
+          isLastDay
+        );
+        if (transferText) {
+          descParts.push(transferText);
+        }
+      });
     }
 
     // 2. Activity / Leisure
@@ -394,7 +456,11 @@ export function calculateQuote({
       hotelCost: Math.round(dayHotelCost),
       mealPlan,
       mealCost: 0, // Meals are now baked into hotelCost!
-      transportRoute: day.transfer_route,
+      transportRoute: dayTransfers[0] || '',
+      transportRoutes: dayTransfers,
+      travelMode: day.travel_mode || '',
+      flightFromCity: day.flight_from_city || '',
+      flightToCity: day.flight_to_city || '',
       transportCost: Math.round(dayTransportCost),
       activities: dayActivities,
       activityCost: Math.round(dayActivityCost),

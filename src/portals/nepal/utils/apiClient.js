@@ -135,6 +135,7 @@ export async function getAdminDb() {
 }
 
 const ARRAY_RESOURCES = {
+  airports: { idKey: 'id', base: 'airports' },
   hotels: { idKey: 'id', base: 'hotels' },
   vehicles: { idKey: 'id', base: 'vehicles' },
   activities: { idKey: 'id', base: 'activities' },

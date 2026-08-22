@@ -4,6 +4,7 @@ const {
   serializeHotel,
   serializeVehicle,
   serializeRoute,
+  serializeAirport,
   serializeActivity,
   serializePackage,
   serializeSettings,
@@ -29,8 +30,9 @@ async function one(sql, args = []) {
 // admin-only (full list) or owner-scoped (see routes/bookings.js).
 // ---------------------------------------------------------------------------
 router.get('/db', async (req, res) => {
-  const [cities, hotels, vehicles, routes, activities, packages, settings] = await Promise.all([
+  const [cities, airports, hotels, vehicles, routes, activities, packages, settings] = await Promise.all([
     all('SELECT name FROM cities ORDER BY name ASC'),
+    all('SELECT * FROM airports'),
     all('SELECT * FROM hotels'),
     all('SELECT * FROM vehicles'),
     all('SELECT * FROM routes'),
@@ -41,6 +43,7 @@ router.get('/db', async (req, res) => {
 
   res.json({
     cities: cities.map((c) => c.name),
+    airports: airports.map(serializeAirport),
     hotels: hotels.map(serializeHotel),
     vehicles: vehicles.map(serializeVehicle),
     routes: routes.map(serializeRoute),
