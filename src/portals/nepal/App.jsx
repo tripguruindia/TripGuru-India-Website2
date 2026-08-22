@@ -18,6 +18,13 @@ import {
   airportTransferKey,
   cityToCityRouteKey,
   flightLegTransfers,
+  resolveAirportTransfer,
+  airportStopValue,
+  stopLabel,
+  buildRouteKey,
+  buildRouteName,
+  isAirportRouteKey,
+  airportFromKeySegment,
   TRAVEL_MODE_CAR,
   TRAVEL_MODE_FLIGHT,
 } from './utils/transfers';
@@ -82,39 +89,27 @@ const formatCityName = (c) => {
 
 // Human label for a route key, used when the builder has to create a route
 // the master list doesn't have yet (see ensureRoutesExist).
-const routeLabelFromKey = (key) => {
+const routeLabelFromKey = (key, airportsData = []) => {
   if (!key) return '';
   if (key.endsWith('_airport_transfer')) {
     return `${formatCityName(key.replace(/_airport_transfer$/, ''))} Airport Transfer`;
   }
   if (key.includes('_to_')) {
-    const [from, to] = key.split('_to_');
-    return `${formatCityName(from)} to ${formatCityName(to)}`;
+    // A segment may be an airport stop (`aptpkr`), which needs its real name.
+    const label = (seg) => {
+      const airport = airportFromKeySegment(airportsData, seg);
+      return airport ? airport.name : formatCityName(seg);
+    };
+    const parts = key.split('_to_');
+    return `${label(parts[0])} to ${label(parts[parts.length - 1])}`;
   }
   return formatCityName(key.replace(/_/g, ' '));
 };
 
-const getTransferDesc = (routeKey, startCity, endCity, dayCity, isFirstDay, isLastDay) => {
-  if (!routeKey || routeKey === 'local_sightseeing') return '';
-
-  // Airport runs are keyed per city as `<citykey>_airport_transfer`; the last
-  // day is a departure (hotel -> airport), anything else is an arrival.
-  if (routeKey.endsWith('_airport_transfer')) {
-    const city = formatCityName(routeKey.replace(/_airport_transfer$/, ''));
-    return isLastDay
-      ? `Private transfer: ${city} hotel to ${city} Airport.`
-      : `Private transfer: ${city} Airport to your ${city} hotel.`;
-  }
-
-  if (routeKey.includes('_to_')) {
-    const parts = routeKey.split('_to_');
-    const fromCity = formatCityName(parts[0]);
-    const toCity = formatCityName(parts[1]);
-    return `Private transfer: ${fromCity} to ${toCity}.`;
-  }
-
-  return `Private transfer: ${formatCityName(routeKey.replace(/_/g, ' '))}.`;
-};
+// NOTE: this file used to carry its own copy of getTransferDesc, mirroring
+// the one in calculator.js. The day cards now render the engine's generated
+// copy directly (see dayWiseBreakdown), so the duplicate has been removed
+// rather than left to drift out of step with the priced itinerary.
 
 function App() {
   // Routing helper
@@ -1905,7 +1900,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   // itinerary text and the "airfare not included" note are built from.
   const handleSetTravelMode = (dayIndex, mode, fromCity, toCity) => {
     if (mode === TRAVEL_MODE_FLIGHT) {
-      const legs = flightLegTransfers(fromCity, toCity);
+      const legs = flightLegTransfers(db.routes || [], db.airports || [], fromCity, toCity);
       ensureRoutesExist(legs);
       setDayTransfers(dayIndex, legs, {
         travel_mode: TRAVEL_MODE_FLIGHT,
@@ -1930,7 +1925,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       const current = getDayTransfers(day);
       if (current.includes(routeKey)) return day;
       // Keep drop-then-pickup order regardless of which one was restored.
-      const dropKey = airportTransferKey(day.flight_from_city);
+      const dropKey = resolveAirportTransfer(db.routes || [], db.airports || [], day.flight_from_city).key;
       const next = routeKey === dropKey ? [routeKey, ...current] : [...current, routeKey];
       return withDayTransfers(day, next);
     }));
@@ -1955,8 +1950,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
       const newRoutes = stillMissing.map((key) => ({
         key,
-        name: routeLabelFromKey(key),
-        description: `Private transfer: ${routeLabelFromKey(key)}.`,
+        name: routeLabelFromKey(key, prev.airports || []),
+        description: `Private transfer: ${routeLabelFromKey(key, prev.airports || [])}.`,
       }));
       const updatedVehicles = (prev.vehicles || []).map((v) => {
         const rates = { ...v.route_rates };
@@ -3022,6 +3017,33 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     updateDBState({ ...db, cities: (db.cities || []).filter(c => c !== cityName) });
   };
 
+  // Options for a route-builder stop dropdown: every city, plus every airport.
+  // Airports are selectable stops so a run between one city's airport and a
+  // DIFFERENT city -- Pokhara Airport to Bandipur -- is something you build
+  // and price in Admin, not something that needs new code each time a
+  // destination is added.
+  const renderRouteStopOptions = () => (
+    <>
+      <optgroup label="Cities">
+        {(db.cities || []).filter(Boolean).map(city => (
+          <option key={city} value={city}>{city}</option>
+        ))}
+      </optgroup>
+      {(db.airports || []).length > 0 && (
+        <optgroup label="Airports">
+          {(db.airports || []).map(a => (
+            <option key={a.id} value={airportStopValue(a)}>
+              ✈ {a.name}{a.code ? ` (${a.code})` : ''}
+            </option>
+          ))}
+        </optgroup>
+      )}
+    </>
+  );
+
+  const routeStopPreview = (stops) =>
+    (stops || []).filter(Boolean).map(s => stopLabel(db.airports || [], s)).join(' ➔ ');
+
   // Airports Master helpers. An airport serves a LIST of cities -- Bhairahawa
   // is the airport for Lumbini, Butwal and Bhairahawa alike -- which is why
   // this is its own master rather than a field on a city.
@@ -3048,15 +3070,21 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       cities: [...newAirportForm.cities],
     };
 
-    // Each served city needs its own airport<->hotel route so it can be
-    // priced per vehicle -- the drive from one shared airport differs by city.
+    // Each served city needs its own airport<->hotel route so it can be priced
+    // per vehicle -- the drive from one shared airport differs by city. Built
+    // in the airport-stop form (`aptbwa_to_lumbini`) so it reads as a normal
+    // route in the builder and can be edited there like any other.
+    const existingRoutes = db.routes || [];
     const missingRoutes = newAirport.cities
-      .map(city => ({ key: airportTransferKey(city), city }))
-      .filter(({ key }) => key && !(db.routes || []).some(r => r.key === key))
+      .map(city => ({
+        key: buildRouteKey([newAirport], [airportStopValue(newAirport), city]),
+        city,
+      }))
+      .filter(({ key }) => key && !existingRoutes.some(r => r.key === key))
       .map(({ key, city }) => ({
         key,
-        name: `${formatCityName(city)} Airport Transfer`,
-        description: `Private transfer between ${formatCityName(city)} airport and your hotel.`,
+        name: buildRouteName([newAirport], [airportStopValue(newAirport), city]),
+        description: `Private transfer between ${newAirport.name} and your ${formatCityName(city)} hotel.`,
       }));
 
     const updatedVehicles = (db.vehicles || []).map(v => {
@@ -3160,19 +3188,24 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
   const handleInlineRouteAdd = () => {
     if (!localRouteStops || localRouteStops.length < 2) {
-      alert("Please configure at least 2 city stops for the route.");
+      alert("Please configure at least 2 stops for the route.");
       return;
     }
-    
-    const routeName = localRouteStops.join(' to ');
-    const routeKey = localRouteStops.map(s => s.trim().toLowerCase().replace(/[^a-z0-9]+/g, ''))
-      .join('_to_');
-      
+
+    // A stop can be a city or an airport, so key/name generation goes through
+    // the shared helpers rather than slugifying the raw dropdown value.
+    const routeName = buildRouteName(db.airports || [], localRouteStops);
+    const routeKey = buildRouteKey(db.airports || [], localRouteStops);
+
+    if (!routeKey || routeKey.split('_to_').length < 2) {
+      alert("Please choose two different stops for the route.");
+      return;
+    }
     if (routesEditState.some(r => r.key === routeKey)) {
       alert("A transfer route with this name or code already exists.");
       return;
     }
-    
+
     const newRouteObj = {
       key: routeKey,
       name: routeName,
@@ -3195,14 +3228,18 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   const handleGlobalRouteAdd = (e) => {
     e.preventDefault();
     if (!globalRouteStops || globalRouteStops.length < 2) {
-      alert("Please configure at least 2 city stops for the global route.");
+      alert("Please configure at least 2 stops for the global route.");
       return;
     }
-    
-    const routeName = globalRouteStops.join(' to ');
-    const routeKey = globalRouteStops.map(s => s.trim().toLowerCase().replace(/[^a-z0-9]+/g, ''))
-      .join('_to_');
-      
+
+    // Stops may be cities or airports -- see buildRouteKey for the encoding.
+    const routeName = buildRouteName(db.airports || [], globalRouteStops);
+    const routeKey = buildRouteKey(db.airports || [], globalRouteStops);
+
+    if (!routeKey || routeKey.split('_to_').length < 2) {
+      alert("Please choose two different stops for the global route.");
+      return;
+    }
     if (db.routes.some(r => r.key === routeKey)) {
       alert("A transfer route with this name or code already exists globally.");
       return;
@@ -3344,16 +3381,20 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     // checkAndAddRoute above: make sure the key exists so it appears in
     // Admin > Vehicles & Routes to be priced, instead of silently costing ₹0.
     const checkAndAddAirportRoute = (city, currentRoutes, newRoutesAccumulator) => {
-      if (!city || !cityHasAirport(db.airports || [], city)) return;
-      const key = airportTransferKey(city);
-      const exists = currentRoutes.some(r => r.key === key) || newRoutesAccumulator.some(r => r.key === key);
-      if (!exists) {
-        newRoutesAccumulator.push({
-          key,
-          name: `${formatCityName(city)} Airport Transfer`,
-          description: `Private transfer between ${formatCityName(city)} airport and your hotel.`
-        });
-      }
+      if (!city) return;
+      const airport = getAirportForCity(db.airports || [], city);
+      if (!airport) return;
+      // resolveAirportTransfer finds a route the admin already built (in
+      // either direction, or the legacy per-city key) before proposing a new
+      // one, so this never duplicates a run that is already priced.
+      const { key, exists } = resolveAirportTransfer(currentRoutes, db.airports || [], city);
+      if (!key || exists) return;
+      if (newRoutesAccumulator.some(r => r.key === key)) return;
+      newRoutesAccumulator.push({
+        key,
+        name: buildRouteName(db.airports || [], [airportStopValue(airport), city]),
+        description: `Private transfer between ${airport.name} and your ${formatCityName(city)} hotel.`
+      });
     };
 
     if (addTransfers) {
@@ -3422,11 +3463,10 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           if (wizardStartCity.toLowerCase().trim() !== dest.city.toLowerCase().trim()) {
             route = `${getCityKey(wizardStartCity)}_to_${getCityKey(dest.city)}`;
           } else if (cityHasAirport(db.airports || [], dest.city)) {
-            // Flying straight into the first city: charge that city's own
-            // airport pickup. Previously hardcoded to Kathmandu, so arriving
-            // anywhere else silently added no transfer at all and the quote
-            // came out short by that leg.
-            route = airportTransferKey(dest.city);
+            // Flying straight into the first city: charge that city's airport
+            // pickup. Previously hardcoded to Kathmandu, so arriving anywhere
+            // else silently added no transfer and the quote came out short.
+            route = resolveAirportTransfer(db.routes || [], db.airports || [], dest.city).key;
           } else {
             route = '';
           }
@@ -3501,7 +3541,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       } else if (cityHasAirport(db.airports || [], lastCity)) {
         // Departing by air from the last city -- its own airport drop, not
         // Kathmandu's (which is what this used to assume).
-        departureRoute = airportTransferKey(lastCity);
+        departureRoute = resolveAirportTransfer(db.routes || [], db.airports || [], lastCity).key;
       } else {
         departureRoute = '';
       }
@@ -7233,8 +7273,11 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                         const fromAirport = getAirportForCity(db.airports || [], fromCity);
                                         const toAirport = getAirportForCity(db.airports || [], toCity);
                                         const currentTransfers = getDayTransfers(day);
-                                        const dropKey = airportTransferKey(fromCity);
-                                        const pickupKey = airportTransferKey(toCity);
+                                        // Resolved, not generated: a city served by another town's
+                                        // airport (Bandipur via Pokhara) uses the hand-built
+                                        // "Pokhara Airport to Bandipur" route.
+                                        const dropKey = resolveAirportTransfer(db.routes || [], db.airports || [], fromCity).key;
+                                        const pickupKey = resolveAirportTransfer(db.routes || [], db.airports || [], toCity).key;
 
                                         return (
                                           <div className="travel-mode-box p-3.5 flex flex-col gap-3">
@@ -7306,7 +7349,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                       {getDayTransfers(day).map((routeKey, transferIdx) => {
                                         const routeObj = db.routes.find(r => r.key === routeKey);
                                         if (!routeObj) return null;
-                                        const isAirportRun = routeKey.endsWith('_airport_transfer');
+                                        const isAirportRun = isAirportRouteKey(routeKey);
                                         return (
                                           <div key={`${routeKey}-${transferIdx}`} className="flex items-center justify-between gap-2 w-full min-w-0 bg-white border border-slate-200 p-2.5 rounded-lg shadow-sm">
                                             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 flex-1 min-w-0 pr-2">
@@ -8923,7 +8966,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                         </h6>
                         {/* Dynamic Multi-stop Sequence UI */}
                         <div className="space-y-2">
-                        <label className="block text-[9px] uppercase font-bold text-slate-400">Route City Stops Sequence</label>
+                        <label className="block text-[9px] uppercase font-bold text-slate-400">Route Stops Sequence (cities &amp; airports)</label>
                         <div className="flex flex-wrap items-center gap-2 bg-white p-2.5 rounded-xl border border-slate-200">
                         {globalRouteStops.filter(Boolean).map((stop, idx) => (
                         <React.Fragment key={idx}>
@@ -8953,11 +8996,9 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                         newStops[idx] = e.target.value;
                         setGlobalRouteStops(newStops);
                         }}
-                        className="bg-transparent text-xs font-bold text-orange-900 focus:outline-none cursor-pointer pr-1"
+                        className="bg-transparent text-xs font-bold text-orange-900 focus:outline-none cursor-pointer pr-1 max-w-[240px]"
                         >
-                        {(db.cities || []).filter(Boolean).map(city => (
-                        <option key={city} value={city}>{city}</option>
-                        ))}
+                        {renderRouteStopOptions()}
                         </select>
                         {globalRouteStops.filter(Boolean).length > 2 && (
                         <button
@@ -8974,7 +9015,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                         ))}
                         </div>
                         <p className="text-[10px] text-slate-505 font-bold italic">
-                        Preview: <span className="text-orange-700 font-extrabold">{globalRouteStops.filter(Boolean).join(' ➔ ')}</span>
+                        Preview: <span className="text-orange-700 font-extrabold">{routeStopPreview(globalRouteStops)}</span>
                         </p>
                         </div>
                         {/* Prices for each vehicle */}
@@ -9208,7 +9249,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                               <div className="flex flex-col gap-3">
                               {/* Multi-stop Sequence UI */}
                               <div className="space-y-1.5">
-                              <label className="block text-[9px] uppercase font-bold text-slate-400">Route City Stops Sequence</label>
+                              <label className="block text-[9px] uppercase font-bold text-slate-400">Route Stops Sequence (cities &amp; airports)</label>
                               <div className="flex flex-wrap items-center gap-2 bg-white p-2 rounded-xl border border-slate-200">
                               {localRouteStops.filter(Boolean).map((stop, idx) => (
                               <React.Fragment key={idx}>
@@ -9238,11 +9279,9 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                               newStops[idx] = e.target.value;
                               setLocalRouteStops(newStops);
                               }}
-                              className="bg-transparent text-xs font-bold text-orange-900 focus:outline-none cursor-pointer pr-1"
+                              className="bg-transparent text-xs font-bold text-orange-900 focus:outline-none cursor-pointer pr-1 max-w-[240px]"
                               >
-                              {(db.cities || []).filter(Boolean).map(city => (
-                              <option key={city} value={city}>{city}</option>
-                              ))}
+                              {renderRouteStopOptions()}
                               </select>
                               {localRouteStops.filter(Boolean).length > 2 && (
                               <button
@@ -9259,7 +9298,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                               ))}
                               </div>
                               <p className="text-[9px] text-slate-550 font-bold italic">
-                              Preview: <span className="text-orange-700 font-extrabold">{localRouteStops.filter(Boolean).join(' ➔ ')}</span>
+                              Preview: <span className="text-orange-700 font-extrabold">{routeStopPreview(localRouteStops)}</span>
                               </p>
                               </div>
 

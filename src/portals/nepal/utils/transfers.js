@@ -19,13 +19,125 @@ export function cityKey(city) {
   return name === 'kathmandu' ? 'ktm' : name.replace(/[^a-z0-9]+/g, '');
 }
 
-// The airport <-> hotel run for a city. Keyed per CITY rather than per
-// airport on purpose: one airport can serve several cities at very different
-// distances (Bhairahawa is ~22km from Lumbini but ~18km from Butwal), so each
-// city carries its own rate.
+// The legacy airport <-> hotel key for a city, e.g. `ktm_airport_transfer`.
+// Still generated and still looked up first, because live routes (and their
+// prices) already use this form. New routes built in the Route Builder use
+// the airport-stop form below instead, which can express a run between one
+// city's airport and a DIFFERENT city -- Pokhara Airport to Bandipur, say.
 export function airportTransferKey(city) {
   const key = cityKey(city);
   return key ? `${key}_airport_transfer` : '';
+}
+
+// ---------------------------------------------------------------------------
+// Airports as route stops
+// ---------------------------------------------------------------------------
+// A route is a sequence of stops, and a stop can be a city OR an airport.
+// Airport stops are written `apt:<airportId>` in the builder's dropdowns and
+// collapse to an `apt<code>` segment in the key, so "Pokhara Airport to
+// Bandipur" becomes `aptpkr_to_bandipur`. This is what stops every new
+// destination needing a code change: an airport an hour from the town it
+// serves is now just another route somebody prices in Admin.
+
+export const AIRPORT_STOP_PREFIX = 'apt:';
+
+export function isAirportStop(stop) {
+  return typeof stop === 'string' && stop.startsWith(AIRPORT_STOP_PREFIX);
+}
+
+export function airportStopValue(airport) {
+  return airport ? `${AIRPORT_STOP_PREFIX}${airport.id}` : '';
+}
+
+export function airportFromStop(airports, stop) {
+  if (!isAirportStop(stop)) return null;
+  const id = stop.slice(AIRPORT_STOP_PREFIX.length);
+  return (airports || []).find((a) => a.id === id) || null;
+}
+
+// Key segment for one stop. Airports get an `apt` prefix so they can never
+// collide with a city that happens to share the name.
+export function stopKeySegment(airports, stop) {
+  if (isAirportStop(stop)) {
+    const airport = airportFromStop(airports, stop);
+    if (!airport) return '';
+    const token = (airport.code || airport.id || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+    return token ? `apt${token}` : '';
+  }
+  return cityKey(stop);
+}
+
+export function stopLabel(airports, stop) {
+  if (isAirportStop(stop)) {
+    const airport = airportFromStop(airports, stop);
+    if (!airport) return 'Unknown airport';
+    return airport.code ? `${airport.name} (${airport.code})` : airport.name;
+  }
+  return stop;
+}
+
+export function buildRouteKey(airports, stops) {
+  return (stops || [])
+    .map((s) => stopKeySegment(airports, s))
+    .filter(Boolean)
+    .join('_to_');
+}
+
+export function buildRouteName(airports, stops) {
+  return (stops || []).map((s) => stopLabel(airports, s)).filter(Boolean).join(' to ');
+}
+
+// Reverse of stopKeySegment: turns an `apt…` key segment back into the
+// airport it came from, so a route key can be worded in plain English.
+export function airportFromKeySegment(airports, segment) {
+  if (!segment || !/^apt[a-z0-9]+$/.test(segment)) return null;
+  const token = segment.slice(3);
+  return (
+    (airports || []).find((a) => {
+      const code = (a.code || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+      const id = (a.id || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+      return (code && code === token) || (!code && id === token);
+    }) || null
+  );
+}
+
+// True when a route key touches an airport, in EITHER spelling: the legacy
+// per-city `<city>_airport_transfer`, or the airport-stop form where any
+// segment is `apt…`. Used to badge a transfer row and to word the itinerary.
+export function isAirportRouteKey(key) {
+  if (!key) return false;
+  if (key.endsWith('_airport_transfer')) return true;
+  return key.split('_to_').some((seg) => /^apt[a-z0-9]+$/.test(seg));
+}
+
+// Which existing route represents "get between this city and the airport that
+// serves it". Checks the airport-stop form in both directions before falling
+// back to the legacy per-city key, so a route the admin built by hand in the
+// Route Builder is found ahead of one auto-created at zero.
+//
+// Returns { key, exists }. When nothing exists yet, `key` is the form that
+// should be created so it shows up in Admin > Vehicles & Routes to be priced.
+export function resolveAirportTransfer(routes, airports, city) {
+  const airport = getAirportForCity(airports, city);
+  if (!airport) return { key: '', exists: false };
+
+  const aptSeg = stopKeySegment(airports, airportStopValue(airport));
+  const citySeg = cityKey(city);
+  const legacy = airportTransferKey(city);
+
+  const candidates = [
+    `${aptSeg}_to_${citySeg}`,
+    `${citySeg}_to_${aptSeg}`,
+    legacy,
+  ].filter((k) => k && !k.startsWith('_to_') && !k.endsWith('_to_'));
+
+  const found = candidates.find((k) => (routes || []).some((r) => r.key === k));
+  if (found) return { key: found, exists: true };
+
+  // Nothing priced yet. Prefer the airport-stop form -- it is the one the
+  // Route Builder produces, so an admin editing it later sees a single entry
+  // rather than two spellings of the same run.
+  return { key: candidates[0] || legacy, exists: false };
 }
 
 export function cityToCityRouteKey(fromCity, toCity) {
@@ -81,6 +193,14 @@ export const TRAVEL_MODE_FLIGHT = 'flight';
 // airport, pickup at the destination city's. Either can be removed by the
 // agent afterwards (a client may arrange their own airport drop), which is
 // why these are returned as separate, individually-removable entries.
-export function flightLegTransfers(fromCity, toCity) {
-  return [airportTransferKey(fromCity), airportTransferKey(toCity)].filter(Boolean);
+//
+// Resolved against the route list rather than generated blind, so a city
+// whose airport sits in another town (Bandipur flying via Pokhara) picks up
+// the hand-built "Pokhara Airport to Bandipur" route instead of inventing a
+// `bandipur_airport_transfer` that describes an airport Bandipur hasn't got.
+export function flightLegTransfers(routes, airports, fromCity, toCity) {
+  return [
+    resolveAirportTransfer(routes, airports, fromCity).key,
+    resolveAirportTransfer(routes, airports, toCity).key,
+  ].filter(Boolean);
 }
