@@ -7,3 +7,6 @@ coverage/
 .env*
 !.env.example
 .env.local
+apply-patch.ps1
+applied-patches/
+_to_delete/
