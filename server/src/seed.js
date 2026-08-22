@@ -6,6 +6,7 @@ const bcrypt = require('bcryptjs');
 const client = require('./db');
 const {
   INITIAL_CITIES,
+  INITIAL_AIRPORTS,
   INITIAL_HOTELS,
   INITIAL_VEHICLES,
   INITIAL_ACTIVITIES,
@@ -24,6 +25,15 @@ async function main() {
   console.log('Seeding cities...');
   for (const name of INITIAL_CITIES) {
     await run('INSERT INTO cities (name) VALUES (?) ON CONFLICT(name) DO NOTHING', [name]);
+  }
+
+  console.log('Seeding airports...');
+  for (const a of INITIAL_AIRPORTS) {
+    await run(
+      `INSERT INTO airports (id, name, code, cities) VALUES (?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET name=excluded.name, code=excluded.code, cities=excluded.cities`,
+      [a.id, a.name, a.code, JSON.stringify(a.cities)]
+    );
   }
 
   console.log('Seeding routes...');

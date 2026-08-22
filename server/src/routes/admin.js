@@ -5,7 +5,9 @@ const { requireAuth, requireRole } = require('../middleware/auth');
 const {
   serializeHotel,
   serializeVehicle,
+  parseJSON,
   serializeRoute,
+  serializeAirport,
   serializeActivity,
   serializePackage,
   serializeSettings,
@@ -43,9 +45,10 @@ async function run(sql, args = []) {
 // produced, so the frontend's `db` object needs no restructuring.
 // ---------------------------------------------------------------------------
 router.get('/db', async (req, res) => {
-  const [cities, hotels, vehicles, routes, activities, packages, settings, bookings, leads, users] =
+  const [cities, airports, hotels, vehicles, routes, activities, packages, settings, bookings, leads, users] =
     await Promise.all([
       all('SELECT name FROM cities ORDER BY name ASC'),
+      all('SELECT * FROM airports'),
       all('SELECT * FROM hotels'),
       all('SELECT * FROM vehicles'),
       all('SELECT * FROM routes'),
@@ -59,6 +62,7 @@ router.get('/db', async (req, res) => {
 
   res.json({
     cities: cities.map((c) => c.name),
+    airports: airports.map(serializeAirport),
     hotels: hotels.map(serializeHotel),
     vehicles: vehicles.map(serializeVehicle),
     routes: routes.map(serializeRoute),
@@ -98,6 +102,47 @@ router.put('/cities', async (req, res) => {
 
   const updated = await all('SELECT name FROM cities ORDER BY name ASC');
   res.json(updated.map((c) => c.name));
+});
+
+// ---------------------------------------------------------------------------
+// Airports -- one airport can serve several cities, so `cities` is a list.
+// See the table comment in db/schema.sql for why this isn't a cities column.
+// ---------------------------------------------------------------------------
+router.get('/airports', async (req, res) => {
+  res.json((await all('SELECT * FROM airports')).map(serializeAirport));
+});
+
+router.post('/airports', async (req, res) => {
+  const b = req.body || {};
+  if (!b.name) return res.status(400).json({ error: 'name is required' });
+  const id = b.id || genId('apt');
+  await run(
+    'INSERT INTO airports (id, name, code, cities) VALUES (?, ?, ?, ?)',
+    [id, b.name, b.code || '', JSON.stringify(Array.isArray(b.cities) ? b.cities : [])]
+  );
+  res.status(201).json(serializeAirport(await one('SELECT * FROM airports WHERE id = ?', [id])));
+});
+
+router.put('/airports/:id', async (req, res) => {
+  const b = req.body || {};
+  const existing = await one('SELECT * FROM airports WHERE id = ?', [req.params.id]);
+  if (!existing) return res.status(404).json({ error: 'Airport not found' });
+  await run(
+    'UPDATE airports SET name = ?, code = ?, cities = ? WHERE id = ?',
+    [
+      b.name ?? existing.name,
+      b.code ?? existing.code,
+      JSON.stringify(Array.isArray(b.cities) ? b.cities : parseJSON(existing.cities, [])),
+      req.params.id,
+    ]
+  );
+  res.json(serializeAirport(await one('SELECT * FROM airports WHERE id = ?', [req.params.id])));
+});
+
+router.delete('/airports/:id', async (req, res) => {
+  const result = await run('DELETE FROM airports WHERE id = ?', [req.params.id]);
+  if (result.rowsAffected === 0) return res.status(404).json({ error: 'Airport not found' });
+  res.status(204).end();
 });
 
 // ---------------------------------------------------------------------------

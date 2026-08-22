@@ -136,6 +136,24 @@ CREATE TABLE IF NOT EXISTS users (
   created_at     TEXT NOT NULL
 );
 
+-- Airports. Deliberately NOT a column on `cities`: one airport can serve
+-- several cities (Bhairahawa/Gautam Buddha serves Lumbini, Butwal and
+-- Bhairahawa), and an airport's name often differs from the city it serves
+-- (Chitwan is served by Bharatpur Airport). `cities` is a JSON array of the
+-- city names this airport serves.
+--
+-- The airport↔hotel transfer PRICE is not stored here -- it lives in
+-- vehicles.route_rates under the per-city key `<citykey>_airport_transfer`,
+-- because the drive from one shared airport differs per city. This table
+-- only answers "does this city have air access, and via which airport",
+-- which is what decides whether the quote builder offers a flight leg.
+CREATE TABLE IF NOT EXISTS airports (
+  id     TEXT PRIMARY KEY,
+  name   TEXT NOT NULL,
+  code   TEXT,
+  cities TEXT NOT NULL -- JSON array of city names served
+);
+
 -- Saved quotes: an agent's (or logged-in traveler's) work-in-progress
 -- proposals, before any of them become a real booking.
 --

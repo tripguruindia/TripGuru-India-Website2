@@ -2,7 +2,24 @@
 
 import { isAdminSession, syncAdminDb } from '../utils/apiClient';
 
-export const INITIAL_CITIES = ['Kathmandu', 'Pokhara', 'Chitwan', 'Nagarkot', 'Lumbini'];
+export const INITIAL_CITIES = [
+  'Kathmandu', 'Pokhara', 'Chitwan', 'Nagarkot', 'Lumbini',
+  'Butwal', 'Bhairahawa', 'Jomsom'
+];
+
+// One airport can serve several cities (Bhairahawa serves Lumbini, Butwal and
+// Bhairahawa itself), and the airport's name often differs from the city it
+// serves (Chitwan flies via Bharatpur) -- which is why this is its own list
+// rather than a flag on a city. The quote builder offers a flight leg only
+// between two cities whose airports differ, so Lumbini->Butwal (both on
+// Bhairahawa) correctly stays road-only.
+export const INITIAL_AIRPORTS = [
+  { id: "apt-ktm", name: "Tribhuvan International Airport", code: "KTM", cities: ["Kathmandu"] },
+  { id: "apt-pkr", name: "Pokhara International Airport", code: "PKR", cities: ["Pokhara"] },
+  { id: "apt-bhr", name: "Bharatpur Airport", code: "BHR", cities: ["Chitwan"] },
+  { id: "apt-bwa", name: "Gautam Buddha International Airport (Bhairahawa)", code: "BWA", cities: ["Lumbini", "Butwal", "Bhairahawa"] },
+  { id: "apt-jmo", name: "Jomsom Airport", code: "JMO", cities: ["Jomsom"] }
+];
 
 export const INITIAL_HOTELS = [
   // Kathmandu Hotels
@@ -591,7 +608,17 @@ export const INITIAL_BOOKINGS = [
 
 export const INITIAL_ROUTES = [
   { key: "local_sightseeing", name: "Local Sightseeing", description: "Enjoy full-day private vehicle sightseeing around local monuments, shopping, and scenic spots." },
+  // Airport <-> hotel runs, one per city with air access. Keyed
+  // `<citykey>_airport_transfer` so the builder can find one from a city name.
+  // Priced per CITY, not per airport: the drive from a shared airport differs
+  // by city (Bhairahawa->Lumbini is not Bhairahawa->Butwal).
   { key: "ktm_airport_transfer", name: "Kathmandu Airport Transfer", description: "Receive private vehicle airport pickup or departure transfer in Kathmandu." },
+  { key: "pokhara_airport_transfer", name: "Pokhara Airport Transfer", description: "Private vehicle transfer between Pokhara airport and your Pokhara hotel." },
+  { key: "chitwan_airport_transfer", name: "Chitwan (Bharatpur) Airport Transfer", description: "Private vehicle transfer between Bharatpur airport and your Chitwan resort." },
+  { key: "lumbini_airport_transfer", name: "Lumbini Airport Transfer", description: "Private vehicle transfer between Bhairahawa airport and your Lumbini hotel." },
+  { key: "butwal_airport_transfer", name: "Butwal Airport Transfer", description: "Private vehicle transfer between Bhairahawa airport and your Butwal hotel." },
+  { key: "bhairahawa_airport_transfer", name: "Bhairahawa Airport Transfer", description: "Private vehicle transfer between Bhairahawa airport and your Bhairahawa hotel." },
+  { key: "jomsom_airport_transfer", name: "Jomsom Airport Transfer", description: "Private vehicle transfer between Jomsom airport and your Jomsom hotel." },
   { key: "ktm_to_pokhara", name: "Kathmandu to Pokhara Overland", description: "Scenic highway transfer from Kathmandu to Pokhara with views of Trishuli river." },
   { key: "pokhara_to_chitwan", name: "Pokhara to Chitwan Overland", description: "Drive from Pokhara down to the subtropical plains of Chitwan National Park." },
   { key: "chitwan_to_ktm", name: "Chitwan to Kathmandu Overland", description: "Drive from Chitwan safari wilderness back to Kathmandu valley." },
@@ -657,6 +684,7 @@ export function initializeDB() {
 
   return {
     cities: getOrSet("nepal_quote_cities_v2", INITIAL_CITIES),
+    airports: getOrSet("nepal_quote_airports_v2", INITIAL_AIRPORTS),
     hotels: getOrSet("nepal_quote_hotels_v2", INITIAL_HOTELS),
     vehicles: getOrSet("nepal_quote_vehicles_v2", INITIAL_VEHICLES),
     routes: getOrSet("nepal_quote_routes_v2", INITIAL_ROUTES),
@@ -680,6 +708,7 @@ export function saveDB(db, oldDb) {
   // fallback for b2c/b2b (still localStorage-backed in Phase 0) and for
   // the next page load before an admin session re-authenticates.
   localStorage.setItem("nepal_quote_cities_v2", JSON.stringify(db.cities));
+  localStorage.setItem("nepal_quote_airports_v2", JSON.stringify(db.airports || []));
   localStorage.setItem("nepal_quote_hotels_v2", JSON.stringify(db.hotels));
   localStorage.setItem("nepal_quote_vehicles_v2", JSON.stringify(db.vehicles));
   localStorage.setItem("nepal_quote_routes_v2", JSON.stringify(db.routes));

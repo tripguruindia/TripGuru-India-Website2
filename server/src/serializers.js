@@ -39,6 +39,15 @@ function serializeRoute(r) {
   return { key: r.key, name: r.name, description: r.description || '' };
 }
 
+function serializeAirport(a) {
+  return {
+    id: a.id,
+    name: a.name,
+    code: a.code || '',
+    cities: parseJSON(a.cities, []),
+  };
+}
+
 function serializeActivity(a) {
   return {
     id: a.id,
@@ -194,6 +203,7 @@ module.exports = {
   serializeHotel,
   serializeVehicle,
   serializeRoute,
+  serializeAirport,
   serializeActivity,
   serializePackage,
   serializeSettings,
