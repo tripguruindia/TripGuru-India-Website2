@@ -3,7 +3,8 @@
 import {
   getDayTransfers,
   getAirportForCity,
-  airportTransferKey,
+  airportFromKeySegment,
+  resolveAirportTransfer,
   TRAVEL_MODE_FLIGHT,
 } from './transfers';
 
@@ -149,12 +150,11 @@ const formatCityName = (c) => {
   return c.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 };
 
-const getTransferDesc = (routeKey, startCity, endCity, dayCity, isFirstDay, isLastDay) => {
+const getTransferDesc = (routeKey, startCity, endCity, dayCity, isFirstDay, isLastDay, airportsData = []) => {
   if (!routeKey || routeKey === 'local_sightseeing') return '';
 
-  // Airport runs are written per city as `<citykey>_airport_transfer`. The
-  // direction is implied by where the day sits: the last day is a departure
-  // (hotel -> airport), anything else is an arrival (airport -> hotel).
+  // Legacy per-city airport key. Direction is implied by where the day sits:
+  // the last day is a departure (hotel -> airport), anything else an arrival.
   if (routeKey.endsWith('_airport_transfer')) {
     const city = formatCityName(routeKey.replace(/_airport_transfer$/, ''));
     return isLastDay
@@ -164,9 +164,15 @@ const getTransferDesc = (routeKey, startCity, endCity, dayCity, isFirstDay, isLa
 
   if (routeKey.includes('_to_')) {
     const parts = routeKey.split('_to_');
-    const fromCity = formatCityName(parts[0]);
-    const toCity = formatCityName(parts[1]);
-    return `Private transfer: ${fromCity} to ${toCity}.`;
+    // Either end may be an airport stop (`aptpkr`), which must be named
+    // properly rather than title-cased into "Aptpkr".
+    const label = (seg) => {
+      const airport = airportFromKeySegment(airportsData, seg);
+      return airport ? airport.name : formatCityName(seg);
+    };
+    const from = label(parts[0]);
+    const to = label(parts[parts.length - 1]);
+    return `Private transfer: ${from} to ${to}.`;
   }
 
   return `Private transfer: ${formatCityName(routeKey.replace(/_/g, ' '))}.`;
@@ -176,7 +182,7 @@ const getTransferDesc = (routeKey, startCity, endCity, dayCity, isFirstDay, isLa
 // client can see exactly which ground transfers are covered, and states
 // plainly that the airfare itself is not part of this quote (the portal has
 // no flight inventory -- see the `travel_mode` handling in App.jsx).
-const getFlightDayDesc = (day, transfers, airportsData) => {
+const getFlightDayDesc = (day, transfers, airportsData, routesData) => {
   const fromCity = day.flight_from_city || '';
   // On the final day the traveller flies OUT to the trip's end city, which is
   // not the city the day itself sits in -- hence an explicit destination
@@ -185,8 +191,10 @@ const getFlightDayDesc = (day, transfers, airportsData) => {
   const fromAirport = getAirportForCity(airportsData, fromCity);
   const toAirport = getAirportForCity(airportsData, toCity);
 
-  const hasDrop = transfers.includes(airportTransferKey(fromCity));
-  const hasPickup = transfers.includes(airportTransferKey(toCity));
+  // Resolved the same way the builder assigned them, so a city served by
+  // another town's airport still matches its own hand-built route.
+  const hasDrop = transfers.includes(resolveAirportTransfer(routesData, airportsData, fromCity).key);
+  const hasPickup = transfers.includes(resolveAirportTransfer(routesData, airportsData, toCity).key);
 
   const parts = [];
   if (hasDrop) {
@@ -389,7 +397,7 @@ export function calculateQuote({
     // 1. Transfers. A flight day gets its own narration (drop, flight,
     // pickup); otherwise each transfer on the day is described in turn.
     if (isFlightDay) {
-      descParts.push(...getFlightDayDesc(day, dayTransfers, airportsData));
+      descParts.push(...getFlightDayDesc(day, dayTransfers, airportsData, routesData));
     } else {
       dayTransfers.forEach((routeKey) => {
         if (routeKey === 'local_sightseeing') return;
@@ -399,7 +407,8 @@ export function calculateQuote({
           endCity,
           day.city,
           day.day === 1,
-          isLastDay
+          isLastDay,
+          airportsData
         );
         if (transferText) {
           descParts.push(transferText);
