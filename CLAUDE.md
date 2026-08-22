@@ -196,16 +196,69 @@ measurable.
 - **Open Graph tags are set client-side**, so WhatsApp/Facebook link previews
   show generic homepage content. Needs prerendering or SSR to fix.
 
+## Transfers, airports, and flights
+
+A day holds a **`transfers` array**, not one route. Flying between cities needs
+two on the same day (a drop at the origin airport, a pickup at the
+destination), and either must be removable on its own. `transfer_route` is
+still written as `transfers[0]` — quotes, bookings and packages saved before
+this change store only the string. **Always read a day's transfers through
+`getDayTransfers()` and write them through `withDayTransfers()`** (both in
+`utils/transfers.js`), never by touching either field directly.
+
+`utils/transfers.js` is shared by the pricing engine and the builder UI on
+purpose, so the price charged and the itinerary shown can't disagree.
+
+**Airports are their own master**, not a flag on a city: one airport serves
+several cities (Bhairahawa covers Lumbini, Butwal and Bhairahawa) and its name
+often differs from the city (Chitwan flies via Bharatpur). The transfer *rate*
+is per city, because the drive from a shared airport differs by city.
+
+Airports are **selectable stops in the Route Builder** (`apt:<id>` in the
+dropdown, `apt<code>` in the key), so "Pokhara Airport to Bandipur" is a route
+somebody builds and prices in Admin. This is what stops every new destination
+needing a code change — adding Bandipur is: add the city, list it under
+Pokhara International, build the route, set the rates.
+
+Look an airport transfer up with **`resolveAirportTransfer()`**, never by
+generating `<city>_airport_transfer` directly. It prefers a hand-built route
+(either direction) and falls back to the legacy key, which is why
+`ktm_airport_transfer` and its prices still work.
+
+The Road/Flight toggle lives in the **final builder only, not the intake
+wizard** — it is an operator decision, and asking a traveller up front
+confused the form. Flight is offered only between cities with *different*
+airports. The airfare itself is never priced (no flight inventory); the
+itinerary says "not included" in as many words.
+
 ## Current state and what's next
 
-As of 2026-08-22, `main` is at PR #11. Saved quotes is live. Portal isolation
-and the credential exposure are fixed. Demo passwords have been rotated.
+As of 2026-08-22, `main` is at PR #15. Live: saved quotes, the wallet ledger,
+airports + Road/Flight transfers. Portal isolation and the credential exposure
+are fixed; demo passwords rotated.
 
-Next piece of work, agreed with Tanmay:
+**Outstanding setup Tanmay owes:** the airport transfer rates for Pokhara,
+Chitwan, Lumbini, Butwal, Bhairahawa and Jomsom are all ₹0 (only Kathmandu is
+priced, at 1200/2000/3500/6000). Flight legs under-quote until those are set
+in Admin > Vehicles Editor.
 
-- **Wallet ledger** — the ₹1,45,200 balance on the agent dashboard is a
-  hardcoded number. It should be a real credit/debit history.
-
-Then, roughly in order: client list for agents; filters and export on booking
+Next, roughly in order: client list for agents; filters and export on booking
 history; splitting the portals into separate builds (awaiting his decision);
 Open Graph prerendering; and 6.2 MB of PNGs in `/public` (largest >1 MB).
+
+## Operating on live data
+
+There is no staging environment. `npm run dev` talks to the **live** API, so
+admin actions taken locally hit production immediately.
+
+**`npm run seed` does not run on deploy** — only `npm run migrate` does. A new
+table therefore arrives empty, and its seed rows have to be entered through
+the Admin UI. This is why the airports master had to be filled in by hand
+after the migration created it.
+
+**Be careful deleting through the admin UI.** Deleting a route by walking up
+the DOM from a matched row can match the container holding *all* rows and hit
+the first one instead. That happened: it silently removed `local_sightseeing`
+and `ktm_airport_transfer` (and stripped the Kathmandu rates from every
+vehicle) while appearing to target a test route. Verify what actually
+disappeared *before* saving, and re-read the API afterwards to confirm.
