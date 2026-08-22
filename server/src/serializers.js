@@ -177,6 +177,18 @@ function serializeQuote(q) {
   };
 }
 
+function serializeWalletTransaction(t) {
+  return {
+    id: t.id,
+    agentId: t.agent_id,
+    type: t.type,
+    amount: t.amount,
+    reason: t.reason,
+    createdBy: t.created_by || null,
+    createdAt: t.created_at,
+  };
+}
+
 module.exports = {
   parseJSON,
   serializeHotel,
@@ -189,4 +201,5 @@ module.exports = {
   serializeUser,
   serializeLead,
   serializeQuote,
+  serializeWalletTransaction,
 };

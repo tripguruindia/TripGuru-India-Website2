@@ -282,3 +282,20 @@ export async function deleteQuote(id) {
 export async function convertQuote(id) {
   return apiFetch(`/quotes/${encodeURIComponent(id)}/convert`, { method: 'POST' });
 }
+
+// ---------------------------------------------------------------------------
+// Wallet -- read-only for an agent (getMyWallet); admin can also view any
+// agent's ledger and add manual credit/debit entries (there is no automatic
+// crediting on booking creation, see server/src/routes/admin.js).
+// ---------------------------------------------------------------------------
+export async function getMyWallet() {
+  return apiFetch('/wallet/mine');
+}
+
+export async function getAgentWallet(userId) {
+  return apiFetch(`/admin/users/${encodeURIComponent(userId)}/wallet`);
+}
+
+export async function addWalletTransaction(userId, payload) {
+  return apiFetch(`/admin/users/${encodeURIComponent(userId)}/wallet`, { method: 'POST', body: payload });
+}

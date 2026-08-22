@@ -3,7 +3,8 @@ import {
   Plus, Minus, Trash2, Edit3, Save, Settings, Layers, Calendar, Users, 
   MapPin, TrendingUp, Briefcase, Compass, FileText, CheckCircle, Clock, 
   Printer, ArrowLeft, ArrowRight, Hotel, Car, Coffee, ShieldCheck, Check, Info, AlertTriangle,
-  Download, Upload, Lock, Unlock, Image, User, Mail, Phone, Globe, X, MessageSquare, LogOut
+  Download, Upload, Lock, Unlock, Image, User, Mail, Phone, Globe, X, MessageSquare, LogOut,
+  Wallet, ArrowUpCircle, ArrowDownCircle
 } from 'lucide-react';
 import { syncUserToSheet, syncLeadToSheet, syncBookingToSheet } from './utils/dbSync';
 import { initializeDB, saveDB, INITIAL_ROUTES } from './data/seedData';
@@ -28,6 +29,9 @@ import {
   updateUser,
   deleteUser,
   resetUserPassword,
+  getMyWallet,
+  getAgentWallet,
+  addWalletTransaction,
 } from './utils/apiClient';
 import './App.css';
 import './index.css';
@@ -245,6 +249,22 @@ function App() {
     getMyBookings()
       .then((rows) => { if (!cancelled) setMyBookings(rows); })
       .catch((err) => console.error('Failed to load my bookings', err));
+    return () => { cancelled = true; };
+  }, [currentRoute, currentUser]);
+
+  // B2B "My Wallet": real credit/debit history behind the wallet balance
+  // card, scoped server-side to the logged-in agent. b2b only -- B2C/admin
+  // have no wallet.
+  const [myWallet, setMyWallet] = useState({ balance: 0, transactions: [] });
+  useEffect(() => {
+    if (currentRoute !== 'b2b' || !isApiSession()) {
+      setMyWallet({ balance: 0, transactions: [] });
+      return;
+    }
+    let cancelled = false;
+    getMyWallet()
+      .then((result) => { if (!cancelled) setMyWallet(result); })
+      .catch((err) => console.error('Failed to load my wallet', err));
     return () => { cancelled = true; };
   }, [currentRoute, currentUser]);
 
@@ -621,6 +641,70 @@ function App() {
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [editingUser, setEditingUser] = useState(null);
   const [showAddUserModal, setShowAddUserModal] = useState(false);
+
+  // Admin's view into one agent's wallet ledger -- set to the user row when
+  // the "Wallet" action is clicked, null when the modal is closed.
+  const [walletModalUser, setWalletModalUser] = useState(null);
+  const [walletModalData, setWalletModalData] = useState({ balance: 0, transactions: [] });
+  const [walletModalLoading, setWalletModalLoading] = useState(false);
+  const [walletModalError, setWalletModalError] = useState(null);
+  const [walletEntryForm, setWalletEntryForm] = useState({ type: 'credit', amount: '', reason: '' });
+  const [walletEntrySubmitting, setWalletEntrySubmitting] = useState(false);
+
+  const openWalletModal = async (user) => {
+    setWalletModalUser(user);
+    setWalletEntryForm({ type: 'credit', amount: '', reason: '' });
+    setWalletModalError(null);
+    setWalletModalLoading(true);
+    try {
+      const result = await getAgentWallet(user.id);
+      setWalletModalData(result);
+    } catch (err) {
+      setWalletModalError(err.message || 'Could not load this agent\'s wallet.');
+    } finally {
+      setWalletModalLoading(false);
+    }
+  };
+
+  const handleAddWalletEntry = async (e) => {
+    if (e) e.preventDefault();
+    if (!walletModalUser) return;
+    const amount = Number(walletEntryForm.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      window.alert('Enter an amount greater than zero.');
+      return;
+    }
+    if (!walletEntryForm.reason.trim()) {
+      window.alert('Add a short note explaining this credit/debit.');
+      return;
+    }
+    setWalletEntrySubmitting(true);
+    try {
+      const result = await addWalletTransaction(walletModalUser.id, {
+        type: walletEntryForm.type,
+        amount,
+        reason: walletEntryForm.reason.trim(),
+      });
+      setWalletModalData((prev) => ({
+        balance: result.balance,
+        transactions: [result.transaction, ...prev.transactions],
+      }));
+      setWalletEntryForm({ type: 'credit', amount: '', reason: '' });
+      // Keep the Users table's own copy of walletBalance in step so it's
+      // correct if the admin reopens this modal without a full page refresh.
+      setDb((prevDb) => ({
+        ...prevDb,
+        users: (prevDb.users || []).map((u) =>
+          u.id === walletModalUser.id ? { ...u, walletBalance: result.balance } : u
+        ),
+      }));
+    } catch (err) {
+      window.alert(err.message || 'Could not save this wallet entry.');
+    } finally {
+      setWalletEntrySubmitting(false);
+    }
+  };
+
   const [newUserForm, setNewUserForm] = useState({
     fullName: '',
     email: '',
@@ -3409,6 +3493,63 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     );
   };
 
+  const renderB2bWallet = () => {
+    const when = (iso) => {
+      if (!iso) return '—';
+      const d = new Date(iso);
+      return Number.isNaN(d.getTime())
+        ? '—'
+        : d.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+    };
+
+    return (
+      <div className="max-w-4xl mx-auto py-6 fade-in">
+        <div className="mb-6">
+          <h2 className="quote-card-title text-2xl font-extrabold">My Wallet</h2>
+          <p className="quote-card-meta text-xs mt-1.5 leading-relaxed max-w-2xl">
+            Every credit and debit TripGuru has logged against your account. Balances are added by
+            the TripGuru team once a commission payout is actually made — not automatically when a
+            booking is created.
+          </p>
+        </div>
+
+        <div className="wallet-balance-card mb-6">
+          <span className="wallet-balance-label">Current Balance</span>
+          <strong className="wallet-balance-amount">₹{(myWallet.balance || 0).toLocaleString()}</strong>
+        </div>
+
+        {myWallet.transactions.length === 0 ? (
+          <div className="quote-empty p-10 text-center">
+            <Wallet size={26} className="mx-auto mb-3 opacity-60" />
+            <p className="text-sm font-bold quote-card-title">No wallet activity yet</p>
+            <p className="quote-card-meta text-xs mt-2 max-w-md mx-auto leading-relaxed">
+              Once TripGuru pays out a commission, it'll show up here with a note explaining what it's for.
+            </p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-2">
+            {myWallet.transactions.map((t) => (
+              <div key={t.id} className="quote-card flex items-center gap-4">
+                {t.type === 'credit' ? (
+                  <ArrowUpCircle size={22} className="wallet-icon-credit shrink-0" />
+                ) : (
+                  <ArrowDownCircle size={22} className="wallet-icon-debit shrink-0" />
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="quote-card-title text-sm font-bold truncate">{t.reason}</p>
+                  <p className="quote-card-meta text-[11px] mt-0.5">{when(t.createdAt)}</p>
+                </div>
+                <div className={`quote-pip ${t.type === 'credit' ? 'quote-pip-won' : 'quote-pip-lost'}`}>
+                  {t.type === 'credit' ? '+' : '−'}₹{Number(t.amount || 0).toLocaleString()}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const renderB2bSignedOutPrompt = () => (
     <div className="max-w-6xl mx-auto py-6">
       <div className="bg-gradient-to-r from-emerald-800 to-indigo-950 rounded-3xl p-8 shadow-lg text-center">
@@ -3501,13 +3642,16 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           </div>
 
           {/* Card 4: Wallet Balance */}
-          <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm flex items-center gap-4 hover:shadow-md transition duration-300">
+          <div
+            onClick={() => setB2bSubView('wallet')}
+            className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm flex items-center gap-4 hover:shadow-md transition duration-300 cursor-pointer"
+          >
             <div className="bg-purple-100 text-purple-600 p-4 rounded-2xl">
-              <Layers size={24} />
+              <Wallet size={24} />
             </div>
             <div>
               <span className="text-[10px] text-slate-500 uppercase font-extrabold tracking-wider block">Active Wallet</span>
-              <strong className="text-2xl font-bold text-slate-800">₹1,45,200</strong>
+              <strong className="text-2xl font-bold text-slate-800">₹{(myWallet.balance || 0).toLocaleString()}</strong>
             </div>
           </div>
         </div>
@@ -4381,8 +4525,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       ...(newUserForm.role === 'b2b' ? {
         agencyName: newUserForm.agencyName || 'Horizon Travel Partners',
         agencyAddress: newUserForm.agencyAddress || 'New Delhi, India',
-        agencyWebsite: newUserForm.agencyWebsite || '',
-        walletBalance: 0
+        agencyWebsite: newUserForm.agencyWebsite || ''
       } : {})
     };
 
@@ -4518,7 +4661,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                       {user.role === 'b2b' ? (
                         <div>
                           <strong>Agency:</strong> {user.agencyName} <br />
-                          <strong>Addr:</strong> {user.agencyAddress}
+                          <strong>Addr:</strong> {user.agencyAddress} <br />
+                          <strong>Wallet:</strong> ₹{Number(user.walletBalance || 0).toLocaleString()}
                         </div>
                       ) : (
                         <span className="text-slate-400 italic">None</span>
@@ -4534,6 +4678,16 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                         >
                           <Edit3 size={14} />
                         </button>
+                        {user.role === 'b2b' && (
+                          <button
+                            type="button"
+                            onClick={() => openWalletModal(user)}
+                            className="bg-transparent text-purple-600 hover:text-purple-800 p-2 hover:bg-purple-50 rounded-xl transition"
+                            title="View Wallet / Add Credit or Debit"
+                          >
+                            <Wallet size={14} />
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => handleDeleteUser(user.id)}
@@ -5029,6 +5183,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
               {[
                 { tab: 'dashboard', label: 'Agent Dashboard', icon: <TrendingUp size={12} /> },
                 { tab: 'quotes', label: 'My Quotes', icon: <FileText size={12} /> },
+                { tab: 'wallet', label: 'My Wallet', icon: <Wallet size={12} /> },
                 { tab: 'packages', label: 'Preset Packages', icon: <Layers size={12} /> },
                 { tab: 'wizard', label: 'Custom Planner', icon: <Compass size={12} /> },
                 { tab: 'profile', label: 'My Profile', icon: <User size={12} /> }
@@ -5418,6 +5573,11 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                     visitor without an authenticated agent session. */}
                 {isB2B && b2bSubView === 'dashboard' && (
                   isB2bAuthenticated ? renderB2bDashboard() : renderB2bSignedOutPrompt()
+                )}
+
+                {/* Wallet ledger -- same "must be signed in" rule as the dashboard above. */}
+                {isB2B && b2bSubView === 'wallet' && (
+                  isB2bAuthenticated ? renderB2bWallet() : renderB2bSignedOutPrompt()
                 )}
 
                 {/* Saved-quote pipeline. Same screen for both portals -- the
@@ -10270,6 +10430,97 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                 <button type="submit" className="btn btn-primary btn-sm bg-orange-655 hover:bg-orange-700 text-white rounded-lg py-2 px-4 shadow">Save Changes</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {walletModalUser && (
+        <div className="modal-overlay">
+          <div className="modal-content max-w-lg">
+            <div className="modal-header">
+              <h3 className="text-sm font-black uppercase tracking-wider font-heading text-slate-800">
+                Wallet — {walletModalUser.agencyName || walletModalUser.fullName}
+              </h3>
+              <button onClick={() => setWalletModalUser(null)} className="text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+            <div className="modal-body flex flex-col gap-4 text-left">
+              {walletModalLoading ? (
+                <p className="text-xs text-slate-500 text-center py-6">Loading wallet…</p>
+              ) : walletModalError ? (
+                <p className="text-xs text-red-600 text-center py-6">{walletModalError}</p>
+              ) : (
+                <>
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center justify-between">
+                    <span className="text-[10px] text-slate-500 uppercase font-extrabold tracking-wider">Current Balance</span>
+                    <strong className="text-xl font-bold text-slate-800">₹{Number(walletModalData.balance || 0).toLocaleString()}</strong>
+                  </div>
+
+                  <form onSubmit={handleAddWalletEntry} className="border border-slate-200 rounded-xl p-4 flex flex-col gap-3">
+                    <span className="text-[10px] text-slate-500 uppercase font-extrabold tracking-wider">Add Credit / Debit</span>
+                    <div className="flex gap-2">
+                      <select
+                        value={walletEntryForm.type}
+                        onChange={(e) => setWalletEntryForm({ ...walletEntryForm, type: e.target.value })}
+                        className="px-2.5 py-1.5 text-xs bg-white border border-slate-350 rounded outline-none text-slate-800 w-[100px]"
+                      >
+                        <option value="credit">Credit (+)</option>
+                        <option value="debit">Debit (−)</option>
+                      </select>
+                      <input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        placeholder="Amount"
+                        value={walletEntryForm.amount}
+                        onChange={(e) => setWalletEntryForm({ ...walletEntryForm, amount: e.target.value })}
+                        className="form-input text-xs flex-1"
+                      />
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="Reason (e.g. Commission payout for booking #1234)"
+                      value={walletEntryForm.reason}
+                      onChange={(e) => setWalletEntryForm({ ...walletEntryForm, reason: e.target.value })}
+                      className="form-input text-xs"
+                    />
+                    <button
+                      type="submit"
+                      disabled={walletEntrySubmitting}
+                      className="btn btn-primary btn-sm self-end"
+                      style={{ opacity: walletEntrySubmitting ? 0.6 : 1 }}
+                    >
+                      {walletEntrySubmitting ? 'Saving…' : 'Add Entry'}
+                    </button>
+                  </form>
+
+                  <div className="flex flex-col gap-2 max-h-64 overflow-y-auto">
+                    {walletModalData.transactions.length === 0 ? (
+                      <p className="text-xs text-slate-450 text-center py-4">No wallet activity yet.</p>
+                    ) : (
+                      walletModalData.transactions.map((t) => (
+                        <div key={t.id} className="flex items-center gap-3 border-b border-slate-100 pb-2 last:border-0">
+                          {t.type === 'credit' ? (
+                            <ArrowUpCircle size={16} className="text-emerald-600 shrink-0" />
+                          ) : (
+                            <ArrowDownCircle size={16} className="text-red-600 shrink-0" />
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-semibold text-slate-800 truncate">{t.reason}</p>
+                            <p className="text-[10px] text-slate-450">{new Date(t.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                          </div>
+                          <span className={`text-xs font-bold ${t.type === 'credit' ? 'text-emerald-600' : 'text-red-600'}`}>
+                            {t.type === 'credit' ? '+' : '−'}₹{Number(t.amount || 0).toLocaleString()}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button type="button" onClick={() => setWalletModalUser(null)} className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 bg-transparent">Close</button>
+            </div>
           </div>
         </div>
       )}

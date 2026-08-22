@@ -162,6 +162,17 @@ async function main() {
     );
   }
 
+  console.log('Seeding demo wallet transactions...');
+  for (const u of INITIAL_USERS) {
+    if (u.role !== 'b2b' || !u.walletBalance) continue;
+    await run(
+      `INSERT INTO wallet_transactions (id, agent_id, type, amount, reason, created_by, created_at)
+       VALUES (?, ?, 'credit', ?, ?, NULL, ?)
+       ON CONFLICT(id) DO NOTHING`,
+      [`wtx-seed-${u.id}`, u.id, u.walletBalance, 'Opening balance (demo seed data)', new Date().toISOString()]
+    );
+  }
+
   console.log('Seed complete.');
 }
 
