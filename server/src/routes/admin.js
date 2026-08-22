@@ -12,6 +12,7 @@ const {
   serializeBooking,
   serializeUser,
   serializeLead,
+  serializeWalletTransaction,
 } = require('../serializers');
 
 const router = express.Router();
@@ -425,8 +426,8 @@ router.post('/users', async (req, res) => {
     `INSERT INTO users
       (id, email, password_hash, role, full_name, phone, country_code,
        agency_name, agency_address, agency_phone, agency_email, agency_website,
-       wallet_balance, address, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       address, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id,
       normalizedEmail,
@@ -440,7 +441,6 @@ router.post('/users', async (req, res) => {
       b.agencyPhone || null,
       b.agencyEmail || null,
       b.agencyWebsite || null,
-      b.walletBalance ?? 0,
       b.address || null,
       new Date().toISOString(),
     ]
@@ -455,7 +455,7 @@ router.put('/users/:id', async (req, res) => {
 
   await run(
     `UPDATE users SET full_name = ?, phone = ?, country_code = ?, agency_name = ?, agency_address = ?,
-      agency_phone = ?, agency_email = ?, agency_website = ?, wallet_balance = ?, address = ? WHERE id = ?`,
+      agency_phone = ?, agency_email = ?, agency_website = ?, address = ? WHERE id = ?`,
     [
       b.fullName ?? existing.full_name,
       b.phone ?? existing.phone,
@@ -465,7 +465,6 @@ router.put('/users/:id', async (req, res) => {
       b.agencyPhone ?? existing.agency_phone,
       b.agencyEmail ?? existing.agency_email,
       b.agencyWebsite ?? existing.agency_website,
-      b.walletBalance ?? existing.wallet_balance,
       b.address ?? existing.address,
       req.params.id,
     ]
@@ -491,6 +490,66 @@ router.delete('/users/:id', async (req, res) => {
   const result = await run('DELETE FROM users WHERE id = ?', [req.params.id]);
   if (result.rowsAffected === 0) return res.status(404).json({ error: 'User not found' });
   res.status(204).end();
+});
+
+// ---------------------------------------------------------------------------
+// Wallet -- an agent's wallet_balance is deliberately not editable via the
+// PUT above: this is the only path allowed to change it, so it always moves
+// in step with a wallet_transactions row that explains why. There is no
+// automatic crediting on booking creation (a booking's commission isn't
+// necessarily paid out yet) -- every entry here is a deliberate admin action.
+// ---------------------------------------------------------------------------
+router.get('/users/:id/wallet', async (req, res) => {
+  const user = await one('SELECT id, role, wallet_balance FROM users WHERE id = ?', [req.params.id]);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  if (user.role !== 'b2b') return res.status(400).json({ error: 'Only B2B agents have a wallet' });
+
+  const rows = await all(
+    'SELECT * FROM wallet_transactions WHERE agent_id = ? ORDER BY created_at DESC',
+    [req.params.id]
+  );
+  res.json({
+    balance: user.wallet_balance,
+    transactions: rows.map(serializeWalletTransaction),
+  });
+});
+
+router.post('/users/:id/wallet', async (req, res) => {
+  const user = await one('SELECT id, role, wallet_balance FROM users WHERE id = ?', [req.params.id]);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  if (user.role !== 'b2b') return res.status(400).json({ error: 'Only B2B agents have a wallet' });
+
+  const b = req.body || {};
+  if (b.type !== 'credit' && b.type !== 'debit') {
+    return res.status(400).json({ error: "type must be 'credit' or 'debit'" });
+  }
+  const amount = Number(b.amount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return res.status(400).json({ error: 'amount must be a positive number' });
+  }
+  if (!b.reason || !String(b.reason).trim()) {
+    return res.status(400).json({ error: 'reason is required, e.g. what this credit/debit is for' });
+  }
+
+  const id = genId('wtx');
+  const now = new Date().toISOString();
+  const delta = b.type === 'credit' ? amount : -amount;
+
+  await run(
+    `INSERT INTO wallet_transactions (id, agent_id, type, amount, reason, created_by, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [id, req.params.id, b.type, amount, String(b.reason).trim(), req.user.id, now]
+  );
+  await run('UPDATE users SET wallet_balance = wallet_balance + ? WHERE id = ?', [delta, req.params.id]);
+
+  const [transaction, updatedUser] = await Promise.all([
+    one('SELECT * FROM wallet_transactions WHERE id = ?', [id]),
+    one('SELECT wallet_balance FROM users WHERE id = ?', [req.params.id]),
+  ]);
+  res.status(201).json({
+    balance: updatedUser.wallet_balance,
+    transaction: serializeWalletTransaction(transaction),
+  });
 });
 
 // ---------------------------------------------------------------------------

@@ -184,3 +184,21 @@ CREATE TABLE IF NOT EXISTS quotes (
 
 CREATE INDEX IF NOT EXISTS idx_quotes_agent ON quotes (agent_id);
 CREATE INDEX IF NOT EXISTS idx_quotes_user  ON quotes (user_id);
+
+-- Wallet ledger: the real credit/debit history behind an agent's wallet
+-- balance (users.wallet_balance is a cached running total, kept in sync by
+-- the /admin/users/:id/wallet endpoint that writes this table -- it is never
+-- set directly). Entries are added by an admin only; there is no automatic
+-- crediting on booking creation, since a booking's commission isn't
+-- necessarily paid out yet.
+CREATE TABLE IF NOT EXISTS wallet_transactions (
+  id         TEXT PRIMARY KEY,
+  agent_id   TEXT NOT NULL, -- FK to users.id
+  type       TEXT NOT NULL, -- 'credit' | 'debit'
+  amount     REAL NOT NULL, -- always positive; sign implied by type
+  reason     TEXT NOT NULL,
+  created_by TEXT,          -- FK to users.id, the admin who logged it
+  created_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_wallet_transactions_agent ON wallet_transactions (agent_id);

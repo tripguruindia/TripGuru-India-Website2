@@ -11,6 +11,7 @@ const adminRoutes = require('./routes/admin');
 const publicRoutes = require('./routes/public');
 const bookingsRoutes = require('./routes/bookings');
 const quotesRoutes = require('./routes/quotes');
+const walletRoutes = require('./routes/wallet');
 
 if (!process.env.JWT_SECRET) {
   // Fail fast rather than silently signing tokens with `undefined`.
@@ -43,6 +44,7 @@ app.use('/api/nepal/admin', adminRoutes);
 app.use('/api/nepal/public', publicRoutes);
 app.use('/api/nepal/bookings', bookingsRoutes);
 app.use('/api/nepal/quotes', quotesRoutes);
+app.use('/api/nepal/wallet', walletRoutes);
 
 // Centralized error handler -- catches thrown/rejected errors from routes
 // above (e.g. Prisma errors) so a bug never leaks a stack trace to the client.
