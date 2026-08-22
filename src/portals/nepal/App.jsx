@@ -32,6 +32,17 @@ import {
 import './App.css';
 import './index.css';
 
+// True only when the portal is being served from a developer's own machine.
+// Gates anything that is a convenience while building but a disclosure in
+// public -- currently the quick-login buttons on the sign-in gate, which
+// print working credentials on screen. Deliberately a hostname check rather
+// than import.meta.env.DEV: a production build served locally for testing
+// should still show them, and a dev build must never reach the live domain
+// with them switched on.
+const isLocalDevHost =
+  typeof window !== 'undefined' &&
+  /^(localhost|127\.0\.0\.1|\[::1\])$/.test(window.location.hostname);
+
 const EMPTY_B2B_PROFILE = {
   agentName: '',
   email: '',
@@ -375,11 +386,24 @@ function App() {
       setB2bProfile({ ...EMPTY_B2B_PROFILE });
     }
     setIsLeadCaptured(!!localStorage.getItem('nepal_quote_lead_info'));
-    
-    if (activeRole === 'admin' || activeRole === 'b2b') {
-      window.location.hash = '#/';
-      setView('b2c');
+
+    // Signing out leaves you on the portal you signed out of -- it must never
+    // hand you to a different one. Logging out of the agent portal used to
+    // drop the visitor on the traveller storefront, which both looks like a
+    // fault and tells anyone watching that the three portals are one app.
+    // Each portal's own signed-out screen is the correct destination:
+    //   b2b   -> the agent sign-in prompt (renderB2bSignedOutPrompt)
+    //   admin -> the admin sign-in gate (isAuthorizedForRoute is false with
+    //            no currentUser, so renderAuthGate takes over)
+    //   b2c   -> the storefront it was already on
+    // The hash is deliberately left untouched; rewriting it is what caused
+    // the cross-portal jump.
+    if (activeRole === 'b2b') {
+      setB2bSubView('dashboard');
+    } else if (activeRole === 'b2c') {
       setB2cSubView('packages');
+    } else if (activeRole === 'admin') {
+      setActiveAdminTab('dashboard');
     }
   };
 
@@ -2252,16 +2276,24 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       });
     }
     
-    // Redirect to invoice based on booking type and restore markup
-    if (booking.type === 'B2B') {
-      window.location.hash = '#/b2b';
-      setView('b2b');
+    // Show the voucher inside whichever portal the viewer is already in.
+    // This used to switch portal based on the booking's type -- in practice a
+    // B2B booking is only ever listed on the agent dashboard and a B2C one
+    // only in the traveller's My Bookings, so it always resolved to the
+    // portal you were on anyway. But it wrote the hash to do it, which meant
+    // any mismatch would silently move someone between portals. Portals never
+    // navigate to each other, so the destination comes from the current view.
+    if (view === 'b2b') {
       setB2bSubView('invoice');
+    } else {
+      setB2cSubView('invoice');
+    }
+
+    // The markup shown on the voucher is a property of the booking itself,
+    // not of the portal displaying it, so it still keys off booking.type.
+    if (booking.type === 'B2B') {
       setAgentMarkupInput(booking.markup_percent !== undefined ? booking.markup_percent : 0);
     } else {
-      window.location.hash = '#/';
-      setView('b2c');
-      setB2cSubView('invoice');
       setB2cMarkupInput(booking.markup_percent !== undefined ? booking.markup_percent : (db.settings.b2c_markup_percent || 15));
     }
   };
@@ -4884,25 +4916,33 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
             </div>
           )}
 
-          {/* Quick-Login Evaluator Section */}
-          <div className="border-t border-slate-800/80 mt-6 pt-5">
-            <h4 className="text-[9px] uppercase font-extrabold text-amber-500 tracking-widest mb-3 text-center">
-              Evaluator Quick-Logins (Demo)
-            </h4>
-            <div className="flex flex-col gap-2">
-              {config.quickLogins.map((ql, idx) => (
-                <button
-                  key={idx}
-                  type="button"
-                  onClick={() => handleLogin(ql.email, ql.pass)}
-                  className={`${ql.bg} rounded-xl p-2.5 text-center transition flex flex-col items-center gap-0.5 w-full`}
-                >
-                  <span className="text-[9px] font-black uppercase tracking-wider">{ql.label}</span>
-                  <span className="text-[7px] opacity-80">{ql.email} / {ql.pass}</span>
-                </button>
-              ))}
+          {/* Quick-Login Evaluator Section -- LOCAL DEVELOPMENT ONLY.
+              These buttons print a working email and password on the page and
+              log you straight in on one click. On the admin gate that was a
+              full administrator account advertised on a public URL: anyone who
+              reached #/admin could read the credentials and click through.
+              Kept for local demos, where the host is localhost/127.0.0.1, and
+              never rendered on the live site. */}
+          {isLocalDevHost && (
+            <div className="border-t border-slate-800/80 mt-6 pt-5">
+              <h4 className="text-[9px] uppercase font-extrabold text-amber-500 tracking-widest mb-3 text-center">
+                Evaluator Quick-Logins (Local Dev Only)
+              </h4>
+              <div className="flex flex-col gap-2">
+                {config.quickLogins.map((ql, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    onClick={() => handleLogin(ql.email, ql.pass)}
+                    className={`${ql.bg} rounded-xl p-2.5 text-center transition flex flex-col items-center gap-0.5 w-full`}
+                  >
+                    <span className="text-[9px] font-black uppercase tracking-wider">{ql.label}</span>
+                    <span className="text-[7px] opacity-80">{ql.email} / {ql.pass}</span>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
         </div>
       </div>
