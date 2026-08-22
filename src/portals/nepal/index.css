@@ -1669,6 +1669,154 @@
   color: var(--text-muted) !important;
 }
 
+/* ── Transfer rate sheet (Admin > Vehicles) ──────────────────────────────── */
+/* Token-driven throughout: the sky/amber Tailwind families used for grid
+   highlighting have no global override, so a fixed light background would
+   render cream-on-cream in dark mode. Verified in both themes. */
+.nepal-portal-root .rate-vehicle-card {
+  background: var(--bg-card-alt) !important;
+  border: 1px solid var(--border-color) !important;
+  cursor: pointer;
+}
+
+.nepal-portal-root .rate-vehicle-card:hover {
+  border-color: var(--primary) !important;
+}
+
+.nepal-portal-root .rate-vehicle-name { color: var(--text-primary) !important; }
+.nepal-portal-root .rate-vehicle-meta { color: var(--text-muted) !important; }
+
+.nepal-portal-root .rate-chip {
+  background: transparent !important;
+  border: 1px solid var(--border-color) !important;
+  color: var(--text-muted) !important;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.nepal-portal-root .rate-chip:hover {
+  color: var(--text-primary) !important;
+  border-color: var(--primary) !important;
+}
+
+.nepal-portal-root .rate-chip.is-active {
+  background: var(--primary) !important;
+  border-color: var(--primary) !important;
+  color: #0D0B08 !important;
+}
+
+.nepal-portal-root .rate-chip-count { opacity: 0.7; font-size: 0.65rem; }
+
+.nepal-portal-root .rate-matrix { border-collapse: separate; border-spacing: 0; }
+
+.nepal-portal-root .rate-matrix thead th {
+  background: var(--bg-card-alt) !important;
+  color: var(--text-muted) !important;
+  border-bottom: 1px solid var(--border-color) !important;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+/* The transfer name stays put while the vehicle columns scroll sideways --
+   without it you lose track of which row you are pricing on a narrow screen. */
+.nepal-portal-root .rate-col-name {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  background: var(--bg-card) !important;
+  border-right: 1px solid var(--border-color) !important;
+  min-width: 260px;
+}
+
+.nepal-portal-root .rate-matrix thead .rate-col-name {
+  background: var(--bg-card-alt) !important;
+  z-index: 3;
+}
+
+.nepal-portal-root .rate-row { border-bottom: 1px solid var(--border-color); }
+.nepal-portal-root .rate-row:hover .rate-col-name { background: var(--bg-card-alt) !important; }
+.nepal-portal-root .rate-route-name { color: var(--text-primary) !important; }
+.nepal-portal-root .rate-route-note,
+.nepal-portal-root .rate-empty,
+.nepal-portal-root .rate-reverse-hint { color: var(--text-muted) !important; }
+
+.nepal-portal-root .rate-cell {
+  width: 100px;
+  text-align: right;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  border-radius: var(--radius-sm);
+  background: var(--bg-card-alt) !important;
+  border: 1px solid var(--border-color) !important;
+  color: var(--text-primary) !important;
+  outline: none;
+}
+
+.nepal-portal-root .rate-cell:focus {
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 3px rgba(201, 168, 76, 0.18);
+}
+
+/* Unsaved cells stay visibly marked until the batch is written, so nothing
+   is committed by accident and a stray keystroke is easy to spot. */
+.nepal-portal-root .rate-cell.is-dirty {
+  border-color: var(--primary) !important;
+  background: rgba(201, 168, 76, 0.14) !important;
+  color: var(--primary-light) !important;
+}
+
+/* A figure inherited from the same sector priced the other way round. */
+.nepal-portal-root .rate-cell.is-reverse:not(.is-dirty) {
+  border-style: dashed !important;
+  opacity: 0.85;
+}
+
+.nepal-portal-root .rate-pip {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.45rem;
+  border-radius: 99px;
+  font-size: 0.55rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  border: 1px solid transparent;
+}
+
+.nepal-portal-root .rate-pip-airport {
+  background: rgba(201, 168, 76, 0.16) !important;
+  border-color: rgba(201, 168, 76, 0.4) !important;
+  color: var(--primary) !important;
+}
+
+.nepal-portal-root .rate-pip-intercity {
+  background: rgba(154, 144, 128, 0.16) !important;
+  border-color: rgba(154, 144, 128, 0.4) !important;
+  color: var(--text-muted) !important;
+}
+
+.nepal-portal-root .rate-pip-sightseeing {
+  background: rgba(22, 163, 74, 0.16) !important;
+  border-color: rgba(22, 163, 74, 0.4) !important;
+  color: var(--success) !important;
+}
+
+.nepal-portal-root .rate-delete {
+  background: transparent !important;
+  color: var(--text-muted) !important;
+  cursor: pointer;
+}
+
+.nepal-portal-root .rate-delete:hover {
+  color: var(--error) !important;
+  background: rgba(220, 38, 38, 0.1) !important;
+}
+
+.nepal-portal-root .rate-matrix-scroll { max-height: 70vh; overflow-y: auto; }
+
 /* Airport-run badge on a transfer row. The sibling "Transfer" badge uses
    bg-indigo-100, which the metric-card block above already remaps. */
 /* --primary rather than --primary-light: the light theme maps --primary to a

@@ -25,6 +25,10 @@ import {
   buildRouteName,
   isAirportRouteKey,
   airportFromKeySegment,
+  reverseRouteKey,
+  rateForRoute,
+  findRoute,
+  routeExistsEitherWay,
   TRAVEL_MODE_CAR,
   TRAVEL_MODE_FLIGHT,
 } from './utils/transfers';
@@ -622,13 +626,8 @@ function App() {
   const [newCityName, setNewCityName] = useState('');
   const [newAirportForm, setNewAirportForm] = useState({ name: '', code: '', cities: [] });
 
-  const [editingVehicleId, setEditingVehicleId] = useState(null);
-  const [vehicleEditState, setVehicleEditState] = useState({});
-  const [routesEditState, setRoutesEditState] = useState([]);
-  const [newInlineRoute, setNewInlineRoute] = useState({ fromCity: 'Kathmandu', toCity: 'Pokhara', price: 0 });
   const [globalRouteForm, setGlobalRouteForm] = useState({ fromCity: 'Kathmandu', toCity: 'Pokhara', prices: {} });
   const [globalRouteStops, setGlobalRouteStops] = useState(['Kathmandu', 'Pokhara']);
-  const [localRouteStops, setLocalRouteStops] = useState(['Kathmandu', 'Pokhara']);
   const [showAddVehicleModal, setShowAddVehicleModal] = useState(false);
   const [newVehicleForm, setNewVehicleForm] = useState({ name: '', description: '', capacity: 4, copyFromId: '' });
   const [b2cMarkupInput, setB2cMarkupInput] = useState(15);
@@ -1938,13 +1937,16 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   // already had for overland sectors.
   const ensureRoutesExist = (routeKeys) => {
     const missing = (routeKeys || []).filter(
-      (key) => key && !(db.routes || []).some((r) => r.key === key)
+      // routeExistsEitherWay, not an exact match: a sector already priced in
+      // the opposite direction is priced for this one too, so creating a
+      // second row for it would just be a duplicate to maintain.
+      (key) => key && !routeExistsEitherWay(db.routes || [], key)
     );
     if (missing.length === 0) return;
 
     setDb(prev => {
       const stillMissing = missing.filter(
-        (key) => !(prev.routes || []).some((r) => r.key === key)
+        (key) => !routeExistsEitherWay(prev.routes || [], key)
       );
       if (stillMissing.length === 0) return prev;
 
@@ -3017,6 +3019,135 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     updateDBState({ ...db, cities: (db.cities || []).filter(c => c !== cityName) });
   };
 
+  // ---------------------------------------------------------------------
+  // Transfer rate sheet (Admin > Vehicles)
+  // ---------------------------------------------------------------------
+  // The rates are a matrix -- every transfer priced for every vehicle -- so
+  // they are edited as one: transfers down the rows, vehicles across the
+  // columns. The previous screen showed one vehicle at a time behind an
+  // "edit" mode, which meant opening four cards and scrolling to compare a
+  // single sector's prices.
+  //
+  // Edits are held here until saved rather than written per keystroke, so a
+  // mistyped figure is never live and a batch can be reviewed or discarded.
+  const LOCAL_SIGHTSEEING_KEY = 'local_sightseeing';
+  const [rateEdits, setRateEdits] = useState({}); // { routeKey: { vehicleId: value } }
+  const [rateFilter, setRateFilter] = useState('all');
+  const [rateSearch, setRateSearch] = useState('');
+  const [showAddRoutePanel, setShowAddRoutePanel] = useState(false);
+  const [editingVehicleDetails, setEditingVehicleDetails] = useState(null);
+
+  // "Local Sightseeing" is not a sector -- it bills the vehicle's per-day
+  // sightseeing rate, a separate column. Reading route_rates for it always
+  // returned 0, so the old cards advertised sightseeing as free while the
+  // engine charged thousands. The matrix reads the field actually charged.
+  const rateFor = (routeKey, vehicle) => {
+    const pending = rateEdits[routeKey]?.[vehicle.id];
+    if (pending !== undefined) return pending;
+    if (routeKey === LOCAL_SIGHTSEEING_KEY) return vehicle.daily_sightseeing_rate ?? 0;
+    return rateForRoute(vehicle, routeKey) ?? 0;
+  };
+
+  // Whether this cell's figure comes from the sector priced the other way
+  // round, which is worth showing rather than passing off as its own entry.
+  const rateIsFromReverse = (routeKey, vehicle) => {
+    if (routeKey === LOCAL_SIGHTSEEING_KEY) return false;
+    if (rateEdits[routeKey]?.[vehicle.id] !== undefined) return false;
+    const rates = vehicle.route_rates || {};
+    if (rates[routeKey] !== undefined) return false;
+    const rev = reverseRouteKey(routeKey);
+    return rev !== routeKey && rates[rev] !== undefined;
+  };
+
+  const setRateCell = (routeKey, vehicleId, value) => {
+    setRateEdits(prev => ({
+      ...prev,
+      [routeKey]: { ...(prev[routeKey] || {}), [vehicleId]: value },
+    }));
+  };
+
+  const rateEditCount = Object.values(rateEdits)
+    .reduce((n, byVehicle) => n + Object.keys(byVehicle).length, 0);
+
+  const handleSaveRateEdits = () => {
+    const updatedVehicles = (db.vehicles || []).map(v => {
+      const next = { ...v, route_rates: { ...v.route_rates } };
+      Object.entries(rateEdits).forEach(([routeKey, byVehicle]) => {
+        const raw = byVehicle[v.id];
+        if (raw === undefined) return;
+        const num = Number(raw) || 0;
+        if (routeKey === LOCAL_SIGHTSEEING_KEY) next.daily_sightseeing_rate = num;
+        else next.route_rates[routeKey] = num;
+      });
+      return next;
+    });
+    updateDBState({ ...db, vehicles: updatedVehicles });
+    setRateEdits({});
+  };
+
+  // Deletes by route key, never by position on screen. An earlier version of
+  // this screen matched the row by walking up the DOM, which could land on the
+  // container of every row and remove the first one instead -- that silently
+  // destroyed two live routes.
+  const handleDeleteRouteGlobally = (routeKey) => {
+    const route = (db.routes || []).find(r => r.key === routeKey);
+    if (!route) return;
+    if (!window.confirm(
+      `Delete "${route.name}"?\n\nIt will be removed from every vehicle's rates, and from any itinerary day using it.`
+    )) return;
+
+    const updatedVehicles = (db.vehicles || []).map(v => {
+      const rates = { ...v.route_rates };
+      delete rates[routeKey];
+      return { ...v, route_rates: rates };
+    });
+    setRateEdits(prev => {
+      const next = { ...prev };
+      delete next[routeKey];
+      return next;
+    });
+    updateDBState({
+      ...db,
+      routes: (db.routes || []).filter(r => r.key !== routeKey),
+      vehicles: updatedVehicles,
+    });
+  };
+
+  const routeCategory = (key) => {
+    if (key === LOCAL_SIGHTSEEING_KEY) return 'sightseeing';
+    if (isAirportRouteKey(key)) return 'airport';
+    return 'intercity';
+  };
+
+  const RATE_FILTERS = [
+    { id: 'all', label: 'All' },
+    { id: 'airport', label: 'Airport transfers' },
+    { id: 'intercity', label: 'Inter-city' },
+    { id: 'sightseeing', label: 'Sightseeing' },
+  ];
+
+  const visibleRateRoutes = (db.routes || []).filter(r => {
+    if (rateFilter !== 'all' && routeCategory(r.key) !== rateFilter) return false;
+    const q = rateSearch.trim().toLowerCase();
+    if (!q) return true;
+    return `${r.name} ${r.key}`.toLowerCase().includes(q);
+  });
+
+  const handleSaveVehicleDetails = () => {
+    if (!editingVehicleDetails) return;
+    if (!editingVehicleDetails.name.trim()) {
+      window.alert('Vehicle name is required.');
+      return;
+    }
+    updateDBState({
+      ...db,
+      vehicles: (db.vehicles || []).map(v =>
+        v.id === editingVehicleDetails.id ? { ...v, ...editingVehicleDetails } : v
+      ),
+    });
+    setEditingVehicleDetails(null);
+  };
+
   // Options for a route-builder stop dropdown: every city, plus every airport.
   // Airports are selectable stops so a run between one city's airport and a
   // DIFFERENT city -- Pokhara Airport to Bandipur -- is something you build
@@ -3120,110 +3251,11 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     }));
   };
 
-  // Vehicle rate edit helpers
-  const handleStartEditVehicle = (v) => {
-    setEditingVehicleId(v.id);
-    setVehicleEditState(JSON.parse(JSON.stringify(v)));
-    setRoutesEditState(JSON.parse(JSON.stringify(db.routes || [])));
-    setNewInlineRoute({ fromCity: db.cities?.[0] || 'Kathmandu', toCity: db.cities?.[1] || 'Pokhara', price: 0 });
-    setLocalRouteStops([db.cities?.[0] || 'Kathmandu', db.cities?.[1] || 'Pokhara']);
-  };
-
-  const handleSaveVehicleEdit = () => {
-    const activeKeys = routesEditState.map(r => r.key);
-    const updatedVehicles = db.vehicles.map(v => {
-      if (v.id === editingVehicleId) {
-        const cleanedRates = {};
-        activeKeys.forEach(k => {
-          cleanedRates[k] = vehicleEditState.route_rates[k] !== undefined ? Number(vehicleEditState.route_rates[k]) : 0;
-        });
-        return { ...vehicleEditState, route_rates: cleanedRates };
-      } else {
-        const updatedRates = {};
-        activeKeys.forEach(k => {
-          updatedRates[k] = v.route_rates[k] !== undefined ? Number(v.route_rates[k]) : 0;
-        });
-        return { ...v, route_rates: updatedRates };
-      }
-    });
-
-    updateDBState({ 
-      ...db, 
-      vehicles: updatedVehicles,
-      routes: routesEditState
-    });
-
-    setEditingVehicleId(null);
-  };
-
-  const handleVehicleRouteRateChange = (routeKey, val) => {
-    setVehicleEditState(prev => ({
-      ...prev,
-      route_rates: {
-        ...prev.route_rates,
-        [routeKey]: Number(val)
-      }
-    }));
-  };
-
-  const handleInlineRouteFieldChange = (routeKey, field, val) => {
-    setRoutesEditState(prev => prev.map(r => {
-      if (r.key === routeKey) {
-        return { ...r, [field]: val };
-      }
-      return r;
-    }));
-  };
-
-  const handleInlineRouteDelete = (routeKey) => {
-    if (confirm(`Are you sure you want to delete the transfer route option "${routeKey.replace(/_/g, ' ')}" globally? This will remove it from all days and vehicles.`)) {
-      setRoutesEditState(prev => prev.filter(r => r.key !== routeKey));
-      setVehicleEditState(prev => {
-        const ratesCopy = { ...prev.route_rates };
-        delete ratesCopy[routeKey];
-        return { ...prev, route_rates: ratesCopy };
-      });
-    }
-  };
-
-  const handleInlineRouteAdd = () => {
-    if (!localRouteStops || localRouteStops.length < 2) {
-      alert("Please configure at least 2 stops for the route.");
-      return;
-    }
-
-    // A stop can be a city or an airport, so key/name generation goes through
-    // the shared helpers rather than slugifying the raw dropdown value.
-    const routeName = buildRouteName(db.airports || [], localRouteStops);
-    const routeKey = buildRouteKey(db.airports || [], localRouteStops);
-
-    if (!routeKey || routeKey.split('_to_').length < 2) {
-      alert("Please choose two different stops for the route.");
-      return;
-    }
-    if (routesEditState.some(r => r.key === routeKey)) {
-      alert("A transfer route with this name or code already exists.");
-      return;
-    }
-
-    const newRouteObj = {
-      key: routeKey,
-      name: routeName,
-      description: `Private transfer: ${routeName}`
-    };
-    
-    setRoutesEditState(prev => [...prev, newRouteObj]);
-    setVehicleEditState(prev => ({
-      ...prev,
-      route_rates: {
-        ...prev.route_rates,
-        [routeKey]: Number(newInlineRoute.price) || 0
-      }
-    }));
-    
-    setLocalRouteStops([db.cities?.[0] || 'Kathmandu', db.cities?.[1] || 'Pokhara']);
-    setNewInlineRoute({ fromCity: db.cities?.[0] || 'Kathmandu', toCity: db.cities?.[1] || 'Pokhara', price: 0 });
-  };
+  // NOTE: the per-vehicle edit mode that used to live here (editingVehicleId,
+  // vehicleEditState, routesEditState and the inline route add/delete/rate
+  // handlers) was removed with the rate-sheet rewrite. Its delete path matched
+  // a route by DOM position, which once removed the wrong two routes from live
+  // data; handleDeleteRouteGlobally now deletes by key instead.
 
   const handleGlobalRouteAdd = (e) => {
     e.preventDefault();
@@ -3240,9 +3272,30 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       alert("Please choose two different stops for the global route.");
       return;
     }
-    if (db.routes.some(r => r.key === routeKey)) {
-      alert("A transfer route with this name or code already exists globally.");
+    // Either direction counts as already existing -- a sector priced one way
+    // is priced both ways, so a reversed copy would only be a duplicate.
+    const clash = findRoute(db.routes || [], routeKey);
+    if (clash) {
+      alert(
+        clash.reversedFrom
+          ? `"${clash.name}" already covers this sector in the opposite direction, and a transfer costs the same either way. Edit its rates instead.`
+          : "A transfer route with this name or code already exists globally."
+      );
       return;
+    }
+    // Guard against a second spelling of an airport run that already exists
+    // (e.g. "Pokhara Airport Transfer" vs "Pokhara Airport to Pokhara").
+    const cityStops = globalRouteStops.filter(s => s && !String(s).startsWith('apt:'));
+    for (const city of cityStops) {
+      const existing = resolveAirportTransfer(db.routes || [], db.airports || [], city);
+      if (existing.exists && existing.key !== routeKey && globalRouteStops.some(s => String(s).startsWith('apt:'))) {
+        const existingRoute = (db.routes || []).find(r => r.key === existing.key);
+        if (!window.confirm(
+          `There is already an airport transfer for ${city}: "${existingRoute?.name || existing.key}".\n\n` +
+          `Adding this will leave two routes for the same journey. Continue anyway?`
+        )) return;
+        break;
+      }
     }
 
     const newRouteObj = {
@@ -7347,7 +7400,9 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                           (origin drop + destination pickup); every other day
                                           normally carries one. Each is removable on its own. */}
                                       {getDayTransfers(day).map((routeKey, transferIdx) => {
-                                        const routeObj = db.routes.find(r => r.key === routeKey);
+                                        // findRoute so a sector defined only in
+                                        // the opposite direction still shows.
+                                        const routeObj = findRoute(db.routes || [], routeKey);
                                         if (!routeObj) return null;
                                         const isAirportRun = isAirportRouteKey(routeKey);
                                         return (
@@ -8948,387 +9003,288 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
               {/* TAB 4: Vehicle Route rates */}
               {activeAdminTab === 'vehicles' && (
-                <div className="flex flex-col gap-6">
-                  
-                  {/* Title Header */}
-                  <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
-                    <h3 className="text-xl font-bold font-heading text-slate-800">Vehicle Charter Sectors Tariffs (INR)</h3>
-                    <p className="text-xs text-slate-500 mt-1">Edit sightseeing day rates and custom sector/route transport costs in INR.</p>
+                <div className="flex flex-col gap-5">
+
+                  {/* Title + top actions */}
+                  <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    <div>
+                      <h3 className="text-xl font-bold font-heading text-slate-800">Transfer Rate Sheet (INR)</h3>
+                      <p className="text-xs text-slate-500 mt-1 leading-relaxed max-w-2xl">
+                        One row per transfer, one column per vehicle — edit any price directly.
+                        A sector costs the same in both directions, so entering it once is enough.
+                      </p>
+                    </div>
+                    <div className="flex flex-wrap gap-2 shrink-0">
+                      <button
+                        onClick={() => setShowAddRoutePanel(v => !v)}
+                        className="bg-orange-600 hover:bg-orange-700 text-white font-extrabold text-[11px] uppercase tracking-wider py-2.5 px-4 rounded-xl shadow-md transition flex items-center gap-1.5"
+                      >
+                        <Plus size={14} /> <span>Add Transfer</span>
+                      </button>
+                      <button
+                        onClick={() => setShowAddVehicleModal(true)}
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-[11px] uppercase tracking-wider py-2.5 px-4 rounded-xl shadow-md transition flex items-center gap-1.5"
+                      >
+                        <Plus size={14} /> <span>Add Vehicle</span>
+                      </button>
+                      <button
+                        onClick={exportVehicles}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] uppercase tracking-wider py-2.5 px-4 rounded-xl shadow-md transition flex items-center gap-1.5"
+                      >
+                        <Download size={14} /> <span>Export</span>
+                      </button>
+                      <label className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-[11px] uppercase tracking-wider py-2.5 px-4 rounded-xl shadow-md cursor-pointer transition flex items-center gap-1.5">
+                        <Upload size={14} /> <span>Import</span>
+                        <input type="file" accept=".xlsx, .xls, .csv" onChange={importVehicles} className="hidden" />
+                      </label>
+                    </div>
                   </div>
 
-                  {/* Top Level Vehicle Management Options */}
-                  <div className="flex flex-col gap-6 mb-2">
-                    <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row gap-6 justify-between items-start">
-                      {/* Global Route Add Form */}
-                      <form onSubmit={handleGlobalRouteAdd} className="flex-1 max-w-2xl bg-orange-50/40 border border-orange-100 rounded-xl p-4 flex flex-col gap-3">
-                        <h6 className="text-xs font-extrabold uppercase text-orange-800 tracking-wider flex items-center gap-1.5">
-                          <Plus size={14} className="text-orange-600" /> Add New Transfer Route Globally
-                        </h6>
-                        {/* Dynamic Multi-stop Sequence UI */}
+                  {/* Vehicle strip. Identity only -- prices live in the grid
+                      below, so this stays a compact reference rather than four
+                      long cards you have to scroll past to reach the rates. */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                    {(db.vehicles || []).map(v => (
+                      <button
+                        key={v.id}
+                        type="button"
+                        onClick={() => setEditingVehicleDetails({ ...v })}
+                        className="rate-vehicle-card text-left p-3.5 rounded-xl transition"
+                        title="Edit this vehicle's details"
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="rate-vehicle-name text-xs font-extrabold truncate">{v.name}</span>
+                          <Edit3 size={12} className="opacity-50 shrink-0" />
+                        </div>
+                        <span className="rate-vehicle-meta text-[10px] block mt-1">
+                          Up to {v.capacity || '—'} pax · Sightseeing ₹{Number(v.daily_sightseeing_rate || 0).toLocaleString()}/day
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Add Transfer panel -- collapsed by default so the rate
+                      sheet is what you land on. */}
+                  {showAddRoutePanel && (
+                    <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm">
+                      <form onSubmit={(e) => { handleGlobalRouteAdd(e); }} className="flex flex-col gap-3">
+                        <div className="flex items-center justify-between">
+                          <h6 className="text-xs font-extrabold uppercase text-orange-800 tracking-wider flex items-center gap-1.5">
+                            <Plus size={14} className="text-orange-600" /> Add New Transfer
+                          </h6>
+                          <button type="button" onClick={() => setShowAddRoutePanel(false)} className="text-slate-400 hover:text-slate-600 text-xs font-bold">Close</button>
+                        </div>
+
                         <div className="space-y-2">
-                        <label className="block text-[9px] uppercase font-bold text-slate-400">Route Stops Sequence (cities &amp; airports)</label>
-                        <div className="flex flex-wrap items-center gap-2 bg-white p-2.5 rounded-xl border border-slate-200">
-                        {globalRouteStops.filter(Boolean).map((stop, idx) => (
-                        <React.Fragment key={idx}>
-                        {idx > 0 && (
-                        <div className="flex items-center gap-1 mx-1">
-                        <span className="text-slate-300 font-bold text-xs">➔</span>
-                        <button
-                        type="button"
-                        onClick={() => {
-                        const newStops = [...globalRouteStops];
-                        newStops.splice(idx, 0, db.cities?.[0] || 'Kathmandu');
-                        setGlobalRouteStops(newStops);
-                        }}
-                        className="w-4.5 h-4.5 flex items-center justify-center bg-orange-100 hover:bg-orange-600 text-orange-600 hover:text-white rounded-full text-[10px] font-extrabold transition cursor-pointer shadow-sm"
-                        title="Insert Stop in Between"
-                        >
-                        +
-                        </button>
-                        <span className="text-slate-300 font-bold text-xs">➔</span>
+                          <label className="block text-[9px] uppercase font-bold text-slate-400">Route Stops Sequence (cities &amp; airports)</label>
+                          <div className="flex flex-wrap items-center gap-2 bg-white p-2.5 rounded-xl border border-slate-200">
+                            {globalRouteStops.filter(Boolean).map((stop, idx) => (
+                              <React.Fragment key={idx}>
+                                {idx > 0 && (
+                                  <div className="flex items-center gap-1 mx-1">
+                                    <span className="text-slate-300 font-bold text-xs">➔</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const newStops = [...globalRouteStops];
+                                        newStops.splice(idx, 0, db.cities?.[0] || 'Kathmandu');
+                                        setGlobalRouteStops(newStops);
+                                      }}
+                                      className="w-4.5 h-4.5 flex items-center justify-center bg-orange-100 hover:bg-orange-600 text-orange-600 hover:text-white rounded-full text-[10px] font-extrabold transition cursor-pointer shadow-sm"
+                                      title="Insert Stop in Between"
+                                    >
+                                      +
+                                    </button>
+                                    <span className="text-slate-300 font-bold text-xs">➔</span>
+                                  </div>
+                                )}
+                                <div className="flex items-center bg-orange-55 border border-orange-100 rounded-lg px-2.5 py-1 shadow-sm">
+                                  <select
+                                    value={stop}
+                                    onChange={(e) => {
+                                      const newStops = [...globalRouteStops];
+                                      newStops[idx] = e.target.value;
+                                      setGlobalRouteStops(newStops);
+                                    }}
+                                    className="bg-transparent text-xs font-bold text-orange-900 focus:outline-none cursor-pointer pr-1 max-w-[240px]"
+                                  >
+                                    {renderRouteStopOptions()}
+                                  </select>
+                                  {globalRouteStops.filter(Boolean).length > 2 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => setGlobalRouteStops(prev => prev.filter((_, i) => i !== idx))}
+                                      className="text-orange-400 hover:text-red-655 transition font-extrabold text-[10px] cursor-pointer ml-1"
+                                      title="Remove Stop"
+                                    >
+                                      ✕
+                                    </button>
+                                  )}
+                                </div>
+                              </React.Fragment>
+                            ))}
+                          </div>
+                          <p className="text-[10px] text-slate-505 font-bold italic">
+                            Preview: <span className="text-orange-700 font-extrabold">{routeStopPreview(globalRouteStops)}</span>
+                            <span className="rate-reverse-hint font-normal not-italic"> — the reverse direction is priced automatically.</span>
+                          </p>
                         </div>
-                        )}
-                        <div className="flex items-center bg-orange-55 border border-orange-100 rounded-lg px-2.5 py-1 shadow-sm">
-                        <select
-                        value={stop}
-                        onChange={(e) => {
-                        const newStops = [...globalRouteStops];
-                        newStops[idx] = e.target.value;
-                        setGlobalRouteStops(newStops);
-                        }}
-                        className="bg-transparent text-xs font-bold text-orange-900 focus:outline-none cursor-pointer pr-1 max-w-[240px]"
-                        >
-                        {renderRouteStopOptions()}
-                        </select>
-                        {globalRouteStops.filter(Boolean).length > 2 && (
-                        <button
-                        type="button"
-                        onClick={() => setGlobalRouteStops(prev => prev.filter((_, i) => i !== idx))}
-                        className="text-orange-400 hover:text-red-655 transition font-extrabold text-[10px] cursor-pointer ml-1"
-                        title="Remove Stop"
-                        >
-                        ✕
-                        </button>
-                        )}
-                        </div>
-                        </React.Fragment>
-                        ))}
-                        </div>
-                        <p className="text-[10px] text-slate-505 font-bold italic">
-                        Preview: <span className="text-orange-700 font-extrabold">{routeStopPreview(globalRouteStops)}</span>
-                        </p>
-                        </div>
-                        {/* Prices for each vehicle */}
+
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-2 border-t border-orange-100">
-                          {db.vehicles.map(v => (
+                          {(db.vehicles || []).map(v => (
                             <div key={v.id}>
                               <label className="block text-[9px] uppercase font-bold text-slate-500 mb-0.5 truncate" title={v.name}>{v.name} (₹)</label>
-                              <input 
-                                type="number" 
+                              <input
+                                type="number"
                                 placeholder="0"
                                 value={globalRouteForm.prices[v.id] || ''}
                                 onChange={(e) => setGlobalRouteForm({
-                                  ...globalRouteForm, 
+                                  ...globalRouteForm,
                                   prices: { ...globalRouteForm.prices, [v.id]: e.target.value }
                                 })}
-                                className="w-full px-2 py-1 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-orange-500"
-                                min="0"
+                                className="form-input text-xs py-1.5 px-2 w-full border border-slate-300 rounded-lg"
                               />
                             </div>
                           ))}
                         </div>
+
                         <div className="flex justify-end mt-1">
                           <button type="submit" className="bg-orange-600 hover:bg-orange-700 text-white font-extrabold text-[10px] uppercase tracking-wider py-2 px-4 rounded-lg shadow transition">
-                            Add Global Route
+                            Add Transfer
                           </button>
                         </div>
                       </form>
+                    </div>
+                  )}
 
-                      {/* Add New Vehicle / Import / Export Actions */}
-                      <div className="flex flex-col gap-2.5 w-full md:w-auto shrink-0 self-center">
-                        <button 
-                          onClick={exportVehicles}
-                          className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs uppercase tracking-wider py-2.5 px-4 rounded-xl shadow-md transition hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-1.5"
-                        >
-                          <Download size={14} /> <span>Export Excel</span>
-                        </button>
-                        
-                        <label className="w-full bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs uppercase tracking-wider py-2.5 px-4 rounded-xl shadow-md cursor-pointer transition hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-1.5 text-center">
-                          <Upload size={14} /> <span>Import Excel</span>
-                          <input 
-                            type="file" 
-                            accept=".xlsx, .xls, .csv" 
-                            onChange={importVehicles} 
-                            className="hidden" 
-                          />
-                        </label>
-
+                  {/* Toolbar: search, category filter, and the save bar */}
+                  <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col lg:flex-row lg:items-center gap-3 justify-between">
+                    <div className="flex flex-wrap items-center gap-2">
+                      {RATE_FILTERS.map(f => (
                         <button
-                          onClick={() => setShowAddVehicleModal(true)}
-                          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs uppercase tracking-wider py-2.5 px-5 rounded-xl shadow-md transition hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-2"
+                          key={f.id}
+                          type="button"
+                          onClick={() => setRateFilter(f.id)}
+                          className={`rate-chip ${rateFilter === f.id ? 'is-active' : ''} text-[11px] font-extrabold uppercase tracking-wide py-1.5 px-3 rounded-lg`}
                         >
-                          <Plus size={15} /> <span>Add Vehicle Type</span>
+                          {f.label}
+                          <span className="rate-chip-count ml-1.5">
+                            {f.id === 'all'
+                              ? (db.routes || []).length
+                              : (db.routes || []).filter(r => routeCategory(r.key) === f.id).length}
+                          </span>
                         </button>
-                      </div>
+                      ))}
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-1 lg:justify-end">
+                      <input
+                        type="text"
+                        value={rateSearch}
+                        onChange={(e) => setRateSearch(e.target.value)}
+                        placeholder="Search transfers…"
+                        className="form-input text-xs py-2 px-3 border border-slate-300 rounded-lg w-full lg:max-w-[220px]"
+                      />
+                      {rateEditCount > 0 && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setRateEdits({})}
+                            className="text-[11px] font-bold text-slate-500 hover:text-slate-700 px-2 shrink-0"
+                          >
+                            Discard
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleSaveRateEdits}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[11px] uppercase tracking-wider py-2 px-4 rounded-lg shadow transition shrink-0 flex items-center gap-1.5"
+                          >
+                            <Save size={13} /> Save {rateEditCount} change{rateEditCount === 1 ? '' : 's'}
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
 
-                  {/* Vehicles Grid */}
-                  <div className="grid grid-cols-1 gap-6">
-                    {db.vehicles.map(v => {
-                      const isEditing = editingVehicleId === v.id;
-                      const activeV = isEditing ? vehicleEditState : v;
-                      
-                      return (
-                        <div key={v.id} className="bg-white rounded-3xl border border-slate-200 p-6 shadow-sm hover:shadow-md transition duration-300">
-                          
-                          {/* Vehicle Header Block */}
-                          <div className="flex justify-between items-start border-b border-slate-100 pb-4 mb-5 gap-4 w-full">
-                          {isEditing ? (
-                          <div className="flex-1 space-y-2.5">
-                          <div className="flex flex-wrap items-center gap-2.5">
-                          <input
-                          type="text"
-                          value={vehicleEditState.name}
-                          onChange={(e) => setVehicleEditState(prev => ({ ...prev, name: e.target.value }))}
-                          className="form-input text-xs font-bold py-1.5 px-3 border border-slate-300 rounded-xl w-[220px] focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                          placeholder="Vehicle Type Name"
-                          />
-                          <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                          <span>Max Capacity:</span>
-                          <input
-                          type="number"
-                          value={vehicleEditState.capacity}
-                          onChange={(e) => setVehicleEditState(prev => ({ ...prev, capacity: Number(e.target.value) }))}
-                          className="form-input text-xs font-bold py-1.5 px-3 border border-slate-300 rounded-xl w-[80px] focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                          min="1"
-                          placeholder="Pax"
-                          />
-                          <span>travelers</span>
-                          </div>
-                          </div>
-                          <input
-                          type="text"
-                          value={vehicleEditState.description}
-                          onChange={(e) => setVehicleEditState(prev => ({ ...prev, description: e.target.value }))}
-                          className="form-input text-xs py-1.5 px-3 border border-slate-300 rounded-xl w-full focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
-                          placeholder="Vehicle Description"
-                          />
-                          </div>
-                          ) : (
-                          <div>
-                          <h4 className="text-base font-extrabold text-slate-800 tracking-tight font-heading">{v.name}</h4>
-                          <p className="text-xs text-slate-500 mt-1">{v.description} | Max Capacity: <strong className="text-slate-700 font-semibold">{v.capacity} travelers</strong></p>
-                          </div>
-                          )}
-                          
-                          <div className="shrink-0">
-                          {isEditing ? (
-                          <div className="flex items-center gap-2">
-                          <button
-                          onClick={handleSaveVehicleEdit}
-                          className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs uppercase tracking-wider py-2 px-4 rounded-xl shadow-md transition hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-1.5"
-                          >
-                          <Save size={13} /> Save Vehicle
-                          </button>
-                          <button
-                          onClick={() => setEditingVehicleId(null)}
-                          className="px-4 py-2 text-xs text-slate-500 hover:text-slate-700 bg-transparent font-bold transition"
-                          >
-                          Cancel
-                          </button>
-                          </div>
-                          ) : (
-                          <div className="flex items-center gap-2">
-                          <button
-                          onClick={() => handleStartEditVehicle(v)}
-                          className="bg-white hover:bg-slate-50 border border-slate-200 text-slate-750 font-extrabold text-xs uppercase tracking-wider py-2 px-4 rounded-xl shadow-sm transition hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-1.5"
-                          >
-                          <Edit3 size={13} className="text-indigo-600" /> Edit Details & Rates
-                          </button>
-                          <button
-                          onClick={() => handleDeleteVehicle(v.id)}
-                          className="bg-red-50 hover:bg-red-100 border border-red-200 text-red-600 font-extrabold text-xs uppercase tracking-wider py-2.5 px-3 rounded-xl transition hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center"
-                          title="Delete Vehicle Type"
-                          >
-                          <Trash2 size={13} />
-                          </button>
-                          </div>
-                          )}
-                          </div>
-                          </div>
-
-                          {/* Route prices grid */}
-                          {!isEditing ? (
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                              {/* Daily Sightseeing Rate removed as per user request */}
-
-                              {/* Custom routes loaded dynamically from db.routes */}
-                              {(db.routes || []).map(route => {
-                                const routeKey = route.key;
-                                const price = v.route_rates[routeKey] !== undefined ? v.route_rates[routeKey] : 0;
-                                
-                                return (
-                                  <div key={routeKey} className="p-4 bg-slate-50/60 rounded-2xl border border-slate-200/80 hover:bg-slate-50 transition flex flex-col gap-1">
-                                    <span className="text-[9px] uppercase font-bold text-slate-400 tracking-wider truncate" title={route.name}>
-                                      {route.name}
+                  {/* The rate matrix */}
+                  <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+                    <div className="rate-matrix-scroll overflow-x-auto">
+                      <table className="rate-matrix w-full border-collapse">
+                        <thead>
+                          <tr>
+                            <th className="rate-col-name text-left py-3 px-4 text-[9px] uppercase font-extrabold tracking-wider">Transfer</th>
+                            {(db.vehicles || []).map(v => (
+                              <th key={v.id} className="py-3 px-3 text-[9px] uppercase font-extrabold tracking-wider text-center whitespace-nowrap">
+                                {v.name}
+                              </th>
+                            ))}
+                            <th className="py-3 px-3 w-10"></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {visibleRateRoutes.length === 0 ? (
+                            <tr>
+                              <td colSpan={(db.vehicles || []).length + 2} className="py-10 text-center text-xs rate-empty">
+                                No transfers match this filter.
+                              </td>
+                            </tr>
+                          ) : visibleRateRoutes.map(route => {
+                            const cat = routeCategory(route.key);
+                            return (
+                              <tr key={route.key} className="rate-row">
+                                <th scope="row" className="rate-col-name text-left py-2.5 px-4 font-normal">
+                                  <div className="flex items-center gap-2">
+                                    <span className={`rate-pip rate-pip-${cat}`}>
+                                      {cat === 'airport' ? 'Airport' : cat === 'sightseeing' ? 'Per day' : 'Sector'}
                                     </span>
-                                    <strong className="text-sm font-extrabold text-slate-800 font-heading">₹{price.toLocaleString()}</strong>
-                                    <p className="text-[9px] text-slate-450 italic mt-0.5 line-clamp-1" title={route.description}>{route.description}</p>
+                                    <span className="rate-route-name text-xs font-bold">{route.name}</span>
                                   </div>
-                                );
-                              })}
-                            </div>
-                          ) : (
-                            <div className="flex flex-col gap-5 border-t border-slate-100 pt-5">
-                              
-                              {/* Daily Sightseeing Rate removed as per user request */}
+                                  {route.key === LOCAL_SIGHTSEEING_KEY && (
+                                    <span className="rate-route-note text-[10px] block mt-0.5">
+                                      Charged per sightseeing day, not per sector.
+                                    </span>
+                                  )}
+                                </th>
 
-                              <h5 className="text-xs font-extrabold uppercase text-slate-700 tracking-wider mt-2 flex items-center gap-1.5">
-                                <Car size={14} className="text-slate-500" />
-                                <span>Configure Sector Transfer Route Prices & Descriptions</span>
-                              </h5>
-
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                {routesEditState.map(route => {
-                                  const routeKey = route.key;
-                                  const price = activeV.route_rates[routeKey] !== undefined ? activeV.route_rates[routeKey] : 0;
-                                  
+                                {(db.vehicles || []).map(v => {
+                                  const isDirty = rateEdits[route.key]?.[v.id] !== undefined;
+                                  const fromReverse = rateIsFromReverse(route.key, v);
                                   return (
-                                    <div key={routeKey} className="p-4 bg-slate-50/60 rounded-2xl border border-slate-200/80 flex flex-col gap-3 relative group shadow-sm">
-                                      <button 
-                                        type="button"
-                                        onClick={() => handleInlineRouteDelete(routeKey)}
-                                        className="absolute top-3 right-3 text-slate-400 hover:text-red-500 p-1.5 rounded-lg hover:bg-red-50 transition"
-                                        title="Delete Route Option Globally"
-                                      >
-                                        <Trash2 size={13} />
-                                      </button>
-
-                                      <div className="grid grid-cols-3 gap-3">
-                                        <div className="col-span-2">
-                                          <label className="block text-[9px] uppercase font-bold text-slate-400 tracking-wider mb-1">Transfer Name</label>
-                                          <input 
-                                            type="text"
-                                            value={route.name}
-                                            onChange={(e) => handleInlineRouteFieldChange(routeKey, 'name', e.target.value)}
-                                            className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-800"
-                                          />
-                                        </div>
-                                        <div>
-                                          <label className="block text-[9px] uppercase font-bold text-slate-400 tracking-wider mb-1 text-center">Price (₹)</label>
-                                          <input 
-                                            type="number"
-                                            value={price}
-                                            onChange={(e) => handleVehicleRouteRateChange(routeKey, e.target.value)}
-                                            className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-805 text-center font-heading"
-                                            min="0"
-                                          />
-                                        </div>
-                                      </div>
-
-                                      <div>
-                                        <label className="block text-[9px] uppercase font-bold text-slate-400 tracking-wider mb-1">Description (Used for automatic day itinerary generation)</label>
-                                        <input 
-                                          type="text"
-                                          value={route.description}
-                                          onChange={(e) => handleInlineRouteFieldChange(routeKey, 'description', e.target.value)}
-                                          className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all text-slate-600"
-                                        />
-                                      </div>
-                                    </div>
+                                    <td key={v.id} className="py-2 px-3 text-center">
+                                      <input
+                                        type="number"
+                                        min="0"
+                                        value={rateFor(route.key, v)}
+                                        onChange={(e) => setRateCell(route.key, v.id, e.target.value)}
+                                        className={`rate-cell ${isDirty ? 'is-dirty' : ''} ${fromReverse ? 'is-reverse' : ''}`}
+                                        title={fromReverse ? 'Taken from the same sector priced in the opposite direction' : undefined}
+                                      />
+                                    </td>
                                   );
                                 })}
-                              </div>
 
-                              {/* Add New Route Inline Form */}
-                              <div className="p-4 bg-orange-50/40 border border-orange-100 rounded-2xl flex flex-col gap-3 mt-2 shadow-sm">
-                              <h6 className="text-[10px] font-extrabold uppercase text-orange-850 tracking-wider flex items-center gap-1.5">
-                              <Plus size={13} className="text-orange-600" /> Add Route for this Vehicle
-                              </h6>
-                              <div className="flex flex-col gap-3">
-                              {/* Multi-stop Sequence UI */}
-                              <div className="space-y-1.5">
-                              <label className="block text-[9px] uppercase font-bold text-slate-400">Route Stops Sequence (cities &amp; airports)</label>
-                              <div className="flex flex-wrap items-center gap-2 bg-white p-2 rounded-xl border border-slate-200">
-                              {localRouteStops.filter(Boolean).map((stop, idx) => (
-                              <React.Fragment key={idx}>
-                              {idx > 0 && (
-                              <div className="flex items-center gap-1 mx-1">
-                              <span className="text-slate-300 font-bold text-xs">➔</span>
-                              <button
-                              type="button"
-                              onClick={() => {
-                              const newStops = [...localRouteStops];
-                              newStops.splice(idx, 0, db.cities?.[0] || 'Kathmandu');
-                              setLocalRouteStops(newStops);
-                              }}
-                              className="w-4.5 h-4.5 flex items-center justify-center bg-orange-100 hover:bg-orange-600 text-orange-600 hover:text-white rounded-full text-[10px] font-extrabold transition cursor-pointer shadow-sm"
-                              title="Insert Stop in Between"
-                              >
-                              +
-                              </button>
-                              <span className="text-slate-300 font-bold text-xs">➔</span>
-                              </div>
-                              )}
-                              <div className="flex items-center bg-orange-55 border border-orange-100 rounded-lg px-2 py-0.5 shadow-sm">
-                              <select
-                              value={stop}
-                              onChange={(e) => {
-                              const newStops = [...localRouteStops];
-                              newStops[idx] = e.target.value;
-                              setLocalRouteStops(newStops);
-                              }}
-                              className="bg-transparent text-xs font-bold text-orange-900 focus:outline-none cursor-pointer pr-1 max-w-[240px]"
-                              >
-                              {renderRouteStopOptions()}
-                              </select>
-                              {localRouteStops.filter(Boolean).length > 2 && (
-                              <button
-                              type="button"
-                              onClick={() => setLocalRouteStops(prev => prev.filter((_, i) => i !== idx))}
-                              className="text-orange-400 hover:text-red-655 transition font-extrabold text-[10px] cursor-pointer ml-1"
-                              title="Remove Stop"
-                              >
-                              ✕
-                              </button>
-                              )}
-                              </div>
-                              </React.Fragment>
-                              ))}
-                              </div>
-                              <p className="text-[9px] text-slate-550 font-bold italic">
-                              Preview: <span className="text-orange-700 font-extrabold">{routeStopPreview(localRouteStops)}</span>
-                              </p>
-                              </div>
-
-                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end">
-                              <div>
-                              <label className="block text-[9px] uppercase font-bold text-slate-400 mb-1">Price (₹) for {v.name}</label>
-                              <input
-                              type="number"
-                              value={newInlineRoute.price}
-                              onChange={(e) => setNewInlineRoute({ ...newInlineRoute, price: Number(e.target.value) })}
-                              className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-orange-500 transition-all text-center"
-                              min="0"
-                              />
-                              </div>
-                              <button
-                              type="button"
-                              onClick={handleInlineRouteAdd}
-                              className="bg-orange-600 hover:bg-orange-700 text-white font-extrabold text-[10px] uppercase tracking-wider py-2 px-4 rounded-lg shadow transition"
-                              >
-                              Add Route Option
-                              </button>
-                              </div>
-                              </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
+                                <td className="py-2 px-3 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteRouteGlobally(route.key)}
+                                    className="rate-delete p-1.5 rounded-lg transition"
+                                    title={`Delete ${route.name}`}
+                                  >
+                                    <Trash2 size={13} />
+                                  </button>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
+
+                  <p className="text-[10px] text-slate-450 italic px-1">
+                    Showing {visibleRateRoutes.length} of {(db.routes || []).length} transfers
+                    {rateEditCount > 0 && ` · ${rateEditCount} unsaved change${rateEditCount === 1 ? '' : 's'}`}
+                  </p>
                 </div>
               )}
 
@@ -10873,6 +10829,59 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
               <div className="modal-footer">
                 <button type="button" onClick={() => setEditingUser(null)} className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 bg-transparent">Cancel</button>
                 <button type="submit" className="btn btn-primary btn-sm bg-orange-655 hover:bg-orange-700 text-white rounded-lg py-2 px-4 shadow">Save Changes</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Vehicle identity. Prices are not here on purpose -- they live in the
+          rate sheet, so there is one place to look for any number. */}
+      {editingVehicleDetails && (
+        <div className="modal-overlay">
+          <div className="modal-content max-w-md">
+            <div className="modal-header">
+              <h3 className="text-sm font-black uppercase tracking-wider font-heading text-slate-800">Edit Vehicle</h3>
+              <button onClick={() => setEditingVehicleDetails(null)} className="text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+            <form onSubmit={(e) => { e.preventDefault(); handleSaveVehicleDetails(); }}>
+              <div className="modal-body flex flex-col gap-4 text-left">
+                <div className="form-group mb-0">
+                  <label className="form-label text-[10px]">Vehicle Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={editingVehicleDetails.name || ''}
+                    onChange={(e) => setEditingVehicleDetails({ ...editingVehicleDetails, name: e.target.value })}
+                    className="form-input text-xs"
+                  />
+                </div>
+                <div className="form-group mb-0">
+                  <label className="form-label text-[10px]">Max Capacity (travellers)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    value={editingVehicleDetails.capacity ?? ''}
+                    onChange={(e) => setEditingVehicleDetails({ ...editingVehicleDetails, capacity: Number(e.target.value) || 0 })}
+                    className="form-input text-xs"
+                  />
+                </div>
+                <div className="form-group mb-0">
+                  <label className="form-label text-[10px]">Description</label>
+                  <textarea
+                    rows={3}
+                    value={editingVehicleDetails.description || ''}
+                    onChange={(e) => setEditingVehicleDetails({ ...editingVehicleDetails, description: e.target.value })}
+                    className="form-input text-xs"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-450 -mt-1">
+                  Sightseeing day rate and all transfer prices are edited in the rate sheet behind this popup.
+                </p>
+              </div>
+              <div className="modal-footer">
+                <button type="button" onClick={() => setEditingVehicleDetails(null)} className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 bg-transparent">Cancel</button>
+                <button type="submit" className="btn btn-primary btn-sm">Save Changes</button>
               </div>
             </form>
           </div>
