@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   Plus, Minus, Trash2, Edit3, Save, Settings, Layers, Calendar, Users, 
   MapPin, TrendingUp, Briefcase, Compass, FileText, CheckCircle, Clock, 
@@ -193,6 +193,7 @@ function App() {
       window.removeEventListener('hashchange', handleHashChange);
     };
   }, []);
+
 
   // DB State
   const [db, setDb] = useState(() => {
@@ -595,6 +596,95 @@ function App() {
   // amends that booking instead of creating a second one for the same trip,
   // which would count the money twice on the dashboard.
   const [editingBookingId, setEditingBookingId] = useState(null);
+
+  // Declared here rather than up with the other routing code: this block reads
+  // `lastBookingId`, and sitting above its declaration put it in the temporal
+  // dead zone and rendered the portal as a blank page. Lint passed it; loading
+  // the page did not.
+  // ── Browser Back, inside the portal ──────────────────────────────────────
+  // The portal is one page whose screens are state, not URLs, so Back used to
+  // leave the site altogether: pressed from the quote builder it loaded
+  // whatever page had been open before /nepal. Every screen now leaves a
+  // history entry behind it, so Back walks back through the screens actually
+  // visited -- builder to wizard, wizard to packages, invoice to builder --
+  // and only leaves the portal once there is nothing left to go back to.
+  //
+  // Deliberately NOT a hash write. `currentRoute` is read from the hash and
+  // the three portals must never navigate to each other; each entry keeps the
+  // SAME url and carries the screen in `history.state` instead, so this moves
+  // through one portal's screens without ever changing which portal you are
+  // in.
+  const activeSubView =
+    currentRoute === 'admin' ? activeAdminTab
+      : currentRoute === 'b2b' ? b2bSubView
+        : b2cSubView;
+
+  const applySubView = (route, subView) => {
+    if (route === 'admin') setActiveAdminTab(subView);
+    else if (route === 'b2b') setB2bSubView(subView);
+    else setB2cSubView(subView);
+  };
+
+  // What the current history entry represents. Also what makes this safe
+  // under StrictMode's double-invoked effects: a repeat of the same screen
+  // pushes nothing.
+  const navEntryRef = useRef(null);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const key = `${currentRoute}:${activeSubView}`;
+    const previous = navEntryRef.current;
+    if (previous && previous.key === key) return;
+
+    const entry = { nepalNav: true, route: currentRoute, subView: activeSubView };
+    // Mark the entry we are already standing on when the portal first renders,
+    // and when the hash itself just changed -- the browser has already made an
+    // entry for that, and pushing a second would cost a dead Back press.
+    const routeJustChanged = previous && previous.route !== currentRoute;
+    if (!previous || routeJustChanged) {
+      window.history.replaceState(entry, '', window.location.href);
+    } else {
+      window.history.pushState(entry, '', window.location.href);
+    }
+    navEntryRef.current = { key, route: currentRoute };
+  }, [currentRoute, activeSubView]);
+
+  // Read inside the popstate listener, which is registered once and would
+  // otherwise close over the first render's value.
+  const lastBookingIdRef = useRef(null);
+  useEffect(() => { lastBookingIdRef.current = lastBookingId; }, [lastBookingId]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handlePopState = (event) => {
+      const state = event.state;
+      // No marker means this entry predates the portal -- let the browser
+      // leave the page, which is what Back should do from the first screen.
+      if (!state || !state.nepalNav) return;
+
+      const leaving = navEntryRef.current;
+      // Record where we have landed BEFORE applying it, so the effect above
+      // sees the screen as already current and does not push it again.
+      navEntryRef.current = { key: `${state.route}:${state.subView}`, route: state.route };
+      applySubView(state.route, state.subView);
+
+      // Back out of a voucher into the builder means "change this booking",
+      // which is what the Edit button on the voucher does. Without this the
+      // trip is already booked but the builder does not know it, so pressing
+      // Book again would write a SECOND booking for the same trip and count
+      // its money twice -- a path that only opened up once Back started
+      // moving between screens instead of leaving the site.
+      if (
+        leaving && leaving.key.endsWith(':invoice') &&
+        state.subView === 'customize' && lastBookingIdRef.current
+      ) {
+        setEditingBookingId(lastBookingIdRef.current);
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [checkoutForm, setCheckoutForm] = useState({
     clientName: '',

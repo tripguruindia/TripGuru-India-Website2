@@ -84,6 +84,31 @@ in; each has its own signed-out screen.
 If you need to move a user between views, set the sub-view state. Never write
 the hash.
 
+### Browser Back moves between screens, not off the site
+
+The portal is one page whose screens are state, so Back used to leave
+altogether — pressed in the quote builder it loaded whatever page had been
+open before `/nepal`. Each screen now pushes a history entry, so Back walks
+builder → wizard → packages → dashboard and only leaves once there is nothing
+left to go back to.
+
+**This is not a hash write and must not become one.** Every entry keeps the
+*same* url and carries the screen in `history.state`; `currentRoute` still
+comes from the hash, so this moves within one portal without ever changing
+which portal you are in. When the hash itself changes the entry is *replaced*
+rather than pushed — the browser has already made one, and pushing a second
+costs a dead Back press.
+
+Backing out of a voucher into the builder sets `editingBookingId`, exactly as
+the voucher's *Edit This Booking* button does. Without it the trip is already
+booked but the builder does not know, so pressing Book again would write a
+second booking for the same trip — a path that only opened once Back started
+moving between screens.
+
+The block lives *below* the booking state it reads. Placed with the other
+routing code it sat above `lastBookingId` and rendered the portal as a blank
+page; lint passed it.
+
 ### Rule: the traveller portal must not reveal the others
 
 No link, menu item, or text on the B2C portal may mention the agent or admin
