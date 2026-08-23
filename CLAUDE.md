@@ -231,6 +231,24 @@ separate buttons would have had to rebuild the sheet anyway.
 Both are the same trip at the same grand total; only the detail differs, so the
 two copies can never quote differently.
 
+**The client copy carries no trade wording.** "B2B Partner Voucher", the
+"B2B Travel Partner" tagline and the "Booking Agent" line all describe the
+agent's arrangement with TripGuru, which is nothing to do with the traveller
+reading the document — on the client copy the letterhead is simply the agent's
+own, and the pill reads "Travel Voucher". They stay on the internal copy.
+
+**The agent's logo lives on their account, not in a browser.** `agency_logo`
+is an `ADDITIVE_COLUMNS` entry on `users`, written through
+`PATCH /auth/me` — the caller's own row, chosen from the verified token, never
+from the body; role, email, password and wallet balance are not editable
+there. It used to sit only in `localStorage`, so an agent signing in from
+another device sent unbranded vouchers. Capped at 1MB on both sides: it rides
+along with every login and `/me`.
+
+The letterhead's logo box is `h-24 max-w-[320px]` with `object-contain`, so a
+round logo lands square and centred (96×96) and a wide one with the name built
+in runs the full width (320×64) — neither stretched nor cropped.
+
 **`#print-sheet` does not follow the portal theme.** It is a document preview —
 what is on screen is what prints and what a client is shown — so it stays a
 white sheet with dark ink in both themes. Under the dark theme the portal's
