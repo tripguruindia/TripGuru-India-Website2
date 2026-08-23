@@ -1669,6 +1669,14 @@
   color: var(--text-muted) !important;
 }
 
+/* Flags an activity whose city is not in the Cities master -- it can never be
+   added to a day, so it needs to be visibly wrong rather than merely absent. */
+.nepal-portal-root .activity-city-warning {
+  background: rgba(220, 38, 38, 0.14) !important;
+  color: var(--error) !important;
+  border: 1px solid rgba(220, 38, 38, 0.4) !important;
+}
+
 /* ── Full-day sightseeing toggle (quote builder day card) ────────────────── */
 .nepal-portal-root .sightseeing-toggle {
   background: var(--bg-card) !important;
