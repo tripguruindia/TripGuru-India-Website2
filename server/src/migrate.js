@@ -17,6 +17,15 @@ const client = require('./db');
 
 const ADDITIVE_COLUMNS = [
   { table: 'bookings', column: 'user_id', ddl: 'ALTER TABLE bookings ADD COLUMN user_id TEXT' },
+  // Whole-vehicle activities (full-day local sightseeing): charged once from
+  // vehicle_rates rather than per head. See the activities comment in
+  // schema.sql. Existing rows default to per_person, so nothing reprices.
+  {
+    table: 'activities',
+    column: 'pricing_mode',
+    ddl: "ALTER TABLE activities ADD COLUMN pricing_mode TEXT NOT NULL DEFAULT 'per_person'",
+  },
+  { table: 'activities', column: 'vehicle_rates', ddl: 'ALTER TABLE activities ADD COLUMN vehicle_rates TEXT' },
 ];
 
 async function applyAdditiveColumns() {

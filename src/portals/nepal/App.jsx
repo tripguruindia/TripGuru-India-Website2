@@ -2773,124 +2773,191 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     e.target.value = "";
   };
 
+  // Exported in the SAME orientation as the on-screen rate sheet: transfers
+  // down the rows, vehicles across the columns. It used to come out
+  // transposed -- a row per vehicle with a `Route_<key>` column each -- so the
+  // spreadsheet and the screen disagreed about which way round the data was,
+  // and the columns were raw keys rather than names anyone could read.
+  //
+  // Two sheets, because the two things have different shapes: the matrix, and
+  // the per-vehicle values (capacity, full-day sightseeing) that are not
+  // per-transfer.
   const exportVehicles = async () => {
     const XLSX = await requireXLSX();
     if (!XLSX) return;
-    
-    const routeKeys = db.routes.map(r => r.key);
-    
-    const data = db.vehicles.map(v => {
-      const record = {
-        "ID": v.id,
-        "Name": v.name,
-        "Description": v.description || "",
-        "Capacity": v.capacity || 0,
-        "Daily_Sightseeing_Rate": v.daily_sightseeing_rate || 0
+
+    const vehicles = db.vehicles || [];
+    const sheetRoutes = (db.routes || []).filter(r => r.key !== LOCAL_SIGHTSEEING_KEY);
+
+    const rateRows = sheetRoutes.map(route => {
+      const row = {
+        "Transfer": route.name,
+        "Key": route.key,
+        "Category": routeCategory(route.key) === 'airport' ? 'Airport' : 'Inter-city',
       };
-      
-      routeKeys.forEach(key => {
-        record[`Route_${key}`] = v.route_rates?.[key] || 0;
+      vehicles.forEach(v => {
+        // rateForRoute so a sector priced only in the opposite direction
+        // exports the figure actually charged rather than a misleading 0.
+        row[v.name] = rateForRoute(v, route.key) ?? 0;
       });
-      
-      return record;
+      row["Description"] = route.description || "";
+      return row;
     });
-    
-    const ws = XLSX.utils.json_to_sheet(data);
+
+    const vehicleRows = vehicles.map(v => ({
+      "ID": v.id,
+      "Name": v.name,
+      "Capacity": v.capacity || 0,
+      "Full_Day_Sightseeing_Rate": v.daily_sightseeing_rate || 0,
+      "Description": v.description || "",
+    }));
+
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Vehicles");
-    XLSX.writeFile(wb, "nepal_vehicles_master.xlsx");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rateRows), "Transfer Rates");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(vehicleRows), "Vehicles");
+    XLSX.writeFile(wb, "nepal_transfer_rates.xlsx");
   };
 
+  // Reads back what exportVehicles writes: the "Transfer Rates" matrix keyed
+  // by route, with a column per vehicle NAME, plus an optional "Vehicles"
+  // sheet for the per-vehicle values. Also still accepts the old transposed
+  // layout (a row per vehicle with Route_<key> columns) so a spreadsheet
+  // someone exported before this change keeps importing.
   const importVehicles = async (e) => {
     const XLSX = await requireXLSX();
     if (!XLSX) return;
     const file = e.target.files[0];
     if (!file) return;
-    
+
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
-        const data = new Uint8Array(evt.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const sheetName = workbook.SheetNames[0];
-        const sheet = workbook.Sheets[sheetName];
-        const json = XLSX.utils.sheet_to_json(sheet);
-        
-        let updatedCount = 0;
-        let insertedCount = 0;
-        let routesAdded = 0;
-        
-        const newVehicles = [...db.vehicles];
-        const newRoutes = [...db.routes];
-        
-        json.forEach(row => {
+        const workbook = XLSX.read(new Uint8Array(evt.target.result), { type: 'array' });
+        const sheetJson = (name) => {
+          const ws = workbook.Sheets[name];
+          return ws ? XLSX.utils.sheet_to_json(ws) : null;
+        };
+
+        const newVehicles = [...(db.vehicles || [])];
+        const newRoutes = [...(db.routes || [])];
+        let ratesSet = 0, routesAdded = 0, vehiclesUpdated = 0, vehiclesCreated = 0;
+        const unknownColumns = new Set();
+
+        const findVehicleIdx = ({ id, name }) => {
+          if (id) {
+            const byId = newVehicles.findIndex(v => v.id === id);
+            if (byId > -1) return byId;
+          }
+          if (!name) return -1;
+          const target = String(name).trim().toLowerCase();
+          return newVehicles.findIndex(v => String(v.name).trim().toLowerCase() === target);
+        };
+
+        // --- Sheet: Vehicles (identity + full-day sightseeing) -------------
+        const vehicleRows = sheetJson('Vehicles') || [];
+        vehicleRows.forEach(row => {
           const id = row["ID"] ? String(row["ID"]).trim() : "";
           const name = row["Name"] ? String(row["Name"]).trim() : "";
-          const description = row["Description"] ? String(row["Description"]).trim() : "";
-          const capacity = Number(row["Capacity"]) || 0;
-          const daily_sightseeing_rate = Number(row["Daily_Sightseeing_Rate"]) || 0;
-          
           if (!name) return;
-          
-          const route_rates = {};
-          
-          Object.keys(row).forEach(colKey => {
-            if (colKey.startsWith("Route_")) {
-              const routeKey = colKey.substring(6);
-              route_rates[routeKey] = Number(row[colKey]) || 0;
-              
-              if (!newRoutes.some(r => r.key === routeKey)) {
-                const parts = routeKey.split('_');
-                const routeName = parts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
-                newRoutes.push({
-                  key: routeKey,
-                  name: routeName,
-                  description: `Imported transfer sector: ${routeName}`
-                });
-                routesAdded++;
-              }
-            }
-          });
-          
-          const existingIdx = id ? newVehicles.findIndex(v => v.id === id) : -1;
-          
-          if (existingIdx > -1) {
-            newVehicles[existingIdx] = {
-              ...newVehicles[existingIdx],
-              name,
-              description,
-              capacity,
-              daily_sightseeing_rate,
-              route_rates: {
-                ...newVehicles[existingIdx].route_rates,
-                ...route_rates
-              }
-            };
-            updatedCount++;
+          const patch = {
+            name,
+            capacity: Number(row["Capacity"]) || 0,
+            description: row["Description"] ? String(row["Description"]).trim() : "",
+          };
+          const sightseeing = row["Full_Day_Sightseeing_Rate"] ?? row["Daily_Sightseeing_Rate"];
+          if (sightseeing !== undefined) patch.daily_sightseeing_rate = Number(sightseeing) || 0;
+
+          const idx = findVehicleIdx({ id, name });
+          if (idx > -1) {
+            newVehicles[idx] = { ...newVehicles[idx], ...patch };
+            vehiclesUpdated++;
           } else {
-            const generatedId = id || `v-${name.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${Date.now()}`;
             newVehicles.push({
-              id: generatedId,
-              name,
-              description,
-              capacity,
-              daily_sightseeing_rate,
-              route_rates
+              id: id || `v-${name.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${Date.now()}`,
+              route_rates: {},
+              daily_sightseeing_rate: 0,
+              ...patch,
             });
-            insertedCount++;
+            vehiclesCreated++;
           }
         });
-        
-        updateDBState({
-          ...db,
-          vehicles: newVehicles,
-          routes: newRoutes
-        });
-        
-        alert(`Import Successful!\nProcessed Vehicles Master.\nUpdated: ${updatedCount}\nCreated: ${insertedCount}\nNew routes registered: ${routesAdded}`);
+
+        // --- Sheet: Transfer Rates (the matrix) ----------------------------
+        const rateRows = sheetJson('Transfer Rates')
+          || (vehicleRows.length ? [] : XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]));
+
+        const isLegacyLayout = rateRows.some(r => Object.keys(r).some(k => k.startsWith('Route_')));
+
+        if (isLegacyLayout) {
+          // Old transposed export: one row per vehicle.
+          rateRows.forEach(row => {
+            const name = row["Name"] ? String(row["Name"]).trim() : "";
+            if (!name) return;
+            const idx = findVehicleIdx({ id: row["ID"] ? String(row["ID"]).trim() : "", name });
+            if (idx < 0) return;
+            const rates = { ...newVehicles[idx].route_rates };
+            Object.keys(row).forEach(col => {
+              if (!col.startsWith('Route_')) return;
+              const key = col.slice(6);
+              rates[key] = Number(row[col]) || 0;
+              ratesSet++;
+              if (!newRoutes.some(r => r.key === key)) {
+                newRoutes.push({ key, name: routeLabelFromKey(key, db.airports || []), description: '' });
+                routesAdded++;
+              }
+            });
+            newVehicles[idx] = { ...newVehicles[idx], route_rates: rates };
+          });
+        } else {
+          rateRows.forEach(row => {
+            const key = row["Key"] ? String(row["Key"]).trim() : "";
+            const label = row["Transfer"] ? String(row["Transfer"]).trim() : "";
+            if (!key && !label) return;
+
+            // Key is the stable identifier; fall back to matching the name so
+            // a hand-typed sheet without the Key column still works.
+            let route = key
+              ? newRoutes.find(r => r.key === key)
+              : newRoutes.find(r => String(r.name).trim().toLowerCase() === label.toLowerCase());
+
+            if (!route) {
+              const newKey = key || label.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+              route = {
+                key: newKey,
+                name: label || routeLabelFromKey(newKey, db.airports || []),
+                description: row["Description"] ? String(row["Description"]).trim() : '',
+              };
+              newRoutes.push(route);
+              routesAdded++;
+            } else if (label && label !== route.name) {
+              route.name = label;
+            }
+
+            Object.keys(row).forEach(col => {
+              if (["Transfer", "Key", "Category", "Description"].includes(col)) return;
+              const idx = findVehicleIdx({ name: col });
+              if (idx < 0) { unknownColumns.add(col); return; }
+              newVehicles[idx] = {
+                ...newVehicles[idx],
+                route_rates: { ...newVehicles[idx].route_rates, [route.key]: Number(row[col]) || 0 },
+              };
+              ratesSet++;
+            });
+          });
+        }
+
+        updateDBState({ ...db, vehicles: newVehicles, routes: newRoutes });
+
+        const warn = unknownColumns.size
+          ? `\n\nIgnored ${unknownColumns.size} column(s) that match no vehicle: ${[...unknownColumns].join(', ')}`
+          : '';
+        alert(
+          `Import successful.\n\nRates set: ${ratesSet}\nTransfers added: ${routesAdded}\n` +
+          `Vehicles updated: ${vehiclesUpdated}\nVehicles created: ${vehiclesCreated}${warn}`
+        );
       } catch (err) {
         console.error(err);
-        alert("Failed to parse the Excel file. Please ensure it follows the correct template.");
+        alert("Failed to read that spreadsheet. Export a fresh copy to see the expected layout, edit it, then import it back.");
       }
     };
     reader.readAsArrayBuffer(file);
@@ -2969,7 +3036,14 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   // Activity rate edit helpers
   const handleStartEditActivity = (act) => {
     setEditingActivityId(act.id);
-    setActivityEditState({ ...act });
+    // Defaults so an activity created before per-vehicle pricing existed edits
+    // cleanly rather than binding inputs to undefined.
+    setActivityEditState({
+      pricing_mode: 'per_person',
+      vehicle_rates: {},
+      ...act,
+      vehicle_rates: { ...(act.vehicle_rates || {}) },
+    });
   };
 
   const handleSaveActivityEdit = () => {
@@ -3114,7 +3188,6 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   };
 
   const routeCategory = (key) => {
-    if (key === LOCAL_SIGHTSEEING_KEY) return 'sightseeing';
     if (isAirportRouteKey(key)) return 'airport';
     return 'intercity';
   };
@@ -3123,10 +3196,17 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     { id: 'all', label: 'All' },
     { id: 'airport', label: 'Airport transfers' },
     { id: 'intercity', label: 'Inter-city' },
-    { id: 'sightseeing', label: 'Sightseeing' },
   ];
 
-  const visibleRateRoutes = (db.routes || []).filter(r => {
+  // `local_sightseeing` is a full-day vehicle hire, not a sector between two
+  // places, and it bills the vehicle's own daily_sightseeing_rate rather than
+  // a route rate. Listing it as a transfer read as a category error, so its
+  // price now sits with the vehicle where it belongs. The route key itself
+  // stays in db.routes -- itinerary days still reference it -- it is only
+  // hidden from this sheet.
+  const rateSheetRoutes = (db.routes || []).filter(r => r.key !== LOCAL_SIGHTSEEING_KEY);
+
+  const visibleRateRoutes = rateSheetRoutes.filter(r => {
     if (rateFilter !== 'all' && routeCategory(r.key) !== rateFilter) return false;
     const q = rateSearch.trim().toLowerCase();
     if (!q) return true;
@@ -7400,6 +7480,10 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                           (origin drop + destination pickup); every other day
                                           normally carries one. Each is removable on its own. */}
                                       {getDayTransfers(day).map((routeKey, transferIdx) => {
+                                        // Full-day sightseeing has its own control below -- it
+                                        // is a vehicle hire, not a sector, and is no longer a
+                                        // route in the master list.
+                                        if (routeKey === LOCAL_SIGHTSEEING_KEY) return null;
                                         // findRoute so a sector defined only in
                                         // the opposite direction still shows.
                                         const routeObj = findRoute(db.routes || [], routeKey);
@@ -7425,17 +7509,27 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                         const selectedActs = (day.activity_ids || [])
                                           .map(actId => db.activities.find(a => a.id === actId))
                                           .filter(Boolean);
-                                        return selectedActs.map(act => (
+                                        return selectedActs.map(act => {
+                                          // A whole-vehicle activity is billed once for the
+                                          // vehicle, so showing price_adult would read as a
+                                          // per-head charge it is not.
+                                          const isPerVehicle = act.pricing_mode === 'per_vehicle';
+                                          const amount = isPerVehicle
+                                            ? Number((act.vehicle_rates || {})[selectedVehicleId] || 0)
+                                            : Number(act.price_adult || 0);
+                                          return (
                                           <div key={act.id} className="flex items-center justify-between gap-2 w-full min-w-0 bg-white border border-slate-200 p-2.5 rounded-lg shadow-sm">
                                             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 flex-1 min-w-0 pr-2">
-                                              <span className={`bg-${themeColor}-100 text-${themeColor}-700 text-[10px] font-bold px-2 py-0.5 rounded uppercase shrink-0`}>Activity</span>
+                                              <span className={`${isPerVehicle ? 'sightseeing-pip' : `bg-${themeColor}-100 text-${themeColor}-700`} text-[10px] font-bold px-2 py-0.5 rounded uppercase shrink-0`}>
+                                                {isPerVehicle ? 'Vehicle Day' : 'Activity'}
+                                              </span>
                                               <span className="text-xs text-slate-700 font-medium break-words text-left min-w-0">{act.name}</span>
                                             </div>
                                             <div className="flex items-center gap-3 shrink-0">
-                                              <strong className="text-xs text-brand-navy font-bold">
-                                                {view === 'b2c' && !hasContactDetails 
-                                                  ? '🔒 Locked' 
-                                                  : `₹${Math.round(act.price_adult * b2bDisplayFactor).toLocaleString()}`
+                                              <strong className="text-xs text-brand-navy font-bold whitespace-nowrap">
+                                                {view === 'b2c' && !hasContactDetails
+                                                  ? '🔒 Locked'
+                                                  : `₹${Math.round(amount * b2bDisplayFactor).toLocaleString()}${isPerVehicle ? ' / vehicle' : ' / pax'}`
                                                 }
                                               </strong>
                                               <button type="button" onClick={() => handleToggleActivity(idx, act.id)} className="text-slate-400 hover:text-red-500 p-1">
@@ -7443,7 +7537,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                               </button>
                                             </div>
                                           </div>
-                                        ));
+                                          );
+                                        });
                                       })()}
 
                                       <div className="flex flex-col sm:flex-row gap-2 mt-1">
@@ -8923,29 +9018,64 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                         ))}
                                       </select>
                                     </td>
-                                    <td className="py-2.5 px-4">
-                                      <input 
-                                        type="number"
-                                        value={activityEditState.price_adult}
-                                        onChange={(e) => setActivityEditState({ ...activityEditState, price_adult: Number(e.target.value) })}
-                                        className="w-28 px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-800 text-center"
-                                      />
-                                    </td>
-                                    <td className="py-2.5 px-4">
-                                      <input 
-                                        type="number"
-                                        value={activityEditState.price_child}
-                                        onChange={(e) => setActivityEditState({ ...activityEditState, price_child: Number(e.target.value) })}
-                                        className="w-28 px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-800 text-center"
-                                      />
-                                    </td>
+                                    {activityEditState.pricing_mode === 'per_vehicle' ? (
+                                      <td className="py-2.5 px-4" colSpan={2}>
+                                        <div className="flex flex-wrap gap-2">
+                                          {(db.vehicles || []).map(v => (
+                                            <label key={v.id} className="flex flex-col gap-0.5">
+                                              <span className="text-[9px] uppercase font-bold text-slate-500 truncate max-w-[90px]" title={v.name}>{v.name}</span>
+                                              <input
+                                                type="number"
+                                                min="0"
+                                                value={(activityEditState.vehicle_rates || {})[v.id] ?? 0}
+                                                onChange={(e) => setActivityEditState({
+                                                  ...activityEditState,
+                                                  vehicle_rates: { ...(activityEditState.vehicle_rates || {}), [v.id]: Number(e.target.value) || 0 },
+                                                })}
+                                                className="w-24 px-2 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-all font-semibold text-slate-800 text-center"
+                                              />
+                                            </label>
+                                          ))}
+                                        </div>
+                                      </td>
+                                    ) : (
+                                      <>
+                                        <td className="py-2.5 px-4">
+                                          <input
+                                            type="number"
+                                            value={activityEditState.price_adult}
+                                            onChange={(e) => setActivityEditState({ ...activityEditState, price_adult: Number(e.target.value) })}
+                                            className="w-28 px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-800 text-center"
+                                          />
+                                        </td>
+                                        <td className="py-2.5 px-4">
+                                          <input
+                                            type="number"
+                                            value={activityEditState.price_child}
+                                            onChange={(e) => setActivityEditState({ ...activityEditState, price_child: Number(e.target.value) })}
+                                            className="w-28 px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-800 text-center"
+                                          />
+                                        </td>
+                                      </>
+                                    )}
                                     <td className="py-2.5 px-6">
-                                      <input 
-                                        type="text" 
-                                        value={activityEditState.description}
-                                        onChange={(e) => setActivityEditState({ ...activityEditState, description: e.target.value })}
-                                        className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-850"
-                                      />
+                                      <div className="flex flex-col gap-1.5">
+                                        <select
+                                          value={activityEditState.pricing_mode || 'per_person'}
+                                          onChange={(e) => setActivityEditState({ ...activityEditState, pricing_mode: e.target.value })}
+                                          className="w-full px-3 py-1.5 text-[11px] bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 font-bold text-slate-800"
+                                          title="Per person multiplies by party size; per vehicle is charged once for the day"
+                                        >
+                                          <option value="per_person">Charge per person (× party size)</option>
+                                          <option value="per_vehicle">Charge per vehicle (once per day)</option>
+                                        </select>
+                                        <input
+                                          type="text"
+                                          value={activityEditState.description}
+                                          onChange={(e) => setActivityEditState({ ...activityEditState, description: e.target.value })}
+                                          className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-850"
+                                        />
+                                      </div>
                                     </td>
                                     <td className="py-2.5 px-6 text-right">
                                       <div className="flex gap-2 justify-end">
@@ -8966,10 +9096,34 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                   </>
                                 ) : (
                                   <>
-                                    <td className="py-3.5 px-6 font-extrabold text-slate-805">{act.name}</td>
+                                    <td className="py-3.5 px-6 font-extrabold text-slate-805">
+                                      <span className="flex items-center gap-1.5">
+                                        {act.pricing_mode === 'per_vehicle' && (
+                                          <span className="sightseeing-pip text-[9px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0">Per vehicle</span>
+                                        )}
+                                        {act.name}
+                                      </span>
+                                    </td>
                                     <td className="py-3.5 px-4 font-semibold text-slate-600">{act.city}</td>
-                                    <td className="py-3.5 px-4 font-bold text-slate-850">₹{act.price_adult.toLocaleString()}</td>
-                                    <td className="py-3.5 px-4 font-bold text-slate-850">₹{act.price_child.toLocaleString()}</td>
+                                    {act.pricing_mode === 'per_vehicle' ? (
+                                      // One vehicle for one day: a per-head price would be
+                                      // meaningless, so the two per-person columns give way to
+                                      // the rate for each vehicle.
+                                      <td className="py-3.5 px-4" colSpan={2}>
+                                        <div className="flex flex-wrap gap-1.5">
+                                          {(db.vehicles || []).map(v => (
+                                            <span key={v.id} className="text-[10px] font-bold bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5">
+                                              {v.name.split(' ')[0]} ₹{Number((act.vehicle_rates || {})[v.id] || 0).toLocaleString()}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      </td>
+                                    ) : (
+                                      <>
+                                        <td className="py-3.5 px-4 font-bold text-slate-850">₹{act.price_adult.toLocaleString()}</td>
+                                        <td className="py-3.5 px-4 font-bold text-slate-850">₹{act.price_child.toLocaleString()}</td>
+                                      </>
+                                    )}
                                     <td className="py-3.5 px-6 text-xs text-slate-500 leading-relaxed">{act.description}</td>
                                     <td className="py-3.5 px-6 text-right">
                                       <div className="flex gap-2 justify-end">
@@ -9012,6 +9166,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                       <p className="text-xs text-slate-500 mt-1 leading-relaxed max-w-2xl">
                         One row per transfer, one column per vehicle — edit any price directly.
                         A sector costs the same in both directions, so entering it once is enough.
+                        Full-day sightseeing is priced on the vehicle itself, not here — click a
+                        vehicle above to set it.
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2 shrink-0">
@@ -9170,8 +9326,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                           {f.label}
                           <span className="rate-chip-count ml-1.5">
                             {f.id === 'all'
-                              ? (db.routes || []).length
-                              : (db.routes || []).filter(r => routeCategory(r.key) === f.id).length}
+                              ? rateSheetRoutes.length
+                              : rateSheetRoutes.filter(r => routeCategory(r.key) === f.id).length}
                           </span>
                         </button>
                       ))}
@@ -9235,15 +9391,10 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                 <th scope="row" className="rate-col-name text-left py-2.5 px-4 font-normal">
                                   <div className="flex items-center gap-2">
                                     <span className={`rate-pip rate-pip-${cat}`}>
-                                      {cat === 'airport' ? 'Airport' : cat === 'sightseeing' ? 'Per day' : 'Sector'}
+                                      {cat === 'airport' ? 'Airport' : 'Sector'}
                                     </span>
                                     <span className="rate-route-name text-xs font-bold">{route.name}</span>
                                   </div>
-                                  {route.key === LOCAL_SIGHTSEEING_KEY && (
-                                    <span className="rate-route-note text-[10px] block mt-0.5">
-                                      Charged per sightseeing day, not per sector.
-                                    </span>
-                                  )}
                                 </th>
 
                                 {(db.vehicles || []).map(v => {
@@ -9282,7 +9433,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                   </div>
 
                   <p className="text-[10px] text-slate-450 italic px-1">
-                    Showing {visibleRateRoutes.length} of {(db.routes || []).length} transfers
+                    Showing {visibleRateRoutes.length} of {rateSheetRoutes.length} transfers
                     {rateEditCount > 0 && ` · ${rateEditCount} unsaved change${rateEditCount === 1 ? '' : 's'}`}
                   </p>
                 </div>
@@ -10197,11 +10348,20 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                           className="w-full text-left px-4 py-3 rounded-lg hover:bg-slate-50 transition border border-transparent hover:border-slate-200 flex items-center justify-between gap-3"
                         >
                           <div className="flex flex-col flex-1 gap-1">
-                            <span className="text-xs font-bold text-slate-800">{act.name}</span>
+                            <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                              {act.pricing_mode === 'per_vehicle' && (
+                                <span className="sightseeing-pip text-[9px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0">Vehicle Day</span>
+                              )}
+                              {act.name}
+                            </span>
                             <span className="text-[10px] text-slate-500 line-clamp-1">{act.description}</span>
                           </div>
-                          <strong className="text-xs text-brand-navy shrink-0">
-                            {view === 'b2c' && !hasContactDetails ? '🔒 Locked' : `₹${Math.round(act.price_adult * b2bDisplayFactor).toLocaleString()}`}
+                          <strong className="text-xs text-brand-navy shrink-0 whitespace-nowrap">
+                            {view === 'b2c' && !hasContactDetails
+                              ? '🔒 Locked'
+                              : act.pricing_mode === 'per_vehicle'
+                                ? `₹${Math.round(Number((act.vehicle_rates || {})[selectedVehicleId] || 0) * b2bDisplayFactor).toLocaleString()} / vehicle`
+                                : `₹${Math.round(act.price_adult * b2bDisplayFactor).toLocaleString()} / pax`}
                           </strong>
                         </button>
                       );
@@ -10866,6 +11026,23 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                     className="form-input text-xs"
                   />
                 </div>
+                {/* A full-day sightseeing hire is a property of the vehicle,
+                    not a sector between two places, so it is priced here
+                    rather than in the transfer sheet. */}
+                <div className="form-group mb-0">
+                  <label className="form-label text-[10px]">Full-Day Sightseeing Rate (₹ per day)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={editingVehicleDetails.daily_sightseeing_rate ?? 0}
+                    onChange={(e) => setEditingVehicleDetails({ ...editingVehicleDetails, daily_sightseeing_rate: Number(e.target.value) || 0 })}
+                    className="form-input text-xs"
+                  />
+                  <span className="text-[10px] text-slate-450 block mt-1 leading-relaxed">
+                    Charged for each day the vehicle is at the guest's disposal for local
+                    sightseeing. Not a point-to-point transfer, so it is not in the rate sheet.
+                  </span>
+                </div>
                 <div className="form-group mb-0">
                   <label className="form-label text-[10px]">Description</label>
                   <textarea
@@ -10876,7 +11053,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                   />
                 </div>
                 <p className="text-[10px] text-slate-450 -mt-1">
-                  Sightseeing day rate and all transfer prices are edited in the rate sheet behind this popup.
+                  Point-to-point transfer prices are edited in the rate sheet behind this popup.
                 </p>
               </div>
               <div className="modal-footer">

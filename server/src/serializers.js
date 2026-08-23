@@ -56,6 +56,10 @@ function serializeActivity(a) {
     description: a.description || '',
     price_adult: a.price_adult,
     price_child: a.price_child,
+    // 'per_vehicle' activities (full-day sightseeing) bill vehicle_rates once
+    // instead of price_adult/price_child per head -- see schema.sql.
+    pricing_mode: a.pricing_mode || 'per_person',
+    vehicle_rates: parseJSON(a.vehicle_rates, {}),
   };
 }
 

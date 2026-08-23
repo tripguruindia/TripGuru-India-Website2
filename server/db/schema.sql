@@ -36,13 +36,24 @@ CREATE TABLE IF NOT EXISTS routes (
   description TEXT
 );
 
+-- Most activities are sold per head (an entry ticket, a paraglide), so
+-- price_adult/price_child multiply by the party size. A full-day local
+-- sightseeing run is not: it is one vehicle out for one day, and it costs
+-- what that vehicle costs whether two people ride in it or twelve. Those
+-- carry pricing_mode = 'per_vehicle' and are charged once from vehicle_rates,
+-- keyed by vehicle id, ignoring price_adult/price_child entirely.
+--
+-- Both columns are added via ADDITIVE_COLUMNS in migrate.js -- this table
+-- predates them on the live database.
 CREATE TABLE IF NOT EXISTS activities (
   id          TEXT PRIMARY KEY,
   name        TEXT NOT NULL,
   city        TEXT,
   description TEXT,
   price_adult  REAL,
-  price_child  REAL
+  price_child  REAL,
+  pricing_mode TEXT NOT NULL DEFAULT 'per_person', -- 'per_person' | 'per_vehicle'
+  vehicle_rates TEXT -- JSON: {vehicleId: number}, used when per_vehicle
 );
 
 CREATE TABLE IF NOT EXISTS packages (

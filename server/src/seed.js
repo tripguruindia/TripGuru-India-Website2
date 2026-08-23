@@ -68,10 +68,16 @@ async function main() {
   console.log('Seeding activities...');
   for (const a of INITIAL_ACTIVITIES) {
     await run(
-      `INSERT INTO activities (id, name, city, description, price_adult, price_child) VALUES (?, ?, ?, ?, ?, ?)
+      `INSERT INTO activities (id, name, city, description, price_adult, price_child, pricing_mode, vehicle_rates)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET name=excluded.name, city=excluded.city, description=excluded.description,
-         price_adult=excluded.price_adult, price_child=excluded.price_child`,
-      [a.id, a.name, a.city, a.description, a.price_adult, a.price_child]
+         price_adult=excluded.price_adult, price_child=excluded.price_child,
+         pricing_mode=excluded.pricing_mode, vehicle_rates=excluded.vehicle_rates`,
+      [
+        a.id, a.name, a.city, a.description, a.price_adult, a.price_child,
+        a.pricing_mode || 'per_person',
+        JSON.stringify(a.vehicle_rates || {}),
+      ]
     );
   }
 

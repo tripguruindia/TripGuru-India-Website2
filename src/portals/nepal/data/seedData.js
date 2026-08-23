@@ -365,7 +365,22 @@ export const INITIAL_ACTIVITIES = [
     description: "Watch a spectacular sunrise, followed by an easy 3-hour hike through local villages and terraced farms.",
     price_adult: 1800,
     price_child: 1000
-  }
+  },
+
+  // Full-day local sightseeing, priced per VEHICLE rather than per head: one
+  // car out for one day costs the same whether two people ride in it or
+  // twelve. Rates carried over from the vehicles' former
+  // daily_sightseeing_rate so existing quotes reprice identically.
+  ...["Kathmandu", "Pokhara", "Chitwan", "Nagarkot", "Lumbini", "Butwal", "Bhairahawa", "Jomsom"].map((city) => ({
+    id: `a-sightseeing-${city.toLowerCase()}`,
+    name: `${city} Full-Day Sightseeing (Vehicle)`,
+    city,
+    description: `Private vehicle at your disposal for a full day of local sightseeing in ${city}.`,
+    price_adult: 0,
+    price_child: 0,
+    pricing_mode: "per_vehicle",
+    vehicle_rates: { "v-sedan": 3800, "v-suv": 6500, "v-hiace": 9500, "v-coaster": 15000 }
+  }))
 ];
 
 export const INITIAL_PACKAGES = [

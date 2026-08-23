@@ -56,6 +56,21 @@ const INITIAL_ACTIVITIES = [
   { id: 'a-chi-canoe', name: 'Rapti River Canoeing & Bird Watching', city: 'Chitwan', description: 'Canoe down the Rapti River in a hand-carved dugout canoe to see mugger crocodiles and water birds.', price_adult: 1500, price_child: 1000 },
   { id: 'a-chi-dance', name: 'Tharu Cultural Dance Show', city: 'Chitwan', description: 'Vibrant traditional Tharu stick dance performance illustrating Tharu history and culture.', price_adult: 800, price_child: 400 },
   { id: 'a-nag-sunrise', name: 'Nagarkot Sunrise & Village Hike', city: 'Nagarkot', description: 'Watch a spectacular sunrise, followed by an easy 3-hour hike through local villages and terraced farms.', price_adult: 1800, price_child: 1000 },
+
+  // Full-day local sightseeing. Priced per VEHICLE, not per head: it is one
+  // car out for one day, costing the same whether two people ride in it or
+  // twelve. Rates carried over from the vehicles' former
+  // daily_sightseeing_rate so existing quotes reprice identically.
+  ...['Kathmandu', 'Pokhara', 'Chitwan', 'Nagarkot', 'Lumbini', 'Butwal', 'Bhairahawa', 'Jomsom'].map((city) => ({
+    id: `a-sightseeing-${city.toLowerCase()}`,
+    name: `${city} Full-Day Sightseeing (Vehicle)`,
+    city,
+    description: `Private vehicle at your disposal for a full day of local sightseeing in ${city}.`,
+    price_adult: 0,
+    price_child: 0,
+    pricing_mode: 'per_vehicle',
+    vehicle_rates: { 'v-sedan': 3800, 'v-suv': 6500, 'v-hiace': 9500, 'v-coaster': 15000 },
+  })),
 ];
 
 const INITIAL_PACKAGES = [
