@@ -170,6 +170,22 @@ const routeNameForKey = (key, airportsData = []) => {
     .join(' to ');
 };
 
+// Comparing city names from two different sources (a day, a stored route), so
+// trimmed and case-insensitive like everywhere else.
+const sameCityName = (a, b) =>
+  String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+
+// CP/MAP/AP are trade shorthand. A client reading the itinerary should not
+// have to look them up.
+const describeMealPlan = (plan) => {
+  switch (plan) {
+    case 'MAP': return 'breakfast and dinner included';
+    case 'AP': return 'all meals included';
+    case 'CP': return 'bed and breakfast';
+    default: return 'room only';
+  }
+};
+
 const getTransferDesc = (routeKey, startCity, endCity, dayCity, isFirstDay, isLastDay, airportsData = []) => {
   if (!routeKey || routeKey === 'local_sightseeing') return '';
 
@@ -178,8 +194,8 @@ const getTransferDesc = (routeKey, startCity, endCity, dayCity, isFirstDay, isLa
   if (routeKey.endsWith('_airport_transfer')) {
     const city = formatCityName(routeKey.replace(/_airport_transfer$/, ''));
     return isLastDay
-      ? `Private transfer: ${city} hotel to ${city} Airport.`
-      : `Private transfer: ${city} Airport to your ${city} hotel.`;
+      ? `Private transfer from your ${city} hotel to ${city} airport.`
+      : `Met on arrival at ${city} airport and transferred to your hotel.`;
   }
 
   if (routeKey.includes('_to_')) {
@@ -192,7 +208,19 @@ const getTransferDesc = (routeKey, startCity, endCity, dayCity, isFirstDay, isLa
     };
     const from = label(parts[0]);
     const to = label(parts[parts.length - 1]);
-    return `Private transfer: ${from} to ${to}.`;
+    const via = parts.length > 2
+      ? ` via ${parts.slice(1, -1).map(label).join(' and ')}`
+      : '';
+    // An airport at either end is a meeting or a drop, not a drive between
+    // towns. "transferred to Gorakhpur" reads oddly when the guest is already
+    // in Gorakhpur, so name the hotel rather than the town.
+    if (airportFromKeySegment(airportsData, parts[0])) {
+      return `Met on arrival at ${from} and transferred to your ${to} hotel.`;
+    }
+    if (airportFromKeySegment(airportsData, parts[parts.length - 1])) {
+      return `Private transfer from ${from} to ${to}.`;
+    }
+    return `Drive from ${from} to ${to}${via}, by private vehicle.`;
   }
 
   return `Private transfer: ${formatCityName(routeKey.replace(/_/g, ' '))}.`;
@@ -219,11 +247,11 @@ const getFlightDayDesc = (day, transfers, airportsData, routesData) => {
   const parts = [];
   if (hasDrop) {
     parts.push(
-      `Private transfer from your ${fromCity} hotel to ${fromAirport ? fromAirport.name : `${fromCity} Airport`}.`
+      `Private transfer from your ${fromCity} hotel to ${fromAirport ? fromAirport.name : `${fromCity} airport`}.`
     );
   }
   parts.push(
-    `Fly ${fromCity} to ${toCity}. Airfare is not included in this quote.`
+    `Fly from ${fromCity} to ${toCity}. Airfare is not included in this quote.`
   );
   if (hasPickup) {
     parts.push(
@@ -423,22 +451,37 @@ export function calculateQuote({
       ? null
       : routeObj;
 
-    let heading = "";
+    // The heading leads with the day's movement rather than concatenating the
+    // transfer's stored name with every activity's, which produced things like
+    // "GORAKHPUR to Kathmandu Overland & Kathmandu Full-Day Sightseeing
+    // (Vehicle)" -- the city twice over and an internal label in front of the
+    // client. A whole-vehicle activity is transport, not a highlight, so it is
+    // described but never named in the title.
+    const highlightActs = selectedActs.filter(a => a.pricing_mode !== 'per_vehicle');
+    const prevCity = index > 0 ? itinerary[index - 1].city : null;
+    const isTransitionDay = index > 0 && !!prevCity && !sameCityName(prevCity, day.city);
+
+    const highlightSuffix = highlightActs.length === 0
+      ? ''
+      : highlightActs.length === 1
+        ? ` & ${highlightActs[0].name}`
+        : ' & Sightseeing';
+
+    let heading;
     if (isFlightDay) {
-      // A flight day's own transfers are just airport runs, so naming them
-      // ("Pokhara Airport Transfer") would bury the actual movement.
-      heading = `Fly ${day.flight_from_city} to ${day.flight_to_city || day.city}`;
-      if (selectedActs.length > 0) {
-        heading += ` & ${selectedActs.map(a => a.name).join(' + ')}`;
-      }
-    } else if (effectiveRouteObj && selectedActs.length > 0) {
-      heading = `${effectiveRouteObj.name} & ${selectedActs.map(a => a.name).join(' + ')}`;
-    } else if (effectiveRouteObj) {
-      heading = effectiveRouteObj.name;
-    } else if (selectedActs.length > 0) {
-      heading = selectedActs.map(a => a.name).join(' + ');
+      heading = `Fly to ${day.flight_to_city || day.city}${highlightSuffix}`;
+    } else if (index === 0) {
+      heading = `Arrive ${day.city}${highlightSuffix}`;
+    } else if (isLastDay) {
+      heading = `Depart ${day.city}`;
+    } else if (isTransitionDay) {
+      heading = `Drive to ${day.city}${highlightSuffix}`;
+    } else if (highlightActs.length === 1) {
+      heading = highlightActs[0].name;
+    } else if (highlightActs.length > 1) {
+      heading = `${day.city} Sightseeing`;
     } else {
-      heading = isLastDay ? `Departure from ${day.city}` : `Leisure day in ${day.city}`;
+      heading = `Leisure Day in ${day.city}`;
     }
 
     if (heading.length > 85) {
@@ -446,6 +489,12 @@ export function calculateQuote({
     }
 
     let descParts = [];
+
+    // On the last day the guest checks out and then travels, so say so in that
+    // order rather than describing the airport run before the check-out.
+    if (isLastDay) {
+      descParts.push(`Check out from your hotel in ${day.city}.`);
+    }
 
     // 1. Transfers. A flight day gets its own narration (drop, flight,
     // pickup); otherwise each transfer on the day is described in turn.
@@ -474,24 +523,20 @@ export function calculateQuote({
       selectedActs.forEach(act => {
         descParts.push(act.description);
       });
-    } else {
-      if (isLastDay) {
-        descParts.push(`Check out from your accommodation in ${day.city}.`);
-      } else {
-        descParts.push(`Enjoy your day in ${day.city}.`);
-      }
+    } else if (!isLastDay) {
+      // The last day's check-out line is already at the top.
+      descParts.push(`The rest of the day is free.`);
     }
 
-    // 3. Hotel
+    // 3. Hotel. Meal plans are trade shorthand -- a client reading CP/MAP/AP
+    // has to look them up, so they are spelled out.
     if (!isLastDay) {
       if (selectedHotel) {
-        descParts.push(`Overnight accommodation at ${selectedHotel.name} (${selectedHotel.category}) on ${mealPlan} basis.`);
+        descParts.push(`Overnight at ${selectedHotel.name} (${selectedHotel.category}), ${describeMealPlan(mealPlan)}.`);
+      } else if (day.stay_address) {
+        descParts.push(`Overnight at ${day.stay_address} (arranged by the guest).`);
       } else {
-        if (day.stay_address) {
-          descParts.push(`Overnight stay at ${day.stay_address} (self-arranged).`);
-        } else {
-          descParts.push(`Overnight stay self-arranged (no hotel stay booked).`);
-        }
+        descParts.push(`Overnight stay arranged by the guest.`);
       }
     }
 
