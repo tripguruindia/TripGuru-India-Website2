@@ -2773,124 +2773,191 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     e.target.value = "";
   };
 
+  // Exported in the SAME orientation as the on-screen rate sheet: transfers
+  // down the rows, vehicles across the columns. It used to come out
+  // transposed -- a row per vehicle with a `Route_<key>` column each -- so the
+  // spreadsheet and the screen disagreed about which way round the data was,
+  // and the columns were raw keys rather than names anyone could read.
+  //
+  // Two sheets, because the two things have different shapes: the matrix, and
+  // the per-vehicle values (capacity, full-day sightseeing) that are not
+  // per-transfer.
   const exportVehicles = async () => {
     const XLSX = await requireXLSX();
     if (!XLSX) return;
-    
-    const routeKeys = db.routes.map(r => r.key);
-    
-    const data = db.vehicles.map(v => {
-      const record = {
-        "ID": v.id,
-        "Name": v.name,
-        "Description": v.description || "",
-        "Capacity": v.capacity || 0,
-        "Daily_Sightseeing_Rate": v.daily_sightseeing_rate || 0
+
+    const vehicles = db.vehicles || [];
+    const sheetRoutes = (db.routes || []).filter(r => r.key !== LOCAL_SIGHTSEEING_KEY);
+
+    const rateRows = sheetRoutes.map(route => {
+      const row = {
+        "Transfer": route.name,
+        "Key": route.key,
+        "Category": routeCategory(route.key) === 'airport' ? 'Airport' : 'Inter-city',
       };
-      
-      routeKeys.forEach(key => {
-        record[`Route_${key}`] = v.route_rates?.[key] || 0;
+      vehicles.forEach(v => {
+        // rateForRoute so a sector priced only in the opposite direction
+        // exports the figure actually charged rather than a misleading 0.
+        row[v.name] = rateForRoute(v, route.key) ?? 0;
       });
-      
-      return record;
+      row["Description"] = route.description || "";
+      return row;
     });
-    
-    const ws = XLSX.utils.json_to_sheet(data);
+
+    const vehicleRows = vehicles.map(v => ({
+      "ID": v.id,
+      "Name": v.name,
+      "Capacity": v.capacity || 0,
+      "Full_Day_Sightseeing_Rate": v.daily_sightseeing_rate || 0,
+      "Description": v.description || "",
+    }));
+
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Vehicles");
-    XLSX.writeFile(wb, "nepal_vehicles_master.xlsx");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rateRows), "Transfer Rates");
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(vehicleRows), "Vehicles");
+    XLSX.writeFile(wb, "nepal_transfer_rates.xlsx");
   };
 
+  // Reads back what exportVehicles writes: the "Transfer Rates" matrix keyed
+  // by route, with a column per vehicle NAME, plus an optional "Vehicles"
+  // sheet for the per-vehicle values. Also still accepts the old transposed
+  // layout (a row per vehicle with Route_<key> columns) so a spreadsheet
+  // someone exported before this change keeps importing.
   const importVehicles = async (e) => {
     const XLSX = await requireXLSX();
     if (!XLSX) return;
     const file = e.target.files[0];
     if (!file) return;
-    
+
     const reader = new FileReader();
     reader.onload = (evt) => {
       try {
-        const data = new Uint8Array(evt.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const sheetName = workbook.SheetNames[0];
-        const sheet = workbook.Sheets[sheetName];
-        const json = XLSX.utils.sheet_to_json(sheet);
-        
-        let updatedCount = 0;
-        let insertedCount = 0;
-        let routesAdded = 0;
-        
-        const newVehicles = [...db.vehicles];
-        const newRoutes = [...db.routes];
-        
-        json.forEach(row => {
+        const workbook = XLSX.read(new Uint8Array(evt.target.result), { type: 'array' });
+        const sheetJson = (name) => {
+          const ws = workbook.Sheets[name];
+          return ws ? XLSX.utils.sheet_to_json(ws) : null;
+        };
+
+        const newVehicles = [...(db.vehicles || [])];
+        const newRoutes = [...(db.routes || [])];
+        let ratesSet = 0, routesAdded = 0, vehiclesUpdated = 0, vehiclesCreated = 0;
+        const unknownColumns = new Set();
+
+        const findVehicleIdx = ({ id, name }) => {
+          if (id) {
+            const byId = newVehicles.findIndex(v => v.id === id);
+            if (byId > -1) return byId;
+          }
+          if (!name) return -1;
+          const target = String(name).trim().toLowerCase();
+          return newVehicles.findIndex(v => String(v.name).trim().toLowerCase() === target);
+        };
+
+        // --- Sheet: Vehicles (identity + full-day sightseeing) -------------
+        const vehicleRows = sheetJson('Vehicles') || [];
+        vehicleRows.forEach(row => {
           const id = row["ID"] ? String(row["ID"]).trim() : "";
           const name = row["Name"] ? String(row["Name"]).trim() : "";
-          const description = row["Description"] ? String(row["Description"]).trim() : "";
-          const capacity = Number(row["Capacity"]) || 0;
-          const daily_sightseeing_rate = Number(row["Daily_Sightseeing_Rate"]) || 0;
-          
           if (!name) return;
-          
-          const route_rates = {};
-          
-          Object.keys(row).forEach(colKey => {
-            if (colKey.startsWith("Route_")) {
-              const routeKey = colKey.substring(6);
-              route_rates[routeKey] = Number(row[colKey]) || 0;
-              
-              if (!newRoutes.some(r => r.key === routeKey)) {
-                const parts = routeKey.split('_');
-                const routeName = parts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
-                newRoutes.push({
-                  key: routeKey,
-                  name: routeName,
-                  description: `Imported transfer sector: ${routeName}`
-                });
-                routesAdded++;
-              }
-            }
-          });
-          
-          const existingIdx = id ? newVehicles.findIndex(v => v.id === id) : -1;
-          
-          if (existingIdx > -1) {
-            newVehicles[existingIdx] = {
-              ...newVehicles[existingIdx],
-              name,
-              description,
-              capacity,
-              daily_sightseeing_rate,
-              route_rates: {
-                ...newVehicles[existingIdx].route_rates,
-                ...route_rates
-              }
-            };
-            updatedCount++;
+          const patch = {
+            name,
+            capacity: Number(row["Capacity"]) || 0,
+            description: row["Description"] ? String(row["Description"]).trim() : "",
+          };
+          const sightseeing = row["Full_Day_Sightseeing_Rate"] ?? row["Daily_Sightseeing_Rate"];
+          if (sightseeing !== undefined) patch.daily_sightseeing_rate = Number(sightseeing) || 0;
+
+          const idx = findVehicleIdx({ id, name });
+          if (idx > -1) {
+            newVehicles[idx] = { ...newVehicles[idx], ...patch };
+            vehiclesUpdated++;
           } else {
-            const generatedId = id || `v-${name.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${Date.now()}`;
             newVehicles.push({
-              id: generatedId,
-              name,
-              description,
-              capacity,
-              daily_sightseeing_rate,
-              route_rates
+              id: id || `v-${name.toLowerCase().replace(/[^a-z0-9]/g, '-')}-${Date.now()}`,
+              route_rates: {},
+              daily_sightseeing_rate: 0,
+              ...patch,
             });
-            insertedCount++;
+            vehiclesCreated++;
           }
         });
-        
-        updateDBState({
-          ...db,
-          vehicles: newVehicles,
-          routes: newRoutes
-        });
-        
-        alert(`Import Successful!\nProcessed Vehicles Master.\nUpdated: ${updatedCount}\nCreated: ${insertedCount}\nNew routes registered: ${routesAdded}`);
+
+        // --- Sheet: Transfer Rates (the matrix) ----------------------------
+        const rateRows = sheetJson('Transfer Rates')
+          || (vehicleRows.length ? [] : XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]));
+
+        const isLegacyLayout = rateRows.some(r => Object.keys(r).some(k => k.startsWith('Route_')));
+
+        if (isLegacyLayout) {
+          // Old transposed export: one row per vehicle.
+          rateRows.forEach(row => {
+            const name = row["Name"] ? String(row["Name"]).trim() : "";
+            if (!name) return;
+            const idx = findVehicleIdx({ id: row["ID"] ? String(row["ID"]).trim() : "", name });
+            if (idx < 0) return;
+            const rates = { ...newVehicles[idx].route_rates };
+            Object.keys(row).forEach(col => {
+              if (!col.startsWith('Route_')) return;
+              const key = col.slice(6);
+              rates[key] = Number(row[col]) || 0;
+              ratesSet++;
+              if (!newRoutes.some(r => r.key === key)) {
+                newRoutes.push({ key, name: routeLabelFromKey(key, db.airports || []), description: '' });
+                routesAdded++;
+              }
+            });
+            newVehicles[idx] = { ...newVehicles[idx], route_rates: rates };
+          });
+        } else {
+          rateRows.forEach(row => {
+            const key = row["Key"] ? String(row["Key"]).trim() : "";
+            const label = row["Transfer"] ? String(row["Transfer"]).trim() : "";
+            if (!key && !label) return;
+
+            // Key is the stable identifier; fall back to matching the name so
+            // a hand-typed sheet without the Key column still works.
+            let route = key
+              ? newRoutes.find(r => r.key === key)
+              : newRoutes.find(r => String(r.name).trim().toLowerCase() === label.toLowerCase());
+
+            if (!route) {
+              const newKey = key || label.toLowerCase().replace(/[^a-z0-9]+/g, '_');
+              route = {
+                key: newKey,
+                name: label || routeLabelFromKey(newKey, db.airports || []),
+                description: row["Description"] ? String(row["Description"]).trim() : '',
+              };
+              newRoutes.push(route);
+              routesAdded++;
+            } else if (label && label !== route.name) {
+              route.name = label;
+            }
+
+            Object.keys(row).forEach(col => {
+              if (["Transfer", "Key", "Category", "Description"].includes(col)) return;
+              const idx = findVehicleIdx({ name: col });
+              if (idx < 0) { unknownColumns.add(col); return; }
+              newVehicles[idx] = {
+                ...newVehicles[idx],
+                route_rates: { ...newVehicles[idx].route_rates, [route.key]: Number(row[col]) || 0 },
+              };
+              ratesSet++;
+            });
+          });
+        }
+
+        updateDBState({ ...db, vehicles: newVehicles, routes: newRoutes });
+
+        const warn = unknownColumns.size
+          ? `\n\nIgnored ${unknownColumns.size} column(s) that match no vehicle: ${[...unknownColumns].join(', ')}`
+          : '';
+        alert(
+          `Import successful.\n\nRates set: ${ratesSet}\nTransfers added: ${routesAdded}\n` +
+          `Vehicles updated: ${vehiclesUpdated}\nVehicles created: ${vehiclesCreated}${warn}`
+        );
       } catch (err) {
         console.error(err);
-        alert("Failed to parse the Excel file. Please ensure it follows the correct template.");
+        alert("Failed to read that spreadsheet. Export a fresh copy to see the expected layout, edit it, then import it back.");
       }
     };
     reader.readAsArrayBuffer(file);
@@ -3114,7 +3181,6 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   };
 
   const routeCategory = (key) => {
-    if (key === LOCAL_SIGHTSEEING_KEY) return 'sightseeing';
     if (isAirportRouteKey(key)) return 'airport';
     return 'intercity';
   };
@@ -3123,10 +3189,17 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     { id: 'all', label: 'All' },
     { id: 'airport', label: 'Airport transfers' },
     { id: 'intercity', label: 'Inter-city' },
-    { id: 'sightseeing', label: 'Sightseeing' },
   ];
 
-  const visibleRateRoutes = (db.routes || []).filter(r => {
+  // `local_sightseeing` is a full-day vehicle hire, not a sector between two
+  // places, and it bills the vehicle's own daily_sightseeing_rate rather than
+  // a route rate. Listing it as a transfer read as a category error, so its
+  // price now sits with the vehicle where it belongs. The route key itself
+  // stays in db.routes -- itinerary days still reference it -- it is only
+  // hidden from this sheet.
+  const rateSheetRoutes = (db.routes || []).filter(r => r.key !== LOCAL_SIGHTSEEING_KEY);
+
+  const visibleRateRoutes = rateSheetRoutes.filter(r => {
     if (rateFilter !== 'all' && routeCategory(r.key) !== rateFilter) return false;
     const q = rateSearch.trim().toLowerCase();
     if (!q) return true;
@@ -7400,6 +7473,10 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                           (origin drop + destination pickup); every other day
                                           normally carries one. Each is removable on its own. */}
                                       {getDayTransfers(day).map((routeKey, transferIdx) => {
+                                        // Full-day sightseeing has its own control below -- it
+                                        // is a vehicle hire, not a sector, and is no longer a
+                                        // route in the master list.
+                                        if (routeKey === LOCAL_SIGHTSEEING_KEY) return null;
                                         // findRoute so a sector defined only in
                                         // the opposite direction still shows.
                                         const routeObj = findRoute(db.routes || [], routeKey);
@@ -7419,6 +7496,41 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                           </div>
                                         );
                                       })}
+
+                                      {/* Full-day sightseeing. Its own control rather than an
+                                          entry in the transfer list: it is the vehicle at the
+                                          guest's disposal for the day, priced from the vehicle's
+                                          own per-day rate, not a journey between two places. */}
+                                      {(() => {
+                                        const isOn = getDayTransfers(day).includes(LOCAL_SIGHTSEEING_KEY);
+                                        const vehicle = (db.vehicles || []).find(v => v.id === selectedVehicleId);
+                                        const dayRate = Math.round((vehicle?.daily_sightseeing_rate || 0) * b2bDisplayFactor);
+                                        return (
+                                          <label className={`sightseeing-toggle ${isOn ? 'is-on' : ''} flex items-center justify-between gap-2 w-full p-2.5 rounded-lg cursor-pointer`}>
+                                            <span className="flex items-center gap-2 min-w-0">
+                                              <input
+                                                type="checkbox"
+                                                checked={isOn}
+                                                onChange={() => {
+                                                  const current = getDayTransfers(day);
+                                                  setDayTransfers(
+                                                    idx,
+                                                    isOn
+                                                      ? current.filter(k => k !== LOCAL_SIGHTSEEING_KEY)
+                                                      : [...current, LOCAL_SIGHTSEEING_KEY]
+                                                  );
+                                                }}
+                                                className="shrink-0"
+                                              />
+                                              <span className="sightseeing-pip text-[10px] font-bold px-2 py-0.5 rounded uppercase shrink-0">Sightseeing</span>
+                                              <span className="text-xs font-medium truncate">Vehicle at disposal for local sightseeing</span>
+                                            </span>
+                                            <strong className="text-xs shrink-0">
+                                              {view === 'b2c' && !hasContactDetails ? '🔒 Locked' : `₹${dayRate.toLocaleString()}/day`}
+                                            </strong>
+                                          </label>
+                                        );
+                                      })()}
 
                                       {/* Display selected activities */}
                                       {(() => {
@@ -9012,6 +9124,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                       <p className="text-xs text-slate-500 mt-1 leading-relaxed max-w-2xl">
                         One row per transfer, one column per vehicle — edit any price directly.
                         A sector costs the same in both directions, so entering it once is enough.
+                        Full-day sightseeing is priced on the vehicle itself, not here — click a
+                        vehicle above to set it.
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2 shrink-0">
@@ -9170,8 +9284,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                           {f.label}
                           <span className="rate-chip-count ml-1.5">
                             {f.id === 'all'
-                              ? (db.routes || []).length
-                              : (db.routes || []).filter(r => routeCategory(r.key) === f.id).length}
+                              ? rateSheetRoutes.length
+                              : rateSheetRoutes.filter(r => routeCategory(r.key) === f.id).length}
                           </span>
                         </button>
                       ))}
@@ -9235,15 +9349,10 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                 <th scope="row" className="rate-col-name text-left py-2.5 px-4 font-normal">
                                   <div className="flex items-center gap-2">
                                     <span className={`rate-pip rate-pip-${cat}`}>
-                                      {cat === 'airport' ? 'Airport' : cat === 'sightseeing' ? 'Per day' : 'Sector'}
+                                      {cat === 'airport' ? 'Airport' : 'Sector'}
                                     </span>
                                     <span className="rate-route-name text-xs font-bold">{route.name}</span>
                                   </div>
-                                  {route.key === LOCAL_SIGHTSEEING_KEY && (
-                                    <span className="rate-route-note text-[10px] block mt-0.5">
-                                      Charged per sightseeing day, not per sector.
-                                    </span>
-                                  )}
                                 </th>
 
                                 {(db.vehicles || []).map(v => {
@@ -9282,7 +9391,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                   </div>
 
                   <p className="text-[10px] text-slate-450 italic px-1">
-                    Showing {visibleRateRoutes.length} of {(db.routes || []).length} transfers
+                    Showing {visibleRateRoutes.length} of {rateSheetRoutes.length} transfers
                     {rateEditCount > 0 && ` · ${rateEditCount} unsaved change${rateEditCount === 1 ? '' : 's'}`}
                   </p>
                 </div>
@@ -10866,6 +10975,23 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                     className="form-input text-xs"
                   />
                 </div>
+                {/* A full-day sightseeing hire is a property of the vehicle,
+                    not a sector between two places, so it is priced here
+                    rather than in the transfer sheet. */}
+                <div className="form-group mb-0">
+                  <label className="form-label text-[10px]">Full-Day Sightseeing Rate (₹ per day)</label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={editingVehicleDetails.daily_sightseeing_rate ?? 0}
+                    onChange={(e) => setEditingVehicleDetails({ ...editingVehicleDetails, daily_sightseeing_rate: Number(e.target.value) || 0 })}
+                    className="form-input text-xs"
+                  />
+                  <span className="text-[10px] text-slate-450 block mt-1 leading-relaxed">
+                    Charged for each day the vehicle is at the guest's disposal for local
+                    sightseeing. Not a point-to-point transfer, so it is not in the rate sheet.
+                  </span>
+                </div>
                 <div className="form-group mb-0">
                   <label className="form-label text-[10px]">Description</label>
                   <textarea
@@ -10876,7 +11002,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                   />
                 </div>
                 <p className="text-[10px] text-slate-450 -mt-1">
-                  Sightseeing day rate and all transfer prices are edited in the rate sheet behind this popup.
+                  Point-to-point transfer prices are edited in the rate sheet behind this popup.
                 </p>
               </div>
               <div className="modal-footer">
