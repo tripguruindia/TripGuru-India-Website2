@@ -291,6 +291,20 @@ visible and removable at the moment they are added.
 
 ## The quote builder
 
+**The intake wizard opens empty.** Every field a trip is made of — city,
+nights, start and end city, date, star rating, nationality — starts blank with
+a "Select ..." prompt and is `required`. It used to open pre-filled
+(Kathmandu, two nights, Gorakhpur both ends, a hardcoded date), so pressing
+*Create Proposal* without touching anything produced a real-looking quote for
+a trip nobody had chosen. `handleCreateProposal` repeats the check in JS
+because the B2C lead-capture modal resubmits the form on the user's behalf and
+bypasses the browser's own validation.
+
+Admin's saved wizard defaults (`wizard_default_*`) feed the Admin editor and
+the *Customize Recommended Itinerary* button, which reads them straight from
+settings. They deliberately no longer pre-fill the intake form — loading a
+template is a click the operator makes, not something that happens to them.
+
 **One place edits a trip: the intake page.** A saved quote reopens there, not
 in the day cards. Its stays are derived from the itinerary
 (`deriveTripStructure`) rather than stored, so the two cannot disagree.
@@ -332,8 +346,15 @@ party needs has no rate set, because that bed is otherwise charged ₹0 and the
 whole quote comes out short with nothing on screen to say so.
 
 Day headings and descriptions are generated in `calculator.js` and are what the
-client reads: lead with the movement (Arrive / Drive to / Fly to / Depart),
-keep whole-vehicle activities out of the title, and spell meal plans out.
+client reads: lead with the movement (Arrive / Drive to / Fly to / Depart) and
+spell meal plans out.
+
+A whole-vehicle activity is never **named** in the title — "Kathmandu Full-Day
+Sightseeing (Vehicle)" is an operations label, not something to show a
+traveller — but it still **counts**: a day carrying one is headed
+"<City> Sightseeing", not "Leisure Day in <City>". Leaving it out entirely put
+the two halves of the same card in contradiction, the heading calling a day
+leisure while the itinerary under it described a full day of sightseeing.
 
 ## Current state and what's next
 
