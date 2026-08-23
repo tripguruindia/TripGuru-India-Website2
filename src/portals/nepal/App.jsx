@@ -1818,6 +1818,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
   // Handle Preset Package Selection
   const handleSelectPresetPackage = (pkg, bypassLeadCheck = false) => {
+    // A different trip than whatever booking was last open.
+    setEditingBookingId(null);
     if (view === 'b2c' && !hasContactDetails && !bypassLeadCheck) {
       setPendingLeadAction({ type: 'customize', pkg });
       setShowLeadCaptureModal(true);
@@ -1866,6 +1868,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
   // Handle Preset Package View & Direct Book Selection
   const handleViewAndBookPackage = (pkg, bypassLeadCheck = false) => {
+    // A different trip than whatever booking was last open.
+    setEditingBookingId(null);
     if (view === 'b2c' && !hasContactDetails && !bypassLeadCheck) {
       setPendingLeadAction({ type: 'view_book', pkg });
       setShowLeadCaptureModal(true);
@@ -2476,6 +2480,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   const resumeBuilderDraft = () => {
     const draft = resumableDraft;
     if (!draft) return;
+    // A different trip than whatever booking was last open.
+    setEditingBookingId(null);
     setCurrentPackageId(draft.packageId ?? null);
     setCustomPackageName(draft.packageName ?? 'My Nepal Tour Custom');
     setCustomItinerary(draft.itinerary || []);
@@ -2578,6 +2584,9 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   // Load a saved quote back into the builder. Mirrors resumeBuilderDraft, but
   // sourced from the server rather than this browser's localStorage.
   const handleResumeQuote = (quote) => {
+    // A saved quote is its own trip -- booking it must never amend whatever
+    // booking happened to be open before.
+    setEditingBookingId(null);
     setActiveQuoteId(quote.id);
     setCurrentPackageId(null);
     setCustomPackageName(quote.package_name || 'Untitled quote');
@@ -4081,6 +4090,14 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     // A from-scratch build carries no preset offer -- clear any discount left
     // over from a package the user opened earlier in this session.
     setOfferDiscountPerPax(0);
+    // ...and it is a NEW trip, not an amendment of whatever booking was last
+    // open. Without this, pressing "Edit This Booking", navigating away and
+    // then building something else would silently PATCH the old booking with
+    // the new trip: the old one overwritten, no new one created, and nothing
+    // on screen to say so. Deliberately not cleared in the reshape branch
+    // above -- the builder's "Edit Trip" button goes through this same screen
+    // and must keep amending the same booking.
+    setEditingBookingId(null);
 
     // Only fully filled rows become days. A row left on "Select city" is a
     // row the operator has not finished, not a stop on the trip.
@@ -4469,10 +4486,30 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
                   <div className="flex flex-wrap gap-2 mt-4 pt-3.5 border-t" style={{ borderColor: 'var(--border-color)' }}>
                     {locked ? (
-                      <div className="quote-locked-note text-[11px] flex items-center gap-1.5">
-                        <CheckCircle size={13} />
-                        Booked as <strong>{q.converted_booking_id}</strong> — this quote is now the
-                        record of what the client agreed to, so it can't be changed.
+                      <div className="flex flex-wrap items-center gap-2 w-full">
+                        <div className="quote-locked-note text-[11px] flex items-center gap-1.5">
+                          <CheckCircle size={13} />
+                          Booked as <strong>{q.converted_booking_id}</strong> — this quote is now the
+                          record of what the client agreed to, so it can't be changed.
+                        </div>
+                        {/* The quote stays locked, but the booking it became is
+                            editable -- so give a way through to it. Without this
+                            a converted quote was a dead end: the trip could not
+                            be changed from here at all. */}
+                        <button
+                          onClick={() => {
+                            const booked = (myBookings || []).find(bk => bk.id === q.converted_booking_id)
+                              || (db.bookings || []).find(bk => bk.id === q.converted_booking_id);
+                            if (!booked) {
+                              window.alert(`Booking ${q.converted_booking_id} could not be loaded. Open it from the dashboard instead.`);
+                              return;
+                            }
+                            handleViewVoucher(booked);
+                          }}
+                          className="btn btn-secondary btn-sm flex items-center gap-1.5 text-[11px] ml-auto"
+                        >
+                          <FileText size={12} /> Open Booking
+                        </button>
                       </div>
                     ) : (
                       <>
@@ -7359,6 +7396,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                     return { ...d, hotelId: h ? h.id : '' };
                                   });
 
+                                  setEditingBookingId(null);
                                   setCustomItinerary(resolved);
                                   setStartCity(db.settings.wizard_default_start_city || 'Gorakhpur');
                                   setEndCity(db.settings.wizard_default_end_city || 'Gorakhpur');
@@ -7803,6 +7841,20 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                             </h3>
 
                           </div>
+
+                          {/* Amending a booking is a state the whole screen is
+                              in, not just a word on the button at the bottom of
+                              the sidebar. Say so where the work happens. */}
+                          {editingBookingId && (
+                            <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 p-3 rounded-xl flex items-start gap-2 leading-normal font-medium mb-5">
+                              <AlertTriangle size={14} className="shrink-0 text-amber-500 mt-0.5" />
+                              <span>
+                                You are changing booking <strong>{editingBookingId}</strong>. Saving updates that
+                                booking — it will not create a new one. To quote a different trip instead, start
+                                from Preset Packages or the Custom Planner.
+                              </span>
+                            </div>
+                          )}
 
                           {/* Timeline */}
                           <div className="itinerary-timeline">
