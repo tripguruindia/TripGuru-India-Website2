@@ -1988,6 +1988,204 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     });
   };
 
+  // ---------------------------------------------------------------------
+  // Trip structure (cities and nights) for an itinerary already built
+  // ---------------------------------------------------------------------
+  // The day cards can change what happens on a day, but not the shape of the
+  // trip. Reopening a saved quote to add a night in Pokhara, or to visit
+  // Chitwan before Pokhara instead of after, meant starting again from the
+  // intake wizard and losing every hotel, meal and activity already chosen.
+  //
+  // The structure is derived from the itinerary rather than stored separately,
+  // so it cannot drift from the days themselves.
+
+  // Consecutive days in the same city are one stay. A trailing day with no
+  // hotel is the departure day -- it is a checkout, not a night, and is
+  // rebuilt rather than counted.
+  const deriveTripStructure = (itinerary) => {
+    const days = itinerary || [];
+    if (days.length === 0) return { blocks: [], hasDepartureDay: false };
+    const hasDepartureDay = days.length > 1 && !days[days.length - 1].hotelId;
+    const stayDays = hasDepartureDay ? days.slice(0, -1) : days;
+
+    const blocks = [];
+    stayDays.forEach((d) => {
+      const last = blocks[blocks.length - 1];
+      if (last && sameCity(last.city, d.city)) last.nights += 1;
+      else blocks.push({ city: d.city, nights: 1 });
+    });
+    return { blocks, hasDepartureDay };
+  };
+
+  const [structureDraft, setStructureDraft] = useState(null); // { blocks, hasDepartureDay }
+
+  const openStructureEditor = () => setStructureDraft(deriveTripStructure(customItinerary));
+
+  // Rebuilds the itinerary to match the edited structure, reusing the existing
+  // days for a city in order so hotels, meals and activities survive. Only
+  // genuinely new days are generated, and only transitions that actually
+  // changed get a new transfer.
+  const applyTripStructure = () => {
+    if (!structureDraft) return;
+    const blocks = structureDraft.blocks.filter(b => b.city && b.nights > 0);
+    if (blocks.length === 0) {
+      window.alert('Keep at least one city with at least one night.');
+      return;
+    }
+
+    const { hasDepartureDay } = structureDraft;
+    const oldDays = customItinerary || [];
+    const departureDay = hasDepartureDay ? oldDays[oldDays.length - 1] : null;
+    const stayDays = hasDepartureDay ? oldDays.slice(0, -1) : oldDays;
+
+    // Pool of existing days per city, consumed in their original order.
+    const pool = {};
+    stayDays.forEach(d => {
+      const key = String(d.city || '').trim().toLowerCase();
+      (pool[key] = pool[key] || []).push(d);
+    });
+
+    const makeFreshDay = (city) => {
+      const cityHotels = (db.hotels || []).filter(
+        h => sameCity(h.city, city) && h.category === selectedHotelCategory
+      );
+      return withDayTransfers({
+        city,
+        title: `Explore ${city}`,
+        description: `Custom activities and transfer around ${city}.`,
+        hotelId: cityHotels.length > 0 ? cityHotels[0].id : '',
+        meals: String(city).toLowerCase() === 'chitwan' ? 'AP' : 'CP',
+        is_sightseeing: false,
+        activity_ids: [],
+        travel_mode: '',
+        flight_from_city: '',
+        flight_to_city: '',
+      }, []);
+    };
+
+    const rebuilt = [];
+    blocks.forEach(block => {
+      const key = String(block.city).trim().toLowerCase();
+      for (let n = 0; n < block.nights; n++) {
+        const reused = (pool[key] || []).shift();
+        rebuilt.push(reused ? { ...reused, city: block.city } : makeFreshDay(block.city));
+      }
+    });
+
+    if (departureDay) {
+      const lastCity = blocks[blocks.length - 1].city;
+      rebuilt.push({ ...departureDay, city: lastCity });
+    }
+
+    // Transfers: only touch days whose arrival actually changed. A day that
+    // still follows the same city keeps whatever was set on it, including a
+    // flight leg the agent configured.
+    const neededRoutes = [];
+    const departureIdx = departureDay ? rebuilt.length - 1 : -1;
+
+    const finalised = rebuilt.map((day, idx) => {
+      const numbered = { ...day, day: idx + 1 };
+
+      // The checkout day leaves for the trip's end city, which no previous day
+      // describes. Reordering changes which city that departure starts from,
+      // so it is recomputed rather than treated as an ordinary same-city day
+      // (which would strip its transfer entirely).
+      if (idx === departureIdx && idx > 0) {
+        const current = getDayTransfers(numbered);
+        if (sameCity(numbered.city, endCity)) {
+          const { key } = resolveAirportTransfer(db.routes || [], db.airports || [], numbered.city);
+          if (!key || current.includes(key)) return numbered;
+          neededRoutes.push(key);
+          return withDayTransfers(numbered, [key]);
+        }
+        const outbound = cityToCityRouteKey(numbered.city, endCity);
+        if (current.includes(outbound) || current.includes(reverseRouteKey(outbound))) return numbered;
+        neededRoutes.push(outbound);
+        return withDayTransfers(numbered, [outbound]);
+      }
+
+      // Day 1 is the arrival, which comes from the trip's start city rather
+      // than a previous day. Reordering can put a different city first, so it
+      // needs the same treatment -- left alone only if what it already says
+      // still describes arriving here.
+      if (idx === 0) {
+        const current = getDayTransfers(numbered);
+        if (sameCity(startCity, numbered.city)) {
+          // Flying straight in: an airport pickup, if this city has an airport.
+          const { key } = resolveAirportTransfer(db.routes || [], db.airports || [], numbered.city);
+          if (!key || current.includes(key)) return numbered;
+          neededRoutes.push(key);
+          return withDayTransfers(numbered, [key]);
+        }
+        const arrival = cityToCityRouteKey(startCity, numbered.city);
+        if (current.includes(arrival) || current.includes(reverseRouteKey(arrival))) return numbered;
+        neededRoutes.push(arrival);
+        return withDayTransfers(numbered, [arrival]);
+      }
+
+      const prevCity = rebuilt[idx - 1].city;
+      const isTransition = !sameCity(prevCity, numbered.city);
+      const wasTransition = numbered.travel_mode || getDayTransfers(numbered).length > 0;
+
+      if (!isTransition) {
+        // Now a same-city day: strip a stale city-to-city transfer, but keep
+        // anything that is not a sector (e.g. an airport pickup).
+        const kept = getDayTransfers(numbered).filter(k => !k.includes('_to_') || isAirportRouteKey(k));
+        return { ...withDayTransfers(numbered, kept), travel_mode: '', flight_from_city: '', flight_to_city: '' };
+      }
+
+      // A transition. If it already describes this exact move, leave it alone.
+      const expected = cityToCityRouteKey(prevCity, numbered.city);
+      const current = getDayTransfers(numbered);
+      const alreadyRight =
+        (numbered.travel_mode === TRAVEL_MODE_FLIGHT && sameCity(numbered.flight_from_city, prevCity)) ||
+        current.includes(expected) ||
+        current.includes(reverseRouteKey(expected));
+      if (alreadyRight && wasTransition) return numbered;
+
+      neededRoutes.push(expected);
+      return {
+        ...withDayTransfers(numbered, [expected]),
+        travel_mode: TRAVEL_MODE_CAR,
+        flight_from_city: '',
+        flight_to_city: '',
+      };
+    });
+
+    if (neededRoutes.length) ensureRoutesExist(neededRoutes);
+    setCustomItinerary(finalised);
+    setStructureDraft(null);
+  };
+
+  const updateStructureBlock = (index, patch) => {
+    setStructureDraft(prev => prev && ({
+      ...prev,
+      blocks: prev.blocks.map((b, i) => (i === index ? { ...b, ...patch } : b)),
+    }));
+  };
+
+  const moveStructureBlock = (index, delta) => {
+    setStructureDraft(prev => {
+      if (!prev) return prev;
+      const target = index + delta;
+      if (target < 0 || target >= prev.blocks.length) return prev;
+      const blocks = [...prev.blocks];
+      [blocks[index], blocks[target]] = [blocks[target], blocks[index]];
+      return { ...prev, blocks };
+    });
+  };
+
+  const removeStructureBlock = (index) => {
+    setStructureDraft(prev => prev && ({ ...prev, blocks: prev.blocks.filter((_, i) => i !== index) }));
+  };
+
+  const addStructureBlock = () => {
+    setStructureDraft(prev => prev && ({
+      ...prev,
+      blocks: [...prev.blocks, { city: db.cities?.[0] || 'Kathmandu', nights: 1 }],
+    }));
+  };
+
   // Add Day to Itinerary
   const handleAddDay = () => {
     setCustomItinerary(prev => {
@@ -7381,6 +7579,17 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                               <span>Day-Wise Customizer ({customItinerary.length} Days)</span>
                             </h3>
 
+                            {/* Changing the shape of the trip -- nights per city,
+                                the order of the cities -- without going back to
+                                the intake wizard and losing the day-by-day work. */}
+                            <button
+                              type="button"
+                              onClick={openStructureEditor}
+                              className="structure-edit-btn text-[11px] font-extrabold uppercase tracking-wide py-2 px-3.5 rounded-lg flex items-center gap-1.5 shrink-0"
+                              title="Change nights per city, reorder or add cities"
+                            >
+                              <MapPin size={13} /> Edit Cities &amp; Nights
+                            </button>
                           </div>
 
                           {/* Timeline */}
@@ -7630,13 +7839,20 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                         const routeObj = findRoute(db.routes || [], routeKey);
                                         if (!routeObj) return null;
                                         const isAirportRun = isAirportRouteKey(routeKey);
+                                        // A sector priced only in the opposite direction is found
+                                        // in reverse, and its stored name then points the wrong
+                                        // way ("Pokhara to Gorakhpur" on a day driving INTO
+                                        // Pokhara). Label it by the direction actually travelled.
+                                        const routeLabel = routeObj.reversedFrom
+                                          ? routeLabelFromKey(routeKey, db.airports || [])
+                                          : `${routeObj.name} - ${routeObj.description}`;
                                         return (
                                           <div key={`${routeKey}-${transferIdx}`} className="flex items-center justify-between gap-2 w-full min-w-0 bg-white border border-slate-200 p-2.5 rounded-lg shadow-sm">
                                             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 flex-1 min-w-0 pr-2">
                                               <span className={`${isAirportRun ? 'transfer-pip-airport' : 'bg-indigo-100 text-indigo-700'} text-[10px] font-bold px-2 py-0.5 rounded uppercase shrink-0`}>
                                                 {isAirportRun ? 'Airport' : 'Transfer'}
                                               </span>
-                                              <span className="text-xs text-slate-700 font-medium break-words text-left min-w-0">{routeObj.name} - {routeObj.description}</span>
+                                              <span className="text-xs text-slate-700 font-medium break-words text-left min-w-0">{routeLabel}</span>
                                             </div>
                                             <button type="button" onClick={() => handleRemoveDayTransfer(idx, transferIdx)} className="text-slate-400 hover:text-red-500 p-1 shrink-0">
                                               <Trash2 size={14}/>
@@ -11100,6 +11316,90 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                 <button type="submit" className="btn btn-primary btn-sm bg-orange-655 hover:bg-orange-700 text-white rounded-lg py-2 px-4 shadow">Save Changes</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Cities and nights for an itinerary that already exists. Reuses the
+          days already built for each city, so reordering or adding a night
+          does not discard the hotels and activities chosen for the others. */}
+      {structureDraft && (
+        <div className="modal-overlay">
+          <div className="modal-content max-w-lg">
+            <div className="modal-header">
+              <h3 className="text-sm font-black uppercase tracking-wider font-heading text-slate-800">Edit Cities &amp; Nights</h3>
+              <button onClick={() => setStructureDraft(null)} className="text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+            <div className="modal-body flex flex-col gap-3 text-left">
+              <p className="text-[10px] text-slate-450 leading-relaxed">
+                Reorder the stays, change how many nights in each, or add and remove a city.
+                Hotels, meals and activities already chosen are kept — only the days you add
+                are new, and only transfers between cities that actually changed are redone.
+              </p>
+
+              <div className="flex flex-col gap-2">
+                {structureDraft.blocks.map((block, i) => (
+                  <div key={i} className="structure-row flex items-center gap-2 p-2.5 rounded-xl">
+                    <div className="flex flex-col text-slate-400 select-none shrink-0">
+                      <button type="button" onClick={() => moveStructureBlock(i, -1)} disabled={i === 0}
+                        className="hover:text-slate-800 disabled:opacity-25 font-bold text-xs px-1" title="Move earlier">▲</button>
+                      <button type="button" onClick={() => moveStructureBlock(i, 1)} disabled={i === structureDraft.blocks.length - 1}
+                        className="hover:text-slate-800 disabled:opacity-25 font-bold text-xs px-1" title="Move later">▼</button>
+                    </div>
+
+                    <select
+                      value={block.city}
+                      onChange={(e) => updateStructureBlock(i, { city: e.target.value })}
+                      className="form-input text-xs flex-1 min-w-0"
+                    >
+                      {(db.cities || []).map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <input
+                        type="number"
+                        min="1"
+                        max="30"
+                        value={block.nights}
+                        onChange={(e) => updateStructureBlock(i, { nights: Math.max(1, Number(e.target.value) || 1) })}
+                        className="form-input text-xs w-16 text-center"
+                      />
+                      <span className="text-[10px] text-slate-450 font-bold">night{block.nights === 1 ? '' : 's'}</span>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => removeStructureBlock(i)}
+                      disabled={structureDraft.blocks.length <= 1}
+                      className="text-slate-300 hover:text-red-500 p-1 shrink-0 disabled:opacity-25"
+                      title="Remove this stay"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              <button
+                type="button"
+                onClick={addStructureBlock}
+                className="structure-add-btn text-[11px] font-bold py-2 rounded-lg flex items-center justify-center gap-1.5"
+              >
+                <Plus size={13} /> Add another city
+              </button>
+
+              <p className="text-[10px] text-slate-450 mt-1">
+                {(() => {
+                  const nights = structureDraft.blocks.reduce((n, b) => n + (Number(b.nights) || 0), 0);
+                  const days = nights + (structureDraft.hasDepartureDay ? 1 : 0);
+                  return `${nights} night${nights === 1 ? '' : 's'} · ${days} day${days === 1 ? '' : 's'}`;
+                })()}
+              </p>
+            </div>
+            <div className="modal-footer">
+              <button type="button" onClick={() => setStructureDraft(null)} className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 bg-transparent">Cancel</button>
+              <button type="button" onClick={applyTripStructure} className="btn btn-primary btn-sm">Apply Changes</button>
+            </div>
           </div>
         </div>
       )}
