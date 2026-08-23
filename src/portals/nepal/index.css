@@ -1677,6 +1677,38 @@
   border: 1px solid rgba(220, 38, 38, 0.4) !important;
 }
 
+/* ── Trip structure editor (cities & nights) ─────────────────────────────── */
+.nepal-portal-root .structure-edit-btn {
+  background: var(--bg-card) !important;
+  border: 1px solid var(--border-color) !important;
+  color: var(--primary) !important;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.nepal-portal-root .structure-edit-btn:hover {
+  border-color: var(--primary) !important;
+  background: rgba(201, 168, 76, 0.10) !important;
+}
+
+.nepal-portal-root .structure-row {
+  background: var(--bg-card-alt) !important;
+  border: 1px solid var(--border-color) !important;
+}
+
+.nepal-portal-root .structure-add-btn {
+  background: transparent !important;
+  border: 1px dashed var(--border-color) !important;
+  color: var(--text-muted) !important;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.nepal-portal-root .structure-add-btn:hover {
+  color: var(--primary) !important;
+  border-color: var(--primary) !important;
+}
+
 /* ── Full-day sightseeing toggle (quote builder day card) ────────────────── */
 .nepal-portal-root .sightseeing-toggle {
   background: var(--bg-card) !important;
