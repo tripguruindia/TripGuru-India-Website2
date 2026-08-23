@@ -91,6 +91,19 @@ const formatCityName = (c) => {
   return c.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
 };
 
+// "Kathmandu, Pokhara & Jomsom" -- each place once, in the order first
+// visited, so a there-and-back trip does not repeat its cities.
+const formatCityList = (cities) => {
+  const seen = [];
+  (cities || []).forEach((c) => {
+    const name = String(c || '').trim();
+    if (name && !seen.some(s => s.toLowerCase() === name.toLowerCase())) seen.push(name);
+  });
+  if (seen.length === 0) return '';
+  if (seen.length === 1) return seen[0];
+  return `${seen.slice(0, -1).join(', ')} & ${seen[seen.length - 1]}`;
+};
+
 // Human label for a route key, used when the builder has to create a route
 // the master list doesn't have yet (see ensureRoutesExist).
 const routeLabelFromKey = (key, airportsData = []) => {
@@ -4047,7 +4060,11 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       activity_ids: []
     }, departureRoute ? [departureRoute] : []));
 
-    setCustomPackageName(`${cities.map(c => c.city).join(' & ')} Custom Itinerary`);
+    // Joining every stop with " & " named a there-and-back trip
+    // "Kathmandu & Pokhara & Jomsom & Pokhara & Kathmandu Custom Itinerary" --
+    // each city repeated as often as it is visited, and too long for the
+    // field. Name it by the places visited, once each, in order.
+    setCustomPackageName(`${formatCityList(cities.map(c => c.city))} Custom Itinerary`);
     setSelectedHotelCategory(rating);
     setTravelDate(wizardLeavingOn);
     setStartCity(wizardStartCity);
