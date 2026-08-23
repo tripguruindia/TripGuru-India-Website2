@@ -273,8 +273,14 @@ router.post('/activities', async (req, res) => {
   if (!b.name) return res.status(400).json({ error: 'name is required' });
   const id = b.id || genId('a');
   await run(
-    'INSERT INTO activities (id, name, city, description, price_adult, price_child) VALUES (?, ?, ?, ?, ?, ?)',
-    [id, b.name, b.city || '', b.description || '', b.price_adult ?? 0, b.price_child ?? 0]
+    `INSERT INTO activities (id, name, city, description, price_adult, price_child, pricing_mode, vehicle_rates)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id, b.name, b.city || '', b.description || '',
+      b.price_adult ?? 0, b.price_child ?? 0,
+      b.pricing_mode === 'per_vehicle' ? 'per_vehicle' : 'per_person',
+      JSON.stringify(b.vehicle_rates || {}),
+    ]
   );
   res.status(201).json(serializeActivity(await one('SELECT * FROM activities WHERE id = ?', [id])));
 });
@@ -284,13 +290,20 @@ router.put('/activities/:id', async (req, res) => {
   const existing = await one('SELECT * FROM activities WHERE id = ?', [req.params.id]);
   if (!existing) return res.status(404).json({ error: 'Activity not found' });
   await run(
-    'UPDATE activities SET name = ?, city = ?, description = ?, price_adult = ?, price_child = ? WHERE id = ?',
+    `UPDATE activities SET name = ?, city = ?, description = ?, price_adult = ?, price_child = ?,
+      pricing_mode = ?, vehicle_rates = ? WHERE id = ?`,
     [
       b.name ?? existing.name,
       b.city ?? existing.city,
       b.description ?? existing.description,
       b.price_adult ?? existing.price_adult,
       b.price_child ?? existing.price_child,
+      b.pricing_mode === undefined
+        ? (existing.pricing_mode || 'per_person')
+        : (b.pricing_mode === 'per_vehicle' ? 'per_vehicle' : 'per_person'),
+      b.vehicle_rates === undefined
+        ? (existing.vehicle_rates || '{}')
+        : JSON.stringify(b.vehicle_rates || {}),
       req.params.id,
     ]
   );

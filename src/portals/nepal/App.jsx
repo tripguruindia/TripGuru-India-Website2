@@ -3036,7 +3036,14 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   // Activity rate edit helpers
   const handleStartEditActivity = (act) => {
     setEditingActivityId(act.id);
-    setActivityEditState({ ...act });
+    // Defaults so an activity created before per-vehicle pricing existed edits
+    // cleanly rather than binding inputs to undefined.
+    setActivityEditState({
+      pricing_mode: 'per_person',
+      vehicle_rates: {},
+      ...act,
+      vehicle_rates: { ...(act.vehicle_rates || {}) },
+    });
   };
 
   const handleSaveActivityEdit = () => {
@@ -7497,57 +7504,32 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                         );
                                       })}
 
-                                      {/* Full-day sightseeing. Its own control rather than an
-                                          entry in the transfer list: it is the vehicle at the
-                                          guest's disposal for the day, priced from the vehicle's
-                                          own per-day rate, not a journey between two places. */}
-                                      {(() => {
-                                        const isOn = getDayTransfers(day).includes(LOCAL_SIGHTSEEING_KEY);
-                                        const vehicle = (db.vehicles || []).find(v => v.id === selectedVehicleId);
-                                        const dayRate = Math.round((vehicle?.daily_sightseeing_rate || 0) * b2bDisplayFactor);
-                                        return (
-                                          <label className={`sightseeing-toggle ${isOn ? 'is-on' : ''} flex items-center justify-between gap-2 w-full p-2.5 rounded-lg cursor-pointer`}>
-                                            <span className="flex items-center gap-2 min-w-0">
-                                              <input
-                                                type="checkbox"
-                                                checked={isOn}
-                                                onChange={() => {
-                                                  const current = getDayTransfers(day);
-                                                  setDayTransfers(
-                                                    idx,
-                                                    isOn
-                                                      ? current.filter(k => k !== LOCAL_SIGHTSEEING_KEY)
-                                                      : [...current, LOCAL_SIGHTSEEING_KEY]
-                                                  );
-                                                }}
-                                                className="shrink-0"
-                                              />
-                                              <span className="sightseeing-pip text-[10px] font-bold px-2 py-0.5 rounded uppercase shrink-0">Sightseeing</span>
-                                              <span className="text-xs font-medium truncate">Vehicle at disposal for local sightseeing</span>
-                                            </span>
-                                            <strong className="text-xs shrink-0">
-                                              {view === 'b2c' && !hasContactDetails ? '🔒 Locked' : `₹${dayRate.toLocaleString()}/day`}
-                                            </strong>
-                                          </label>
-                                        );
-                                      })()}
-
                                       {/* Display selected activities */}
                                       {(() => {
                                         const selectedActs = (day.activity_ids || [])
                                           .map(actId => db.activities.find(a => a.id === actId))
                                           .filter(Boolean);
-                                        return selectedActs.map(act => (
+                                        return selectedActs.map(act => {
+                                          // A whole-vehicle activity is billed once for the
+                                          // vehicle, so showing price_adult would read as a
+                                          // per-head charge it is not.
+                                          const isPerVehicle = act.pricing_mode === 'per_vehicle';
+                                          const amount = isPerVehicle
+                                            ? Number((act.vehicle_rates || {})[selectedVehicleId] || 0)
+                                            : Number(act.price_adult || 0);
+                                          return (
                                           <div key={act.id} className="flex items-center justify-between gap-2 w-full min-w-0 bg-white border border-slate-200 p-2.5 rounded-lg shadow-sm">
                                             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 flex-1 min-w-0 pr-2">
-                                              <span className={`bg-${themeColor}-100 text-${themeColor}-700 text-[10px] font-bold px-2 py-0.5 rounded uppercase shrink-0`}>Activity</span>
+                                              <span className={`${isPerVehicle ? 'sightseeing-pip' : `bg-${themeColor}-100 text-${themeColor}-700`} text-[10px] font-bold px-2 py-0.5 rounded uppercase shrink-0`}>
+                                                {isPerVehicle ? 'Vehicle Day' : 'Activity'}
+                                              </span>
                                               <span className="text-xs text-slate-700 font-medium break-words text-left min-w-0">{act.name}</span>
                                             </div>
                                             <div className="flex items-center gap-3 shrink-0">
-                                              <strong className="text-xs text-brand-navy font-bold">
-                                                {view === 'b2c' && !hasContactDetails 
-                                                  ? '🔒 Locked' 
-                                                  : `₹${Math.round(act.price_adult * b2bDisplayFactor).toLocaleString()}`
+                                              <strong className="text-xs text-brand-navy font-bold whitespace-nowrap">
+                                                {view === 'b2c' && !hasContactDetails
+                                                  ? '🔒 Locked'
+                                                  : `₹${Math.round(amount * b2bDisplayFactor).toLocaleString()}${isPerVehicle ? ' / vehicle' : ' / pax'}`
                                                 }
                                               </strong>
                                               <button type="button" onClick={() => handleToggleActivity(idx, act.id)} className="text-slate-400 hover:text-red-500 p-1">
@@ -7555,7 +7537,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                               </button>
                                             </div>
                                           </div>
-                                        ));
+                                          );
+                                        });
                                       })()}
 
                                       <div className="flex flex-col sm:flex-row gap-2 mt-1">
@@ -9035,29 +9018,64 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                         ))}
                                       </select>
                                     </td>
-                                    <td className="py-2.5 px-4">
-                                      <input 
-                                        type="number"
-                                        value={activityEditState.price_adult}
-                                        onChange={(e) => setActivityEditState({ ...activityEditState, price_adult: Number(e.target.value) })}
-                                        className="w-28 px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-800 text-center"
-                                      />
-                                    </td>
-                                    <td className="py-2.5 px-4">
-                                      <input 
-                                        type="number"
-                                        value={activityEditState.price_child}
-                                        onChange={(e) => setActivityEditState({ ...activityEditState, price_child: Number(e.target.value) })}
-                                        className="w-28 px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-800 text-center"
-                                      />
-                                    </td>
+                                    {activityEditState.pricing_mode === 'per_vehicle' ? (
+                                      <td className="py-2.5 px-4" colSpan={2}>
+                                        <div className="flex flex-wrap gap-2">
+                                          {(db.vehicles || []).map(v => (
+                                            <label key={v.id} className="flex flex-col gap-0.5">
+                                              <span className="text-[9px] uppercase font-bold text-slate-500 truncate max-w-[90px]" title={v.name}>{v.name}</span>
+                                              <input
+                                                type="number"
+                                                min="0"
+                                                value={(activityEditState.vehicle_rates || {})[v.id] ?? 0}
+                                                onChange={(e) => setActivityEditState({
+                                                  ...activityEditState,
+                                                  vehicle_rates: { ...(activityEditState.vehicle_rates || {}), [v.id]: Number(e.target.value) || 0 },
+                                                })}
+                                                className="w-24 px-2 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-all font-semibold text-slate-800 text-center"
+                                              />
+                                            </label>
+                                          ))}
+                                        </div>
+                                      </td>
+                                    ) : (
+                                      <>
+                                        <td className="py-2.5 px-4">
+                                          <input
+                                            type="number"
+                                            value={activityEditState.price_adult}
+                                            onChange={(e) => setActivityEditState({ ...activityEditState, price_adult: Number(e.target.value) })}
+                                            className="w-28 px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-800 text-center"
+                                          />
+                                        </td>
+                                        <td className="py-2.5 px-4">
+                                          <input
+                                            type="number"
+                                            value={activityEditState.price_child}
+                                            onChange={(e) => setActivityEditState({ ...activityEditState, price_child: Number(e.target.value) })}
+                                            className="w-28 px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-800 text-center"
+                                          />
+                                        </td>
+                                      </>
+                                    )}
                                     <td className="py-2.5 px-6">
-                                      <input 
-                                        type="text" 
-                                        value={activityEditState.description}
-                                        onChange={(e) => setActivityEditState({ ...activityEditState, description: e.target.value })}
-                                        className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-850"
-                                      />
+                                      <div className="flex flex-col gap-1.5">
+                                        <select
+                                          value={activityEditState.pricing_mode || 'per_person'}
+                                          onChange={(e) => setActivityEditState({ ...activityEditState, pricing_mode: e.target.value })}
+                                          className="w-full px-3 py-1.5 text-[11px] bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 font-bold text-slate-800"
+                                          title="Per person multiplies by party size; per vehicle is charged once for the day"
+                                        >
+                                          <option value="per_person">Charge per person (× party size)</option>
+                                          <option value="per_vehicle">Charge per vehicle (once per day)</option>
+                                        </select>
+                                        <input
+                                          type="text"
+                                          value={activityEditState.description}
+                                          onChange={(e) => setActivityEditState({ ...activityEditState, description: e.target.value })}
+                                          className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-850"
+                                        />
+                                      </div>
                                     </td>
                                     <td className="py-2.5 px-6 text-right">
                                       <div className="flex gap-2 justify-end">
@@ -9078,10 +9096,34 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                   </>
                                 ) : (
                                   <>
-                                    <td className="py-3.5 px-6 font-extrabold text-slate-805">{act.name}</td>
+                                    <td className="py-3.5 px-6 font-extrabold text-slate-805">
+                                      <span className="flex items-center gap-1.5">
+                                        {act.pricing_mode === 'per_vehicle' && (
+                                          <span className="sightseeing-pip text-[9px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0">Per vehicle</span>
+                                        )}
+                                        {act.name}
+                                      </span>
+                                    </td>
                                     <td className="py-3.5 px-4 font-semibold text-slate-600">{act.city}</td>
-                                    <td className="py-3.5 px-4 font-bold text-slate-850">₹{act.price_adult.toLocaleString()}</td>
-                                    <td className="py-3.5 px-4 font-bold text-slate-850">₹{act.price_child.toLocaleString()}</td>
+                                    {act.pricing_mode === 'per_vehicle' ? (
+                                      // One vehicle for one day: a per-head price would be
+                                      // meaningless, so the two per-person columns give way to
+                                      // the rate for each vehicle.
+                                      <td className="py-3.5 px-4" colSpan={2}>
+                                        <div className="flex flex-wrap gap-1.5">
+                                          {(db.vehicles || []).map(v => (
+                                            <span key={v.id} className="text-[10px] font-bold bg-slate-100 border border-slate-200 rounded px-1.5 py-0.5">
+                                              {v.name.split(' ')[0]} ₹{Number((act.vehicle_rates || {})[v.id] || 0).toLocaleString()}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      </td>
+                                    ) : (
+                                      <>
+                                        <td className="py-3.5 px-4 font-bold text-slate-850">₹{act.price_adult.toLocaleString()}</td>
+                                        <td className="py-3.5 px-4 font-bold text-slate-850">₹{act.price_child.toLocaleString()}</td>
+                                      </>
+                                    )}
                                     <td className="py-3.5 px-6 text-xs text-slate-500 leading-relaxed">{act.description}</td>
                                     <td className="py-3.5 px-6 text-right">
                                       <div className="flex gap-2 justify-end">
@@ -10306,11 +10348,20 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                           className="w-full text-left px-4 py-3 rounded-lg hover:bg-slate-50 transition border border-transparent hover:border-slate-200 flex items-center justify-between gap-3"
                         >
                           <div className="flex flex-col flex-1 gap-1">
-                            <span className="text-xs font-bold text-slate-800">{act.name}</span>
+                            <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                              {act.pricing_mode === 'per_vehicle' && (
+                                <span className="sightseeing-pip text-[9px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0">Vehicle Day</span>
+                              )}
+                              {act.name}
+                            </span>
                             <span className="text-[10px] text-slate-500 line-clamp-1">{act.description}</span>
                           </div>
-                          <strong className="text-xs text-brand-navy shrink-0">
-                            {view === 'b2c' && !hasContactDetails ? '🔒 Locked' : `₹${Math.round(act.price_adult * b2bDisplayFactor).toLocaleString()}`}
+                          <strong className="text-xs text-brand-navy shrink-0 whitespace-nowrap">
+                            {view === 'b2c' && !hasContactDetails
+                              ? '🔒 Locked'
+                              : act.pricing_mode === 'per_vehicle'
+                                ? `₹${Math.round(Number((act.vehicle_rates || {})[selectedVehicleId] || 0) * b2bDisplayFactor).toLocaleString()} / vehicle`
+                                : `₹${Math.round(act.price_adult * b2bDisplayFactor).toLocaleString()} / pax`}
                           </strong>
                         </button>
                       );

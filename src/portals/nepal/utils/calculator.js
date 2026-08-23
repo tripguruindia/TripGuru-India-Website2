@@ -361,24 +361,47 @@ export function calculateQuote({
     if (day.activity_ids && day.activity_ids.length > 0) {
       day.activity_ids.forEach(actId => {
         const act = activitiesData.find(a => a.id === actId);
-        if (act) {
-          const markedUpPriceAdult = (act.price_adult || 0) * adminMarginFactor;
-          const markedUpPriceChild = (act.price_child || 0) * adminMarginFactor;
-          const actAdultCost = adults * markedUpPriceAdult;
-          const actChildCost = (cwb + cnb) * markedUpPriceChild;
-          const totalActCost = actAdultCost + actChildCost;
+        if (!act) return;
 
-          dayActivityCostAdult += actAdultCost;
-          dayActivityCostChild += actChildCost;
-          dayActivityCost += totalActCost;
+        // A whole-vehicle activity (full-day local sightseeing) is one vehicle
+        // out for one day: it costs what that vehicle costs, whether two
+        // people ride in it or twelve. Charging it per head would multiply a
+        // single car's day by the party size.
+        if (act.pricing_mode === 'per_vehicle') {
+          const perVehicle = (act.vehicle_rates || {})[vehicleId];
+          const actCost = (Number(perVehicle) || 0) * adminMarginFactor;
+
+          // Attributed to the adult column purely so the adult/child split
+          // still sums to the total -- it is not a per-head charge.
+          dayActivityCostAdult += actCost;
+          dayActivityCost += actCost;
           dayActivities.push({
             id: act.id,
             name: act.name,
-            cost: totalActCost,
-            priceAdult: markedUpPriceAdult,
-            priceChild: markedUpPriceChild
+            cost: actCost,
+            pricingMode: 'per_vehicle',
+            perVehicle: actCost,
           });
+          return;
         }
+
+        const markedUpPriceAdult = (act.price_adult || 0) * adminMarginFactor;
+        const markedUpPriceChild = (act.price_child || 0) * adminMarginFactor;
+        const actAdultCost = adults * markedUpPriceAdult;
+        const actChildCost = (cwb + cnb) * markedUpPriceChild;
+        const totalActCost = actAdultCost + actChildCost;
+
+        dayActivityCostAdult += actAdultCost;
+        dayActivityCostChild += actChildCost;
+        dayActivityCost += totalActCost;
+        dayActivities.push({
+          id: act.id,
+          name: act.name,
+          cost: totalActCost,
+          pricingMode: 'per_person',
+          priceAdult: markedUpPriceAdult,
+          priceChild: markedUpPriceChild
+        });
       });
     }
 
