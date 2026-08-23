@@ -128,6 +128,17 @@ const routeLabelFromKey = (key, airportsData = []) => {
 // copy directly (see dayWiseBreakdown), so the duplicate has been removed
 // rather than left to drift out of step with the priced itinerary.
 
+// Cities are compared by name all over the portal -- a day's city against the
+// activities master, against the hotels master, against a route's endpoints.
+// Compare them trimmed, case-folded and null-safe: a stray space or a record
+// imported without a city must never orphan a hotel or blank the builder.
+//
+// Lives at module scope on purpose. It used to be declared partway down the
+// component body, which put every earlier use of it in the temporal dead zone
+// and crashed the whole portal to a blank page on first render.
+const sameCity = (a, b) =>
+  String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+
 function App() {
   // Routing helper
   const getRouteFromHash = () => {
@@ -1140,7 +1151,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           {wizardDefaultDays.map((day, idx) => {
             const isFirst = idx === 0;
             const isLast = idx === wizardDefaultDays.length - 1;
-            const cityHotels = db.hotels.filter(h => h.city.toLowerCase() === day.city.toLowerCase());
+            const cityHotels = db.hotels.filter(h => sameCity(h.city, day.city));
             const selectedActs = (day.activity_ids || [])
               .map(actId => db.activities.find(a => a.id === actId))
               .filter(Boolean);
@@ -1628,7 +1639,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     travelers: { adults: 2, cwb: 0, cnb: 0 },
     roomConfig: { single: 0, double: 1, extra_adult: 0, cwb: 0, cnb: 0 },
     itinerary: pkg.days.map(d => {
-      const h = db.hotels.find(htl => htl.city.toLowerCase() === d.city.toLowerCase() && htl.category === pkg.default_hotel_category);
+      const h = db.hotels.find(htl => sameCity(htl.city, d.city) && htl.category === pkg.default_hotel_category);
       return {
         ...d,
         hotelId: h ? h.id : '',
@@ -1689,7 +1700,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     // Generate custom itinerary based on package defaults
     const generatedItinerary = pkg.days.map(day => {
       // Find default hotel in city and category
-      const cityHotels = db.hotels.filter(h => h.city.toLowerCase() === day.city.toLowerCase() && h.category === pkg.default_hotel_category);
+      const cityHotels = db.hotels.filter(h => sameCity(h.city, day.city) && h.category === pkg.default_hotel_category);
       const defaultHotel = cityHotels.length > 0 ? cityHotels[0].id : '';
 
       // Rebuilt field-by-field rather than spread, so the day's transfers and
@@ -1736,7 +1747,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
     // Generate custom itinerary based on package defaults
     const generatedItinerary = pkg.days.map(day => {
-      const cityHotels = db.hotels.filter(h => h.city.toLowerCase() === day.city.toLowerCase() && h.category === pkg.default_hotel_category);
+      const cityHotels = db.hotels.filter(h => sameCity(h.city, day.city) && h.category === pkg.default_hotel_category);
       const defaultHotel = cityHotels.length > 0 ? cityHotels[0].id : '';
 
       // See the sibling handler above: transfers and flight legs must be
@@ -1856,7 +1867,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     
     // Automatically map hotels in the new category
     setCustomItinerary(prev => prev.map(day => {
-      const cityHotelsInTier = db.hotels.filter(h => h.city.toLowerCase() === day.city.toLowerCase() && h.category === newCategory);
+      const cityHotelsInTier = db.hotels.filter(h => sameCity(h.city, day.city) && h.category === newCategory);
       return {
         ...day,
         hotelId: cityHotelsInTier.length > 0 ? cityHotelsInTier[0].id : day.hotelId
@@ -1871,7 +1882,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
         if (idx !== dayIndex) return day;
         let updatedDay = { ...day, [field]: value };
         if (field === 'city') {
-          const cityHotels = db.hotels.filter(h => h.city.toLowerCase() === value.toLowerCase() && h.category === selectedHotelCategory);
+          const cityHotels = db.hotels.filter(h => sameCity(h.city, value) && h.category === selectedHotelCategory);
           updatedDay.hotelId = cityHotels.length > 0 ? cityHotels[0].id : '';
           updatedDay.activity_ids = [];
           // Changing the city invalidates every transfer on the day (they were
@@ -2182,7 +2193,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       const newDayNum = prev.length + 1;
       const lastDay = prev[prev.length - 1];
       const defaultCity = lastDay ? lastDay.city : 'Kathmandu';
-      const cityHotels = db.hotels.filter(h => h.city.toLowerCase() === defaultCity.toLowerCase() && h.category === selectedHotelCategory);
+      const cityHotels = db.hotels.filter(h => sameCity(h.city, defaultCity) && h.category === selectedHotelCategory);
       
       return [
         ...prev,
@@ -2685,7 +2696,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       const stdPkg = db.packages.find(p => p.name === booking.package_name);
       if (stdPkg) {
         const defaultItin = stdPkg.days.map(d => {
-          const h = db.hotels.find(htl => htl.city.toLowerCase() === d.city.toLowerCase() && htl.category === stdPkg.default_hotel_category);
+          const h = db.hotels.find(htl => sameCity(htl.city, d.city) && htl.category === stdPkg.default_hotel_category);
           return {
             ...d,
             hotelId: h ? h.id : '',
@@ -3546,15 +3557,34 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
   // An activity belongs to exactly one city and may only be added to a day in
   // that city -- a Kathmandu temple tour cannot be sold on a Pokhara day.
-  // Compared leniently (trimmed, case-insensitive) because city names are free
-  // text on the activity and picked from a list on the day, so a stray space
-  // would otherwise orphan an activity with no visible reason. Null-safe: an
-  // activity imported without a city must not blank the whole builder.
-  const sameCity = (a, b) =>
-    String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
-
+  // Compared through sameCity because city names are free text on the activity
+  // and picked from a list on the day, so a stray space would otherwise orphan
+  // an activity with no visible reason.
   const activitiesInCity = (city) =>
     (db.activities || []).filter(a => a.city && sameCity(a.city, city));
+
+  // Hotels in a city, matched the same forgiving way as activities. A plain
+  // `===` on the raw strings meant a stray space or a different case in the
+  // Cities master hid every hotel in that city.
+  const hotelsInCity = (city) =>
+    (db.hotels || []).filter(h => h.city && sameCity(h.city, city));
+
+  // What a day card may offer for the night: the trip's chosen star rating
+  // first, then anything else the city has.
+  //
+  // Restricting the list to the chosen rating meant a city that has no hotel
+  // at that rating offered nothing at all -- Jomsom on a 4-Star trip left
+  // "No stay required" as the only choice, with no clue why. The other
+  // ratings are offered in their own group, labelled with the rating they
+  // actually are, so picking one is a deliberate act and the quote prices it
+  // from that hotel's own rates.
+  const hotelChoicesForCity = (city, category) => {
+    const inCity = hotelsInCity(city);
+    return {
+      preferred: inCity.filter(h => h.category === category),
+      others: inCity.filter(h => h.category !== category),
+    };
+  };
 
   // Options for a route-builder stop dropdown: every city, plus every airport.
   // Airports are selectable stops so a run between one city's airport and a
@@ -4010,20 +4040,18 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           route = '';
         }
 
-        const cityHotels = db.hotels.filter(h => h.city.toLowerCase() === dest.city.toLowerCase() && h.category === rating);
+        const cityHotels = db.hotels.filter(h => sameCity(h.city, dest.city) && h.category === rating);
         const defaultHotel = cityHotels.length > 0 ? cityHotels[0].id : '';
 
-        let activityIds = [];
-        if (dest.city.toLowerCase() === 'kathmandu') {
-          activityIds = ['a-ktm-sightseeing'];
-        } else if (dest.city.toLowerCase() === 'pokhara') {
-          activityIds = ['a-pok-boating'];
-        } else if (dest.city.toLowerCase() === 'chitwan') {
-          activityIds = ['a-chi-safari'];
-        }
+        // No activity is ever added automatically. The wizard used to drop a
+        // hardcoded sightseeing activity (Kathmandu, Pokhara, Chitwan) on the
+        // second night in a city, so asking for two nights silently added a
+        // paid activity nobody chose and the quote came out higher than the
+        // agent expected. Activities are picked by hand in the day cards.
+        // Automatic suggestions may come back later, driven by the activities
+        // master rather than hardcoded ids.
 
         const isTransitionDay = night === 1 && !isFirstCity;
-        const assignActivity = dayCounter > 1 && night === 2;
 
         let title = `Explore ${dest.city}`;
         let description = `Enjoy local sightseeing and activities in ${dest.city}.`;
@@ -4048,7 +4076,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           hotelId: defaultHotel,
           meals: dest.city.toLowerCase() === 'chitwan' ? 'AP' : 'CP',
           is_sightseeing: !isTransitionDay,
-          activity_ids: assignActivity ? activityIds : [],
+          activity_ids: [],
           // The wizard always generates road travel; switching a leg to a
           // flight is done later in the builder, where the agent can see the
           // whole trip. Keeping it out of the intake form was deliberate --
@@ -7143,7 +7171,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                   const resolved = defaultItin.map(d => {
                                     if (d.hotelId && d.hotelId !== 'no_stay') return d;
                                     if (d.hotelId === 'no_stay') return d;
-                                    const h = db.hotels.find(htl => htl.city.toLowerCase() === d.city.toLowerCase() && htl.category === rating);
+                                    const h = db.hotels.find(htl => sameCity(htl.city, d.city) && htl.category === rating);
                                     return { ...d, hotelId: h ? h.id : '' };
                                   });
 
@@ -7585,16 +7613,42 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                             {customItinerary.map((day, idx) => {
                               const isLast = idx === customItinerary.length - 1;
                               
-                              // Get hotels matching current day city and selected category
-                              const availableHotels = db.hotels.filter(
-                                h => h.city.toLowerCase() === day.city.toLowerCase() && h.category === selectedHotelCategory
-                              );
+                              // Hotels this day can book: the trip's star rating
+                              // first, every other rating the city has after it.
+                              const { preferred: preferredHotels, others: otherRatedHotels } =
+                                hotelChoicesForCity(day.city, selectedHotelCategory);
 
                               // Get activities in the current city
                               const cityActivities = activitiesInCity(day.city);
 
                               // Get selected hotel details
                               const hotel = db.hotels.find(h => h.id === day.hotelId);
+
+                              // The hotel line for THIS party, not a generic
+                              // double. A 3-adult room is a double plus an
+                              // extra-adult bed, and showing only the double
+                              // rate made a correctly-priced quote look as if
+                              // it had ignored the third guest.
+                              const nightlyRoom = (() => {
+                                if (!hotel) return null;
+                                const mp = day.meals || 'CP';
+                                const r = hotel.rates || {};
+                                const lines = [
+                                  { label: 'Single', count: roomConfig.single, rate: r.single?.[mp] || 0 },
+                                  { label: 'Double', count: roomConfig.double, rate: r.double?.[mp] || 0 },
+                                  { label: 'Extra adult', count: roomConfig.extra_adult, rate: r.extra_adult?.[mp] || 0 },
+                                  { label: 'Child with bed', count: roomConfig.cwb, rate: r.cwb?.[mp] || 0 },
+                                  { label: 'Child no bed', count: roomConfig.cnb, rate: r.cnb?.[mp] || 0 },
+                                ].filter(l => l.count > 0);
+                                return {
+                                  lines,
+                                  total: lines.reduce((sum, l) => sum + l.count * l.rate, 0),
+                                  // A bed the party needs that the hotel has no
+                                  // rate for is charged at zero, which quietly
+                                  // undercharges the whole quote. Say so.
+                                  missing: lines.filter(l => l.rate <= 0).map(l => l.label),
+                                };
+                              })();
 
                               return (
                                 <div key={day.day} className="timeline-day-card bg-white border border-slate-200 rounded-2xl shadow-sm hover:shadow-md transition-all duration-300">
@@ -7620,7 +7674,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                     {/* Top: Details & Description */}
                                     <div className="bg-slate-50/70 border border-slate-200/80 p-4 rounded-xl flex flex-col gap-3 shadow-inner">
                                       <div>
-                                        <label className="text-[10px] font-extrabold text-indigo-650 uppercase tracking-wider block mb-1">Generated Tour Day Heading</label>
+                                        <label className="text-[10px] font-extrabold text-indigo-650 uppercase tracking-wider block mb-1">Tour Day Heading</label>
                                         <div className="text-xs font-black text-slate-800 leading-snug font-heading bg-white py-2 px-3 border border-slate-200/60 rounded-lg select-all">
                                           {/* Read straight from the pricing engine's own output
                                               rather than recomputing here -- this preview and the
@@ -7632,18 +7686,18 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                       </div>
 
                                       <div>
-                                        <label className="text-[10px] font-extrabold text-indigo-650 uppercase tracking-wider block mb-1">Generated Tour Day Description</label>
+                                        <label className="text-[10px] font-extrabold text-indigo-650 uppercase tracking-wider block mb-1">Tour Day Itinerary</label>
                                         <div className="text-[11px] text-slate-600 leading-relaxed bg-white py-2.5 px-3 border border-slate-200/60 rounded-lg min-h-[75px] select-all whitespace-pre-line">
                                           {/* Same source as the heading above: the engine's own
                                               generated copy, so preview and export always agree. */}
                                           {quoteCalculation.dayWiseBreakdown?.[idx]?.description || ''}
                                         </div>
-                                        <span className="text-[9px] text-slate-450 mt-1.5 block italic leading-normal">★ Title & description generate automatically from selected hotel, transfers, and activities. Edit core descriptions in Admin panel.</span>
+                                        <span className="text-[9px] text-slate-450 mt-1.5 block italic leading-normal">★ The heading and itinerary above are written automatically from the selected hotel, transfers, and activities. Edit core descriptions in Admin panel.</span>
                                       </div>
                                     </div>
 
                                     {/* Middle: Hotel & Meals */}
-                                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/60 flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
+                                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-200/60 flex flex-col md:flex-row md:flex-wrap gap-4 items-stretch md:items-center justify-between">
                                       <div className="flex items-center gap-3 w-full md:w-auto flex-1">
                                         <div className="flex flex-col gap-1 w-full max-w-sm">
                                           <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1.5">
@@ -7662,13 +7716,39 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                                 className="form-select text-xs py-2 px-3 bg-white border border-slate-200 rounded-lg w-full focus:ring-4 focus:ring-blue-500/10 focus:border-blue-500 outline-none transition cursor-pointer"
                                               >
                                                 <option value="">No stay required</option>
-                                                {availableHotels.map(h => {
-                                                  const rateText = view === 'b2c' && !hasContactDetails ? '🔒 Locked' : `₹${Math.round(h.rates.double.CP * b2bDisplayFactor).toLocaleString()}`;
+                                                {preferredHotels.map(h => {
+                                                  const rateText = view === 'b2c' && !hasContactDetails ? '🔒 Locked' : `₹${Math.round((h.rates?.double?.CP || 0) * b2bDisplayFactor).toLocaleString()}`;
                                                   return (
                                                     <option key={h.id} value={h.id}>{h.name} (CP: {rateText})</option>
                                                   );
                                                 })}
+                                                {otherRatedHotels.length > 0 && (
+                                                  <optgroup label={`Other categories in ${day.city}`}>
+                                                    {otherRatedHotels.map(h => {
+                                                      const rateText = view === 'b2c' && !hasContactDetails ? '🔒 Locked' : `₹${Math.round((h.rates?.double?.CP || 0) * b2bDisplayFactor).toLocaleString()}`;
+                                                      return (
+                                                        <option key={h.id} value={h.id}>{h.name} — {h.category} (CP: {rateText})</option>
+                                                      );
+                                                    })}
+                                                  </optgroup>
+                                                )}
                                               </select>
+
+                                              {/* Why the list looks the way it does. Without this a
+                                                  city with no hotel at the chosen rating just showed
+                                                  an empty dropdown and read as a broken portal. */}
+                                              {preferredHotels.length === 0 && otherRatedHotels.length > 0 && (
+                                                <div className="text-[9px] text-amber-600 bg-amber-50 border border-amber-100 p-1.5 rounded flex items-start gap-1 leading-normal font-medium">
+                                                  <AlertTriangle size={11} className="shrink-0 text-amber-500 mt-0.5" />
+                                                  <span>{day.city} has no {selectedHotelCategory} hotel listed, so the other categories are shown above. Each is priced at its own rates.</span>
+                                                </div>
+                                              )}
+                                              {preferredHotels.length === 0 && otherRatedHotels.length === 0 && (
+                                                <div className="text-[9px] text-amber-600 bg-amber-50 border border-amber-100 p-1.5 rounded flex items-start gap-1 leading-normal font-medium">
+                                                  <AlertTriangle size={11} className="shrink-0 text-amber-500 mt-0.5" />
+                                                  <span>No hotel is listed for {day.city} yet. Add one in Admin → Hotels to book a paid night here.</span>
+                                                </div>
+                                              )}
 
                                               {(!day.hotelId || day.hotelId === 'no_stay') && (
                                                 <div className="flex flex-col gap-1.5 mt-1 bg-white border border-slate-200/60 p-3 rounded-lg w-full">
@@ -7696,7 +7776,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                       </div>
 
                                       {!isLast && hotel && (
-                                        <div className="flex items-center justify-between md:justify-start gap-4 bg-white border border-slate-200/50 p-2.5 rounded-lg w-full md:w-auto shrink-0">
+                                        <div className="flex flex-col sm:flex-row sm:items-center justify-between md:justify-start gap-3 sm:gap-4 bg-white border border-slate-200/50 p-2.5 rounded-lg w-full md:w-auto shrink-0">
                                           <div className="flex items-center gap-1.5">
                                             <span className="text-[10px] font-extrabold text-slate-500 uppercase">Meals:</span>
                                             <select
@@ -7709,14 +7789,48 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                               <option value="AP">AP (FB)</option>
                                             </select>
                                           </div>
-                                          <div className="text-[10px] text-slate-500">
-                                            Double: <strong className="text-slate-800">
-                                              {view === 'b2c' && !hasContactDetails 
-                                                ? '🔒 Locked' 
-                                                : `₹${Math.round(hotel.rates.double[day.meals || 'CP'] * b2bDisplayFactor).toLocaleString()}`
-                                              }
-                                            </strong>
+                                          {/* Every bed this party actually occupies, priced. The
+                                              third adult in a room is a double plus an extra-adult
+                                              bed, so a bare "Double: x" both hid the extra bed and
+                                              hid a hotel that has no extra-adult rate set. */}
+                                          <div className="text-[10px] text-slate-500 flex flex-col gap-0.5">
+                                            {view === 'b2c' && !hasContactDetails ? (
+                                              <span>Room rate: <strong className="text-slate-800">🔒 Locked</strong></span>
+                                            ) : nightlyRoom && nightlyRoom.lines.length > 0 ? (
+                                              <>
+                                                {nightlyRoom.lines.map(line => (
+                                                  <span key={line.label}>
+                                                    {line.count} × {line.label}:{' '}
+                                                    <strong className={line.rate <= 0 ? 'text-amber-600' : 'text-slate-800'}>
+                                                      ₹{Math.round(line.rate * b2bDisplayFactor).toLocaleString()}
+                                                    </strong>
+                                                  </span>
+                                                ))}
+                                                {nightlyRoom.lines.length > 1 && (
+                                                  <span className="pt-0.5 border-t border-slate-100 mt-0.5">
+                                                    Night total:{' '}
+                                                    <strong className="text-slate-800">
+                                                      ₹{Math.round(nightlyRoom.total * b2bDisplayFactor).toLocaleString()}
+                                                    </strong>
+                                                  </span>
+                                                )}
+                                              </>
+                                            ) : null}
                                           </div>
+                                        </div>
+                                      )}
+
+                                      {!isLast && hotel && view !== 'b2c' && nightlyRoom && nightlyRoom.missing.length > 0 && (
+                                        <div className="text-[9px] text-amber-700 bg-amber-50 border border-amber-100 p-2 rounded-lg flex items-start gap-1.5 leading-normal font-medium w-full">
+                                          <AlertTriangle size={12} className="shrink-0 text-amber-500 mt-0.5" />
+                                          <span>
+                                            {hotel.name} has no {day.meals || 'CP'} rate set for{' '}
+                                            {nightlyRoom.missing.join(', ').toLowerCase()}, so {nightlyRoom.missing.length > 1 ? 'those beds are' : 'that bed is'} being
+                                            charged ₹0 and this quote is short.{' '}
+                                            {view === 'admin'
+                                              ? 'Set the rate in Admin → Hotels.'
+                                              : 'Please confirm the rate with TripGuru before sending this quote.'}
+                                          </span>
                                         </div>
                                       )}
                                     </div>
@@ -9118,7 +9232,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                   <div className="flex flex-col gap-6">
                     {db.hotels
                       .filter(h => {
-                        const matchesCity = adminFilterCity === 'All' || h.city.toLowerCase() === adminFilterCity.toLowerCase();
+                        const matchesCity = adminFilterCity === 'All' || sameCity(h.city, adminFilterCity);
                         const matchesCategory = adminFilterCategory === 'All' || h.category === adminFilterCategory;
                         return matchesCity && matchesCategory;
                       })
@@ -9748,7 +9862,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                             travelers: { adults: 2, cwb: 0, cnb: 0 },
                             roomConfig: { single: 0, double: 1, extra_adult: 0, cwb: 0, cnb: 0 },
                             itinerary: pkg.days.map(d => {
-                              const h = db.hotels.find(htl => htl.city.toLowerCase() === d.city.toLowerCase() && htl.category === pkg.default_hotel_category);
+                              const h = db.hotels.find(htl => sameCity(htl.city, d.city) && htl.category === pkg.default_hotel_category);
                               return {
                                 ...d,
                                 hotelId: h ? h.id : '',
@@ -9936,7 +10050,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                 travelers: { adults: 2, cwb: 0, cnb: 0 },
                                 roomConfig: { single: 0, double: 1, extra_adult: 0, cwb: 0, cnb: 0 },
                                 itinerary: editingPackage.days.map(d => {
-                                  const h = db.hotels.find(htl => htl.city.toLowerCase() === d.city.toLowerCase() && htl.category === editingPackage.default_hotel_category);
+                                  const h = db.hotels.find(htl => sameCity(htl.city, d.city) && htl.category === editingPackage.default_hotel_category);
                                   return {
                                     ...d,
                                     hotelId: h ? h.id : '',

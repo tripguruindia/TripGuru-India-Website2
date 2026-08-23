@@ -248,6 +248,15 @@ An activity is only offerable on a day in its **own city**; compare through
 `activitiesInCity()`, which trims and is null-safe. One whose city is not in
 the Cities master can never be used, so the Admin list flags it.
 
+**Nothing is ever added to a day automatically.** The intake wizard used to
+drop a hardcoded activity (`a-ktm-sightseeing`, `a-pok-boating`,
+`a-chi-safari`) on the second night in a city, so asking for two nights in
+Kathmandu silently added a paid activity nobody chose and the quote came out
+higher than the agent expected. Activities are picked by hand in the day
+cards. Tanmay wants automatic suggestions back **later**; when they return
+they must be driven by the activities master, not hardcoded ids, and be
+visible and removable at the moment they are added.
+
 ## The quote builder
 
 **One place edits a trip: the intake page.** A saved quote reopens there, not
@@ -267,6 +276,28 @@ rebuilt day one against the previous start city.
 
 The builder header is a read-only summary plus one *Edit Trip* button. The
 former per-field pickers, "Edit Rooms" and "Edit Cities & Nights" are gone.
+
+### Hotels on a day card
+
+Match a hotel's city through **`sameCity()`** (module scope, above `App()`),
+never a raw `===` on the strings — a stray space in the Cities master used to
+hide every hotel in that city. `sameCity` is deliberately at module scope: it
+was declared partway down the component body, which put every earlier use of
+it in the temporal dead zone and rendered the whole portal as a blank page.
+
+`hotelChoicesForCity()` returns the trip's star rating first and every other
+rating the city has second. Offering only the chosen rating meant a city with
+no hotel at that rating showed an empty dropdown with no explanation — Jomsom
+on a 4-Star trip left "No stay required" as the only choice. Other ratings are
+labelled with the rating they actually are and priced from their own rates.
+
+A room's price is **`double` + `extra_adult`** when three adults share it —
+there is no `triple` rate; `extra_adult` *is* the third bed. The engine has
+always charged it (see `deriveFromRooms`), but the day card showed only the
+double rate, so a correct quote looked as if it had ignored the third guest.
+The card now prints every bed the party occupies and warns when a bed the
+party needs has no rate set, because that bed is otherwise charged ₹0 and the
+whole quote comes out short with nothing on screen to say so.
 
 Day headings and descriptions are generated in `calculator.js` and are what the
 client reads: lead with the movement (Arrive / Drive to / Fly to / Depart),
