@@ -3228,6 +3228,18 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     setEditingVehicleDetails(null);
   };
 
+  // An activity belongs to exactly one city and may only be added to a day in
+  // that city -- a Kathmandu temple tour cannot be sold on a Pokhara day.
+  // Compared leniently (trimmed, case-insensitive) because city names are free
+  // text on the activity and picked from a list on the day, so a stray space
+  // would otherwise orphan an activity with no visible reason. Null-safe: an
+  // activity imported without a city must not blank the whole builder.
+  const sameCity = (a, b) =>
+    String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
+
+  const activitiesInCity = (city) =>
+    (db.activities || []).filter(a => a.city && sameCity(a.city, city));
+
   // Options for a route-builder stop dropdown: every city, plus every airport.
   // Airports are selectable stops so a run between one city's airport and a
   // DIFFERENT city -- Pokhara Airport to Bandipur -- is something you build
@@ -7251,9 +7263,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                               );
 
                               // Get activities in the current city
-                              const cityActivities = db.activities.filter(
-                                a => a.city.toLowerCase() === day.city.toLowerCase()
-                              );
+                              const cityActivities = activitiesInCity(day.city);
 
                               // Get selected hotel details
                               const hotel = db.hotels.find(h => h.id === day.hotelId);
@@ -9104,7 +9114,21 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                         {act.name}
                                       </span>
                                     </td>
-                                    <td className="py-3.5 px-4 font-semibold text-slate-600">{act.city}</td>
+                                    {/* An activity is only offerable on a day in its own city, so
+                                        one pointing at a city that no longer exists is invisible
+                                        in the builder with nothing to explain why. Flag it here
+                                        rather than let it sit unreachable. */}
+                                    <td className="py-3.5 px-4 font-semibold text-slate-600">
+                                      {act.city}
+                                      {!(db.cities || []).some(c => sameCity(c, act.city)) && (
+                                        <span
+                                          className="activity-city-warning text-[9px] font-bold px-1.5 py-0.5 rounded uppercase ml-1.5 whitespace-nowrap"
+                                          title="This city is not in the Cities master, so this activity cannot be added to any day. Fix the city, or add it under Cities."
+                                        >
+                                          Unknown city
+                                        </span>
+                                      )}
+                                    </td>
                                     {act.pricing_mode === 'per_vehicle' ? (
                                       // One vehicle for one day: a per-head price would be
                                       // meaningless, so the two per-person columns give way to
@@ -10329,7 +10353,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
               {(() => {
                 const day = customItinerary[showActivityModal.dayIndex];
                 if (!day) return null;
-                const cityActs = db.activities.filter(a => a.city.toLowerCase() === day.city.toLowerCase());
+                const cityActs = activitiesInCity(day.city);
                 if (cityActs.length === 0) return <div className="p-4 text-xs text-slate-400 italic text-center">No activities available in {day.city}</div>;
                 
                 return (
@@ -10732,7 +10756,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                   ? editingPackage.days?.[packageActivityModal.dayIndex]
                   : wizardDefaultDays?.[packageActivityModal.dayIndex];
                 if (!day) return null;
-                const cityActs = db.activities.filter(a => a.city.toLowerCase() === day.city.toLowerCase());
+                const cityActs = activitiesInCity(day.city);
                 if (cityActs.length === 0) return <div className="p-4 text-xs text-slate-400 italic text-center">No activities available in {day.city}</div>;
                 
                 return (
