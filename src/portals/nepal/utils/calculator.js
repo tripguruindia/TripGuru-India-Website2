@@ -5,6 +5,8 @@ import {
   getAirportForCity,
   airportFromKeySegment,
   resolveAirportTransfer,
+  rateForRoute,
+  findRoute,
   TRAVEL_MODE_FLIGHT,
 } from './transfers';
 
@@ -148,6 +150,24 @@ const formatCityName = (c) => {
   const clean = c.toLowerCase().trim();
   if (clean === 'ktm' || clean === 'kathmandu') return 'Kathmandu';
   return c.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ');
+};
+
+// Human name for a route key, in the direction the key is written. Used when a
+// route only exists backwards, so the day is still labelled the way it is
+// actually travelled.
+const routeNameForKey = (key, airportsData = []) => {
+  if (!key) return '';
+  if (key.endsWith('_airport_transfer')) {
+    return `${formatCityName(key.replace(/_airport_transfer$/, ''))} Airport Transfer`;
+  }
+  if (!key.includes('_to_')) return formatCityName(key.replace(/_/g, ' '));
+  return key
+    .split('_to_')
+    .map((seg) => {
+      const airport = airportFromKeySegment(airportsData, seg);
+      return airport ? airport.name : formatCityName(seg);
+    })
+    .join(' to ');
 };
 
 const getTransferDesc = (routeKey, startCity, endCity, dayCity, isFirstDay, isLastDay, airportsData = []) => {
@@ -325,8 +345,11 @@ export function calculateQuote({
       dayTransfers.forEach((route) => {
         if (route === "local_sightseeing") {
           dayTransportCost += (vehicle.daily_sightseeing_rate || 0) * adminMarginFactor;
-        } else if (vehicle.route_rates && vehicle.route_rates[route] !== undefined) {
-          dayTransportCost += vehicle.route_rates[route] * adminMarginFactor;
+        } else {
+          // rateForRoute falls back to the reverse direction: a sector priced
+          // one way is priced both ways, so nobody has to enter it twice.
+          const rate = rateForRoute(vehicle, route);
+          if (rate !== undefined) dayTransportCost += rate * adminMarginFactor;
         }
       });
     }
@@ -361,7 +384,14 @@ export function calculateQuote({
 
     // Dynamic Heading & Description Generation
     const isFlightDay = day.travel_mode === TRAVEL_MODE_FLIGHT && !!day.flight_from_city;
-    const routeObj = routesData.find(r => r.key === dayTransfers[0]);
+    // findRoute, not a plain find: a sector may only be defined in the
+    // opposite direction, and it should still name the day. When it matches
+    // that way its stored name points backwards ("Pokhara to Kathmandu" on a
+    // Kathmandu-to-Pokhara day), so the label is rebuilt from the key.
+    const rawRouteObj = findRoute(routesData, dayTransfers[0]);
+    const routeObj = rawRouteObj && rawRouteObj.reversedFrom
+      ? { ...rawRouteObj, name: routeNameForKey(rawRouteObj.key, airportsData) }
+      : rawRouteObj;
     const selectedActs = (day.activity_ids || [])
       .map(actId => activitiesData.find(a => a.id === actId))
       .filter(Boolean);

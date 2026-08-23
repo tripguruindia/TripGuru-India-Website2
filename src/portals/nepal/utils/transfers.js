@@ -87,6 +87,53 @@ export function buildRouteName(airports, stops) {
   return (stops || []).map((s) => stopLabel(airports, s)).filter(Boolean).join(' to ');
 }
 
+// ---------------------------------------------------------------------------
+// Direction
+// ---------------------------------------------------------------------------
+// A transfer is priced by the distance driven, so A->B and B->A cost the same.
+// Entering one direction is enough: the reverse is understood, including for
+// multi-stop sectors (`pokhara_to_ktm_to_chitwan` reversed is
+// `chitwan_to_ktm_to_pokhara`). Both directions may still be stored separately
+// -- older data does -- and an explicitly stored rate always wins over the
+// reverse, so anyone who genuinely needs asymmetric pricing can still set it.
+
+export function reverseRouteKey(key) {
+  if (!key || !key.includes('_to_')) return key;
+  return key.split('_to_').reverse().join('_to_');
+}
+
+// The rate a vehicle charges for a route key, falling back to the reverse.
+// Returns undefined when neither direction is priced, so callers can tell
+// "not priced" apart from "priced at zero".
+export function rateForRoute(vehicle, key) {
+  if (!vehicle || !key) return undefined;
+  const rates = vehicle.route_rates || {};
+  if (rates[key] !== undefined) return rates[key];
+  const rev = reverseRouteKey(key);
+  if (rev !== key && rates[rev] !== undefined) return rates[rev];
+  return undefined;
+}
+
+// Looks up a route definition, falling back to the reverse direction. When it
+// matches in reverse the result carries the ORIGINAL key plus `reversedFrom`,
+// so callers price and label it in the direction actually being travelled
+// rather than showing "Pokhara to Kathmandu" on a Kathmandu-to-Pokhara day.
+export function findRoute(routes, key) {
+  if (!key) return null;
+  const direct = (routes || []).find((r) => r.key === key);
+  if (direct) return direct;
+  const rev = reverseRouteKey(key);
+  if (rev === key) return null;
+  const reversed = (routes || []).find((r) => r.key === rev);
+  return reversed ? { ...reversed, key, reversedFrom: rev } : null;
+}
+
+// True when either direction of this route already exists -- used to avoid
+// creating a second row for a sector that is already priced backwards.
+export function routeExistsEitherWay(routes, key) {
+  return !!findRoute(routes, key);
+}
+
 // Reverse of stopKeySegment: turns an `apt…` key segment back into the
 // airport it came from, so a route key can be worded in plain English.
 export function airportFromKeySegment(airports, segment) {
