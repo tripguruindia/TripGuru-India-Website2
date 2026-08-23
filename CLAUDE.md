@@ -18,6 +18,11 @@ symptoms accurately in plain language — that is his strength, use it.
 - Windows PowerShell. `&&` does **not** chain commands; give one per line.
 - He asked directly for fewer, larger steps: long multi-part instructions lose
   him.
+- **Open a pull request as soon as a piece of work is finished** — he asked for
+  this directly, so do not wait to be told each time. He merges it himself on
+  GitHub; a branch pushed without a PR is work he cannot see or ship. Once a PR
+  is merged it cannot take new commits: restart the branch from `main` and open
+  a fresh PR for the next change.
 
 ## What this repo is
 
