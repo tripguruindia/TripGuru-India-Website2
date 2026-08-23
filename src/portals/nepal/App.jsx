@@ -620,7 +620,8 @@ function App() {
   const [editingActivityId, setEditingActivityId] = useState(null);
   const [activityEditState, setActivityEditState] = useState({});
   const [newActivityForm, setNewActivityForm] = useState({
-    name: '', city: 'Kathmandu', description: '', price_adult: 2000, price_child: 1200
+    name: '', city: 'Kathmandu', description: '', price_adult: 2000, price_child: 1200,
+    pricing_mode: 'per_person', vehicle_rates: {}
   });
   const [showAddActivityModal, setShowAddActivityModal] = useState(false);
   const [newCityName, setNewCityName] = useState('');
@@ -3061,18 +3062,27 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   const handleAddNewActivity = (e) => {
     e.preventDefault();
     const newId = `a-${newActivityForm.city.substring(0, 3).toLowerCase()}-${Date.now().toString().slice(-4)}`;
+    const isPerVehicle = newActivityForm.pricing_mode === 'per_vehicle';
     const freshAct = {
       id: newId,
       name: newActivityForm.name,
       city: newActivityForm.city,
       description: newActivityForm.description || 'Description pending.',
-      price_adult: Number(newActivityForm.price_adult),
-      price_child: Number(newActivityForm.price_child)
+      // A per-vehicle activity never bills per head, so the ticket prices are
+      // stored as zero rather than left at the form's defaults, where they
+      // would look like a real (but unused) fare.
+      price_adult: isPerVehicle ? 0 : Number(newActivityForm.price_adult),
+      price_child: isPerVehicle ? 0 : Number(newActivityForm.price_child),
+      pricing_mode: isPerVehicle ? 'per_vehicle' : 'per_person',
+      vehicle_rates: isPerVehicle ? { ...(newActivityForm.vehicle_rates || {}) } : {},
     };
 
     updateDBState({ ...db, activities: [...db.activities, freshAct] });
     setShowAddActivityModal(false);
-    setNewActivityForm({ name: '', city: 'Kathmandu', description: '', price_adult: 2000, price_child: 1200 });
+    setNewActivityForm({
+      name: '', city: 'Kathmandu', description: '', price_adult: 2000, price_child: 1200,
+      pricing_mode: 'per_person', vehicle_rates: {}
+    });
   };
 
   // Cities Master Helpers
@@ -10234,15 +10244,57 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                       ))}
                     </select>
                   </div>
-                  <div>
-                    <label className="form-label text-[10px]">Adult Ticket (₹)</label>
-                    <input type="number" required value={newActivityForm.price_adult} onChange={(e) => setNewActivityForm({ ...newActivityForm, price_adult: e.target.value })} className="form-input text-xs" min="0" />
-                  </div>
-                  <div>
-                    <label className="form-label text-[10px]">Child Ticket (₹)</label>
-                    <input type="number" required value={newActivityForm.price_child} onChange={(e) => setNewActivityForm({ ...newActivityForm, price_child: e.target.value })} className="form-input text-xs" min="0" />
-                  </div>
+                  {newActivityForm.pricing_mode !== 'per_vehicle' && (
+                    <>
+                      <div>
+                        <label className="form-label text-[10px]">Adult Ticket (₹)</label>
+                        <input type="number" required value={newActivityForm.price_adult} onChange={(e) => setNewActivityForm({ ...newActivityForm, price_adult: e.target.value })} className="form-input text-xs" min="0" />
+                      </div>
+                      <div>
+                        <label className="form-label text-[10px]">Child Ticket (₹)</label>
+                        <input type="number" required value={newActivityForm.price_child} onChange={(e) => setNewActivityForm({ ...newActivityForm, price_child: e.target.value })} className="form-input text-xs" min="0" />
+                      </div>
+                    </>
+                  )}
                 </div>
+
+                {/* How this activity is billed. A full-day vehicle hire costs
+                    the same whatever the party size, so it cannot be entered
+                    as a per-head ticket. */}
+                <div className="form-group mb-0">
+                  <label className="form-label text-[10px]">Charged</label>
+                  <select
+                    value={newActivityForm.pricing_mode || 'per_person'}
+                    onChange={(e) => setNewActivityForm({ ...newActivityForm, pricing_mode: e.target.value })}
+                    className="form-input text-xs"
+                  >
+                    <option value="per_person">Per person (× party size)</option>
+                    <option value="per_vehicle">Per vehicle (once per day)</option>
+                  </select>
+                </div>
+
+                {newActivityForm.pricing_mode === 'per_vehicle' && (
+                  <div className="form-group mb-0">
+                    <label className="form-label text-[10px]">Rate Per Vehicle (₹ per day)</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(db.vehicles || []).map(v => (
+                        <label key={v.id} className="flex flex-col gap-0.5">
+                          <span className="text-[9px] uppercase font-bold text-slate-500 truncate" title={v.name}>{v.name}</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={(newActivityForm.vehicle_rates || {})[v.id] ?? 0}
+                            onChange={(e) => setNewActivityForm({
+                              ...newActivityForm,
+                              vehicle_rates: { ...(newActivityForm.vehicle_rates || {}), [v.id]: Number(e.target.value) || 0 },
+                            })}
+                            className="form-input text-xs"
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="form-group mb-0">
                   <label className="form-label text-xs">Description</label>
