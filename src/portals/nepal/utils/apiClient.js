@@ -123,6 +123,13 @@ export async function apiSignup(payload) {
   return result;
 }
 
+// The caller's own profile: contact details and, for an agent, the agency
+// branding that appears on the vouchers they send their clients. The row is
+// chosen server-side from the token, so there is no id to pass.
+export async function updateMyProfile(payload) {
+  return apiFetch('/auth/me', { method: 'PATCH', body: payload });
+}
+
 export function apiLogoutLocal() {
   clearSession();
 }

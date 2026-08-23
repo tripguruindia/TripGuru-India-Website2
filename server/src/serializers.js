@@ -141,6 +141,7 @@ function serializeUser(u) {
     agencyPhone: u.agency_phone,
     agencyEmail: u.agency_email,
     agencyWebsite: u.agency_website,
+    agencyLogo: u.agency_logo || '',
     walletBalance: u.wallet_balance,
     address: u.address,
     createdAt: u.created_at,

@@ -36,6 +36,7 @@ import { requireXLSX } from './utils/loadXlsx';
 import {
   apiLogin,
   apiSignup,
+  updateMyProfile,
   apiLogoutLocal,
   isAdminSession,
   isApiSession,
@@ -541,6 +542,7 @@ function App() {
   }, [adminProfile]);
 
   const [profileSuccessMessage, setProfileSuccessMessage] = useState('');
+  const [profileSaving, setProfileSaving] = useState(false);
 
 
 
@@ -1165,8 +1167,10 @@ function App() {
       return `*Day ${day.day} (${day.city}): ${day.title}*${hotelInfo}${mealsInfo}${routeInfo}${activitiesInfo}\n${day.description}`;
     }).join('\n\n');
 
+    // The message goes out under the sender's own name. "B2B TRAVEL PARTNER"
+    // as a fallback would put trade wording in front of the agent's client.
     const companyName = isB2BInvoice && whiteLabel 
-      ? (whiteLabel.agencyName || "B2B TRAVEL PARTNER") 
+      ? (whiteLabel.agencyName || "TRAVEL PARTNER") 
       : (adminProfile.companyName || "NEPAL TOUR ORGANIZER");
 
     const contactPhone = isB2BInvoice && whiteLabel
@@ -5236,8 +5240,11 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     const handleLogoUpload = (e) => {
       const file = e.target.files[0];
       if (file) {
-        if (file.size > 2000000) {
-          window.alert("Logo size must be less than 2MB.");
+        // Matches the server's cap. The logo travels with every login and
+        // profile read, so an oversized one would slow the portal for
+        // everybody -- and the server would refuse it anyway.
+        if (file.size > 1000000) {
+          window.alert("Logo must be under 1MB. Most logos are well under this — try saving it as a PNG at around 600px wide.");
           return;
         }
         const reader = new FileReader();
@@ -5483,14 +5490,45 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           </div>
 
           <div className="border-t border-slate-100 mt-8 pt-6 flex justify-end">
+            {/* Saved to the account, not just this browser. Branding used to
+                live only in localStorage, so an agent's logo vanished the
+                moment they signed in from another device -- and the vouchers
+                they sent from it went out unbranded. */}
             <button 
-              onClick={() => {
-                setProfileSuccessMessage('Partner branding and agent details saved successfully!');
-                setTimeout(() => setProfileSuccessMessage(''), 4000);
+              onClick={async () => {
+                if (!isApiSession()) {
+                  setProfileSuccessMessage('Saved on this device. Sign in to keep your branding on your account.');
+                  setTimeout(() => setProfileSuccessMessage(''), 5000);
+                  return;
+                }
+                setProfileSaving(true);
+                try {
+                  const { user } = await updateMyProfile({
+                    fullName: b2bProfile.agentName,
+                    phone: b2bProfile.phone,
+                    countryCode: b2bProfile.countryCode,
+                    address: b2bProfile.address,
+                    agencyName: b2bProfile.agencyName,
+                    agencyAddress: b2bProfile.agencyAddress,
+                    agencyPhone: b2bProfile.agencyPhone,
+                    agencyEmail: b2bProfile.agencyEmail,
+                    agencyWebsite: b2bProfile.agencyWebsite,
+                    agencyLogo: b2bProfile.agencyLogo || '',
+                  });
+                  setCurrentUser((prev) => (prev ? { ...prev, ...user } : prev));
+                  setProfileSuccessMessage('Partner branding saved to your account — it follows you to any device.');
+                  setTimeout(() => setProfileSuccessMessage(''), 4000);
+                } catch (err) {
+                  console.error('Failed to save agency profile', err);
+                  window.alert(err.message || 'Could not save your profile. Please check your connection and try again.');
+                } finally {
+                  setProfileSaving(false);
+                }
               }}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs uppercase tracking-wider py-3 px-8 rounded-xl shadow-md transition hover:-translate-y-0.5 active:translate-y-0"
+              disabled={profileSaving}
+              className="bg-emerald-600 hover:bg-emerald-700 disabled:opacity-60 text-white font-extrabold text-xs uppercase tracking-wider py-3 px-8 rounded-xl shadow-md transition hover:-translate-y-0.5 active:translate-y-0"
             >
-              Save Changes & Apply Branding
+              {profileSaving ? 'Saving…' : 'Save Changes & Apply Branding'}
             </button>
           </div>
         </div>
@@ -8688,6 +8726,20 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
                 const isClientCopy = invoiceCopyMode === 'client';
 
+                // Whose document this is. On the agent portal the letterhead is
+                // the AGENT's -- their logo, their agency name -- because the
+                // traveller reading it is their client, not TripGuru's.
+                const letterheadLogo = isB2BInvoice && whiteLabel
+                  ? (whiteLabel.agencyLogo || '')
+                  : (adminProfile.companyLogo || '');
+                const letterheadName = isB2BInvoice && whiteLabel
+                  ? (whiteLabel.agencyName || 'Travel Partner')
+                  : (adminProfile.companyName || 'NEPAL TOUR ORGANIZER');
+                // Trade wording belongs on the agent's own copy only.
+                const letterheadTagline = isClientCopy
+                  ? ''
+                  : (isB2BInvoice ? 'B2B Travel Partner' : 'Nepal Holiday Experts');
+
                 let invoiceAcc = Math.round(quoteCalculation.totals.accommodation);
                 let invoiceTrans = Math.round(quoteCalculation.totals.transport);
                 let invoiceAct = Math.round(quoteCalculation.totals.activities);
@@ -8708,7 +8760,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                       <div className="flex items-start gap-2 text-green-700 text-xs sm:text-sm font-semibold text-left">
                         <ShieldCheck size={18} className="shrink-0 mt-0.5" />
                         <span>
-                          {isB2BInvoice ? "B2B Partner Voucher Generated & Confirmed" : "Quote Generated & Confirmed"}
+                          {isB2BInvoice ? "Partner Voucher Generated & Confirmed" : "Quote Generated & Confirmed"}
                           {" "}(Ref ID: {lastBookingId})
                         </span>
                       </div>
@@ -8799,31 +8851,41 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                         <div className="w-16 h-1 bg-slate-300 mx-auto mt-3 rounded"></div>
                       </div>
 
-                      {/* Header: Centered Company Logo & Name */}
-                      <div className="flex flex-col items-center justify-center text-center mb-6 pb-6 border-b border-slate-100">
-                        <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
-                          {isB2BInvoice && whiteLabel ? (
-                            whiteLabel.agencyLogo ? (
-                              <img src={whiteLabel.agencyLogo} alt={whiteLabel.agencyName || "Agency Logo"} className="max-h-16 object-contain w-auto block rounded-lg" />
-                            ) : (
-                              <div className="text-2xl font-bold text-slate-800 font-heading">💼</div>
-                            )
-                          ) : (
-                            adminProfile.companyLogo ? (
-                              <img src={adminProfile.companyLogo} alt={adminProfile.companyName || "Company Logo"} className="max-h-16 object-contain w-auto block rounded-lg" />
-                            ) : (
-                              <div className="text-2xl font-bold text-slate-800 font-heading">🇳🇵</div>
-                            )
-                          )}
-                          
-                          <div className="text-left">
-                            <h2 className="text-xl md:text-2xl font-extrabold tracking-tight text-slate-900 font-heading leading-tight">
-                              {isB2BInvoice && whiteLabel ? (whiteLabel.agencyName || "B2B TRAVEL PARTNER") : (adminProfile.companyName || "NEPAL TOUR ORGANIZER")}
-                            </h2>
-                            <div className={`text-[10px] uppercase font-extrabold tracking-wider mt-0.5 text-${isB2BInvoice ? 'emerald' : 'orange'}-600`}>
-                              {isB2BInvoice ? "B2B Travel Partner" : "Nepal Holiday Experts"}
-                            </div>
+                      {/* Letterhead. The logo sits on its own line above the
+                          name, in a box that fits whatever shape it is: a round
+                          logo lands square and centred, a wide one with the
+                          name built in runs to the full width. object-contain
+                          means neither is ever stretched, and a tall box would
+                          otherwise crop a wide logo or shrink a round one to
+                          nothing. */}
+                      <div className="flex flex-col items-center justify-center text-center mb-6 pb-6 border-b border-slate-100 gap-3">
+                        {letterheadLogo ? (
+                          <div className="flex items-center justify-center h-24 w-full max-w-[320px]">
+                            <img
+                              src={letterheadLogo}
+                              alt={letterheadName}
+                              className="max-h-24 max-w-full w-auto h-auto object-contain block"
+                            />
                           </div>
+                        ) : (
+                          <div className="text-3xl font-bold text-slate-800 font-heading leading-none">
+                            {isB2BInvoice ? '💼' : '🇳🇵'}
+                          </div>
+                        )}
+
+                        <div className="text-center">
+                          <h2 className="text-xl md:text-2xl font-extrabold tracking-tight text-slate-900 font-heading leading-tight">
+                            {letterheadName}
+                          </h2>
+                          {/* The client copy carries no trade label. "B2B Travel
+                              Partner" describes the agent's relationship with
+                              TripGuru, which is nothing to do with the traveller
+                              reading the document. */}
+                          {letterheadTagline && (
+                            <div className={`text-[10px] uppercase font-extrabold tracking-wider mt-0.5 text-${isB2BInvoice ? 'emerald' : 'orange'}-600`}>
+                              {letterheadTagline}
+                            </div>
+                          )}
                         </div>
                       </div>
 
@@ -8833,7 +8895,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                         <div className="text-xs text-slate-500 max-w-md leading-relaxed text-left">
                           {isB2BInvoice && whiteLabel ? (
                             <>
-                              <div className="font-semibold text-slate-700">{whiteLabel.agencyName || "B2B Travel Partner"}</div>
+                              <div className="font-semibold text-slate-700">{whiteLabel.agencyName || "Travel Partner"}</div>
                               <div>{whiteLabel.agencyAddress || "Travel Partner Address"}</div>
                               <div className="mt-0.5">Email: <span className="text-slate-700 font-semibold">{whiteLabel.agencyEmail || "booking@agency.com"}</span> | Phone: <span className="text-slate-700 font-semibold">{whiteLabel.agencyPhone || ""}</span></div>
                               {whiteLabel.agencyWebsite && <div className="mt-0.5">Website: <span className="text-slate-700 font-semibold">{whiteLabel.agencyWebsite}</span></div>}
@@ -8850,10 +8912,14 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
                         {/* Right Side: Quote Metadata */}
                         <div className="flex flex-col items-start md:items-end print:items-end gap-1.5 text-xs text-slate-500 md:text-right print:text-right">
+                          {/* "B2B Partner Voucher" and "Booking Agent" describe
+                              the agent's arrangement with TripGuru. On the copy
+                              that goes to his traveller the document is simply
+                              his own voucher. */}
                           <span className={`bg-${isB2BInvoice ? 'emerald' : 'blue'}-50 text-${isB2BInvoice ? 'emerald' : 'blue'}-700 text-[10px] font-extrabold px-3 py-1 rounded-full uppercase tracking-wider border border-${isB2BInvoice ? 'emerald' : 'blue'}-200/50`}>
-                            {isB2BInvoice ? "B2B Partner Voucher" : "Official Quotation"}
+                            {isClientCopy ? "Travel Voucher" : (isB2BInvoice ? "B2B Partner Voucher" : "Official Quotation")}
                           </span>
-                          {isB2BInvoice && whiteLabel && (
+                          {!isClientCopy && isB2BInvoice && whiteLabel && (
                             <div className="text-[10px] text-emerald-700 font-bold">
                               Booking Agent: {whiteLabel.agentName || "Horizon Travel Partners"}
                             </div>

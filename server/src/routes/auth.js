@@ -102,4 +102,56 @@ router.get('/me', requireAuth, async (req, res) => {
   res.json({ user: serializeUser(user) });
 });
 
+// ---------------------------------------------------------------------------
+// PATCH /auth/me -- the caller edits their OWN profile: contact details and,
+// for an agent, the agency branding that appears on the vouchers they send
+// their clients.
+//
+// Which row is written comes from the verified token, never the body -- the
+// same rule that governs bookings and quotes. Role, email, password and wallet
+// balance are not editable here: changing those is an admin action
+// (PUT /admin/users/:id), not a self-service one.
+//
+// The logo is a data URL. It is capped because it rides along with every
+// login and /me call, and an uncapped one would make both slow for everybody.
+// ---------------------------------------------------------------------------
+const MAX_LOGO_CHARS = 1_400_000; // ~1MB of image once base64-encoded
+
+router.patch('/me', requireAuth, async (req, res) => {
+  const b = req.body || {};
+  const rs = await client.execute({ sql: 'SELECT * FROM users WHERE id = ?', args: [req.user.id] });
+  const existing = rs.rows[0];
+  if (!existing) return res.status(404).json({ error: 'User not found' });
+
+  if (typeof b.agencyLogo === 'string' && b.agencyLogo.length > MAX_LOGO_CHARS) {
+    return res.status(400).json({ error: 'Logo is too large. Please upload an image under 1MB.' });
+  }
+
+  const pick = (next, current) => (next !== undefined && next !== null ? next : current);
+
+  await client.execute({
+    sql: `UPDATE users SET
+            full_name = ?, phone = ?, country_code = ?, address = ?,
+            agency_name = ?, agency_address = ?, agency_phone = ?,
+            agency_email = ?, agency_website = ?, agency_logo = ?
+          WHERE id = ?`,
+    args: [
+      pick(b.fullName, existing.full_name),
+      pick(b.phone, existing.phone),
+      pick(b.countryCode, existing.country_code),
+      pick(b.address, existing.address),
+      pick(b.agencyName, existing.agency_name),
+      pick(b.agencyAddress, existing.agency_address),
+      pick(b.agencyPhone, existing.agency_phone),
+      pick(b.agencyEmail, existing.agency_email),
+      pick(b.agencyWebsite, existing.agency_website),
+      pick(b.agencyLogo, existing.agency_logo),
+      req.user.id,
+    ],
+  });
+
+  const after = await client.execute({ sql: 'SELECT * FROM users WHERE id = ?', args: [req.user.id] });
+  res.json({ user: serializeUser(after.rows[0]) });
+});
+
 module.exports = router;

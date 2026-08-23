@@ -146,6 +146,9 @@ CREATE TABLE IF NOT EXISTS users (
   agency_phone   TEXT,
   agency_email   TEXT,
   agency_website TEXT,
+  -- Data URL of the agency's own logo, shown on the vouchers they send their
+  -- clients. Added via ADDITIVE_COLUMNS for databases that predate it.
+  agency_logo    TEXT,
   wallet_balance REAL NOT NULL DEFAULT 0,
   address        TEXT,
   created_at     TEXT NOT NULL

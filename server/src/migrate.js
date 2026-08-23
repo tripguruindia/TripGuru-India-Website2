@@ -34,6 +34,9 @@ const ADDITIVE_COLUMNS = [
     column: 'tax_enabled',
     ddl: 'ALTER TABLE settings ADD COLUMN tax_enabled INTEGER NOT NULL DEFAULT 1',
   },
+  // An agent's own logo, so their branding follows the account rather than
+  // living in one browser's localStorage.
+  { table: 'users', column: 'agency_logo', ddl: 'ALTER TABLE users ADD COLUMN agency_logo TEXT' },
 ];
 
 async function applyAdditiveColumns() {
