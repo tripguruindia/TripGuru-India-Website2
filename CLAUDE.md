@@ -198,6 +198,21 @@ then convert) rather than creating a second parallel booking, which keeps
 `converted_booking_id` pointing at the real booking so win rates stay
 measurable.
 
+**One screen lists both: *Quotes & Bookings*.** A booking made straight from
+the builder never had a quote behind it, so it appeared nowhere on that screen
+— three bookings in the history and one card in the list. Direct bookings are
+now listed too, as **Won**: every booking is won business, whether or not a
+proposal preceded it. A booking that came *from* a quote is not listed twice —
+the quote's Won card already carries *Open Booking*.
+
+**The client on `checkoutForm` must be cleared with the trip.** It used to
+persist, so every new booking opened pre-filled with the previous customer's
+name, email and phone and could be confirmed for the wrong person without
+anyone noticing. `startFreshTrip()` clears it together with
+`editingBookingId`; the two always go together. It is deliberately *not*
+cleared right after booking — the voucher rendered next reads it for
+"Prepared For".
+
 ## The voucher, and its two copies
 
 The confirmation screen renders one document (`#print-sheet`) in one of two

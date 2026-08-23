@@ -694,6 +694,36 @@ function App() {
     notes: ''
   });
 
+  const EMPTY_CHECKOUT_FORM = { clientName: '', email: '', phone: '', countryCode: '+91', notes: '' };
+
+  // Everything that belongs to the LAST trip and must not follow the operator
+  // into the next one: which booking is being amended, and the client the
+  // previous quote was for. The client details used to persist, so every new
+  // booking arrived pre-filled with the previous customer's name, email and
+  // phone -- and a booking made without noticing went to the wrong person.
+  const startFreshTrip = () => {
+    setEditingBookingId(null);
+    setCheckoutForm({ ...EMPTY_CHECKOUT_FORM });
+  };
+
+  // The caller's own bookings. Server-scoped to the logged-in account
+  // (GET /bookings/mine filters by agent_id for b2b, user_id for b2c) --
+  // this used to read db.bookings.filter(type==='B2B'), which showed every
+  // agent's bookings once any admin session had loaded the full table into
+  // shared app state. Falls back to a locally filtered view only when the
+  // API list has not loaded yet (e.g. offline).
+  //
+  // At component scope because both the dashboard and the quotes-and-bookings
+  // list need it.
+  const ownBookings = isApiSession()
+    ? myBookings
+    : (db.bookings || []).filter(b =>
+        view === 'b2b'
+          ? b.type === 'B2B' && b.agent_id === currentUser?.id
+          : b.type === 'B2C' && b.user_id === currentUser?.id
+      );
+
+
   useEffect(() => {
     if (showCheckoutModal && view === 'b2c') {
       setCheckoutForm(prev => ({
@@ -1819,7 +1849,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   // Handle Preset Package Selection
   const handleSelectPresetPackage = (pkg, bypassLeadCheck = false) => {
     // A different trip than whatever booking was last open.
-    setEditingBookingId(null);
+    startFreshTrip();
     if (view === 'b2c' && !hasContactDetails && !bypassLeadCheck) {
       setPendingLeadAction({ type: 'customize', pkg });
       setShowLeadCaptureModal(true);
@@ -1869,7 +1899,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   // Handle Preset Package View & Direct Book Selection
   const handleViewAndBookPackage = (pkg, bypassLeadCheck = false) => {
     // A different trip than whatever booking was last open.
-    setEditingBookingId(null);
+    startFreshTrip();
     if (view === 'b2c' && !hasContactDetails && !bypassLeadCheck) {
       setPendingLeadAction({ type: 'view_book', pkg });
       setShowLeadCaptureModal(true);
@@ -2481,7 +2511,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     const draft = resumableDraft;
     if (!draft) return;
     // A different trip than whatever booking was last open.
-    setEditingBookingId(null);
+    startFreshTrip();
     setCurrentPackageId(draft.packageId ?? null);
     setCustomPackageName(draft.packageName ?? 'My Nepal Tour Custom');
     setCustomItinerary(draft.itinerary || []);
@@ -2586,7 +2616,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   const handleResumeQuote = (quote) => {
     // A saved quote is its own trip -- booking it must never amend whatever
     // booking happened to be open before.
-    setEditingBookingId(null);
+    startFreshTrip();
     setActiveQuoteId(quote.id);
     setCurrentPackageId(null);
     setCustomPackageName(quote.package_name || 'Untitled quote');
@@ -2825,6 +2855,9 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     syncBookingToSheet(newBooking);
 
     setLastBookingId(newBooking.id);
+    // Only the amend target is released here. The client details stay, because
+    // the voucher rendered next reads them for its "Prepared For" block; they
+    // are cleared when the operator actually starts a different trip.
     setEditingBookingId(null);
     setShowCheckoutModal(false);
     // The build is now a real booking -- the draft has served its purpose.
@@ -4097,7 +4130,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     // on screen to say so. Deliberately not cleared in the reshape branch
     // above -- the builder's "Edit Trip" button goes through this same screen
     // and must keep amending the same booking.
-    setEditingBookingId(null);
+    startFreshTrip();
 
     // Only fully filled rows become days. A row left on "Select city" is a
     // row the operator has not finished, not a stop on the trip.
@@ -4367,13 +4400,63 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       );
     }
 
+    // One list of everything the agent has in play. A booking made straight
+    // from the builder never had a quote behind it, so it used to appear
+    // nowhere here at all -- three bookings in the history and one card on
+    // this screen. Every booking is a won piece of business, so a direct one
+    // is listed as Won alongside the quotes that were converted.
+    //
+    // A booking that DID come from a quote is already represented by that
+    // quote's Won card (which carries Open Booking), so it is not listed
+    // twice.
+    const bookedFromQuote = new Set(
+      myQuotes.map((q) => q.converted_booking_id).filter(Boolean)
+    );
+    const directBookings = (ownBookings || [])
+      .filter((bk) => !bookedFromQuote.has(bk.id))
+      .map((bk) => ({
+        kind: 'booking',
+        booking: bk,
+        id: bk.id,
+        status: 'Won',
+        title: bk.client_name || bk.package_name || 'Booking',
+        subtitle: bk.package_name || 'Custom itinerary',
+        days: (bk.itinerary || []).length,
+        adults: bk.adults,
+        cwb: bk.cwb,
+        cnb: bk.cnb,
+        total_price: bk.total_price,
+        travel_date: bk.travel_date,
+        sortAt: bk.created_at,
+      }));
+
+    const quoteItems = myQuotes.map((q) => ({
+      kind: 'quote',
+      quote: q,
+      id: q.id,
+      status: q.status,
+      title: q.client_name || q.package_name || 'Untitled quote',
+      subtitle: q.package_name || 'Custom itinerary',
+      days: (q.itinerary || []).length,
+      adults: q.adults,
+      cwb: q.cwb,
+      cnb: q.cnb,
+      total_price: q.total_price,
+      travel_date: q.travel_date,
+      sortAt: q.updated_at,
+    }));
+
+    const items = [...quoteItems, ...directBookings].sort(
+      (a, b) => new Date(b.sortAt || 0) - new Date(a.sortAt || 0)
+    );
+
     const counts = QUOTE_TABS.reduce((acc, tab) => {
-      acc[tab] = tab === 'All' ? myQuotes.length : myQuotes.filter((q) => q.status === tab).length;
+      acc[tab] = tab === 'All' ? items.length : items.filter((it) => it.status === tab).length;
       return acc;
     }, {});
     const visible = quoteStatusFilter === 'All'
-      ? myQuotes
-      : myQuotes.filter((q) => q.status === quoteStatusFilter);
+      ? items
+      : items.filter((it) => it.status === quoteStatusFilter);
 
     const pipClass = (status) => `quote-pip quote-pip-${(status || 'draft').toLowerCase()}`;
     const paxLabel = (q) => {
@@ -4392,10 +4475,11 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     return (
       <div className="max-w-5xl mx-auto py-6 fade-in">
         <div className="mb-6">
-          <h2 className="quote-card-title text-2xl font-extrabold">My Quotes</h2>
+          <h2 className="quote-card-title text-2xl font-extrabold">My Quotes &amp; Bookings</h2>
           <p className="quote-card-meta text-xs mt-1.5 leading-relaxed max-w-2xl">
-            Proposals you've saved but not booked yet. Reopen one to keep editing it, mark it sent
-            once the client has it, and convert it the moment they say yes.
+            Everything you have in play. Saved proposals to follow up on — reopen one to keep
+            editing it, mark it sent once the client has it, convert it the moment they say yes —
+            and every trip already booked, shown as Won.
           </p>
         </div>
 
@@ -4419,20 +4503,20 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           </div>
         )}
 
-        {quotesLoading && myQuotes.length === 0 ? (
-          <div className="quote-empty p-10 text-center text-xs">Loading your saved quotes…</div>
+        {quotesLoading && items.length === 0 ? (
+          <div className="quote-empty p-10 text-center text-xs">Loading…</div>
         ) : visible.length === 0 ? (
           <div className="quote-empty p-10 text-center">
             <Layers size={26} className="mx-auto mb-3 opacity-60" />
             <p className="text-sm font-bold quote-card-title">
-              {myQuotes.length === 0 ? 'No saved quotes yet' : `Nothing in ${quoteStatusFilter}`}
+              {items.length === 0 ? 'Nothing here yet' : `Nothing in ${quoteStatusFilter}`}
             </p>
             <p className="quote-card-meta text-xs mt-2 max-w-md mx-auto leading-relaxed">
-              {myQuotes.length === 0
-                ? 'Build an itinerary in the Custom Planner or from a preset package, then choose "Save Quote for Later".'
+              {items.length === 0
+                ? 'Build an itinerary in the Custom Planner or from a preset package. Save it as a quote to follow up on, or book it straight away — either way it appears here.'
                 : 'Try another tab, or build a new quote from the planner.'}
             </p>
-            {myQuotes.length === 0 && (
+            {items.length === 0 && (
               <button
                 onClick={() => { setIsEditingExistingTrip(false); if (view === 'b2b') setB2bSubView('wizard'); else setB2cSubView('wizard'); }}
                 className="btn btn-primary btn-sm mt-5"
@@ -4443,7 +4527,52 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {visible.map((q) => {
+            {visible.map((item) => {
+              // A booking with no quote behind it: one card, always Won, and
+              // the only thing to do with it is open its voucher.
+              if (item.kind === 'booking') {
+                return (
+                  <div key={item.id} className="quote-card">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="quote-card-title text-base font-extrabold truncate">{item.title}</h3>
+                          <span className={pipClass('Won')}>Won</span>
+                        </div>
+                        <p className="quote-card-meta text-xs mt-1 truncate">
+                          {item.subtitle}
+                          {item.days ? ` · ${item.days} days` : ''} · {paxLabel(item)}
+                        </p>
+                        <p className="quote-card-meta text-[11px] mt-1.5">
+                          Travel {item.travel_date || 'not set'} · Booked {when(item.sortAt)}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="quote-card-price text-xl font-extrabold">
+                          ₹{Number(item.total_price || 0).toLocaleString('en-IN')}
+                        </div>
+                        <div className="quote-card-meta text-[10px] uppercase tracking-wider font-bold">Total</div>
+                      </div>
+                    </div>
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3 mt-4 pt-3.5 border-t" style={{ borderColor: 'var(--border-color)' }}>
+                      <div className="quote-locked-note text-[11px] flex items-start gap-1.5 min-w-0 flex-1">
+                        <CheckCircle size={13} className="shrink-0 mt-0.5" />
+                        <span className="leading-normal">
+                          Booked as <strong>{item.id}</strong> — booked directly, without a saved quote.
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => handleViewVoucher(item.booking)}
+                        className="btn btn-secondary btn-sm flex items-center justify-center gap-1.5 text-[11px] w-full sm:w-auto sm:ml-auto shrink-0 min-h-[38px]"
+                      >
+                        <FileText size={12} /> Open Booking
+                      </button>
+                    </div>
+                  </div>
+                );
+              }
+
+              const q = item.quote;
               const busy = quoteBusyId === q.id;
               const locked = !!q.converted_booking_id;
               return (
@@ -4647,20 +4776,30 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   );
 
   const renderB2bDashboard = () => {
-    // Server-scoped to the logged-in agent's own bookings (GET /bookings/mine
-    // filters by agent_id) -- previously read db.bookings.filter(type==='B2B'),
-    // which showed every agent's bookings once any admin session had loaded
-    // the full bookings table into shared app state. Fall back to a locally
-    // filtered view only if the API list hasn't loaded yet (e.g. offline).
-    const b2bBookings = isApiSession()
-      ? myBookings
-      : db.bookings.filter(b => b.type === 'B2B' && b.agent_id === currentUser?.id);
+    const b2bBookings = ownBookings;
+    // What is about to happen, soonest first: trips whose travel date has not
+    // passed. A booking with no date set is treated as upcoming rather than
+    // hidden -- an unset date is something to chase, not something to bury.
+    // Capped, because the point of this block is to be readable at a glance.
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const upcomingBookings = b2bBookings
+      .filter((bk) => {
+        if (!bk.travel_date) return true;
+        const d = new Date(bk.travel_date);
+        return Number.isNaN(d.getTime()) ? true : d >= startOfToday;
+      })
+      .sort((a, b) => new Date(a.travel_date || 0) - new Date(b.travel_date || 0))
+      .slice(0, 5);
     const totalSales = b2bBookings.reduce((sum, b) => sum + (b.total_price || 0), 0);
     const totalCommission = b2bBookings.reduce((sum, b) => sum + (b.agent_commission || 0), 0);
     // "Open" = still winnable. Won quotes are already counted as bookings
     // above, and Lost ones are closed, so neither belongs in a follow-up count.
     const openQuoteCount = myQuotes.filter((q) => q.status === 'Draft' || q.status === 'Sent').length;
-    const wonQuoteCount = myQuotes.filter((q) => q.status === 'Won').length;
+    // Every booking is won business, whether it went through a saved quote or
+    // was booked straight from the builder -- so the won figure counts
+    // bookings, not just the quotes that were converted.
+    const wonCount = b2bBookings.length;
 
     return (
       <div className="max-w-6xl mx-auto py-6">
@@ -4744,16 +4883,16 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
               <FileText size={24} />
             </div>
             <div>
-              <h3 className="quote-card-title font-extrabold text-base">My Quotes</h3>
+              <h3 className="quote-card-title font-extrabold text-base">Quotes &amp; Bookings</h3>
               <p className="quote-card-meta text-xs mt-1 leading-relaxed">
                 {openQuoteCount > 0
-                  ? `${openQuoteCount} quote${openQuoteCount > 1 ? 's' : ''} still open${wonQuoteCount ? `, ${wonQuoteCount} won so far` : ''}.`
-                  : wonQuoteCount > 0
-                    ? `All followed up — ${wonQuoteCount} quote${wonQuoteCount > 1 ? 's' : ''} won so far.`
+                  ? `${openQuoteCount} quote${openQuoteCount > 1 ? 's' : ''} still open${wonCount ? `, ${wonCount} won` : ''}.`
+                  : wonCount > 0
+                    ? `All followed up — ${wonCount} won.`
                     : 'Save a proposal instead of losing it, then follow it up here.'}
               </p>
               <span className="inline-flex items-center gap-1.5 text-xs text-emerald-600 font-bold mt-4">
-                Open Quote Pipeline <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
+                Open Quotes &amp; Bookings <ArrowRight size={14} className="group-hover:translate-x-1 transition-transform" />
               </span>
             </div>
           </div>
@@ -4795,16 +4934,27 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           </div>
         </div>
 
-        {/* B2B Booking History Table */}
+        {/* Upcoming trips, not the whole history. A dashboard that lists every
+            booking ever made stops being readable somewhere around the tenth
+            one; what an agent needs on opening the portal is what is about to
+            happen. The full list lives in My Quotes & Bookings. */}
         <div className="bg-white border border-slate-100 rounded-3xl shadow-sm overflow-hidden">
-          <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+          <div className="px-6 py-5 border-b border-slate-100 flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 bg-slate-50/50">
             <h3 className="font-extrabold text-base text-slate-805 font-heading flex items-center gap-2">
               <Briefcase className="text-emerald-600" size={18} />
-              B2B Partner Booking & Inquiry History
+              Upcoming Trips
             </h3>
-            <span className="text-xs bg-slate-100 text-slate-600 font-semibold px-3 py-1 rounded-full">
-              {b2bBookings.length} bookings found
-            </span>
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-xs bg-slate-100 text-slate-600 font-semibold px-3 py-1 rounded-full">
+                {upcomingBookings.length} of {b2bBookings.length}
+              </span>
+              <button
+                onClick={() => setB2bSubView('quotes')}
+                className="btn btn-secondary btn-sm text-[11px] flex items-center gap-1.5"
+              >
+                <FileText size={12} /> See all
+              </button>
+            </div>
           </div>
 
           {/* Eight columns is wider than a phone, so this scrolls sideways.
@@ -4826,14 +4976,16 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {b2bBookings.length === 0 ? (
+                {upcomingBookings.length === 0 ? (
                   <tr>
                     <td colSpan="7" className="p-8 text-center text-slate-400">
-                      No partner bookings recorded yet. Launch a package to make a reservation.
+                      {b2bBookings.length === 0
+                        ? 'No partner bookings recorded yet. Launch a package to make a reservation.'
+                        : 'No upcoming trips — every booking you have is in the past. Open My Quotes & Bookings for the full list.'}
                     </td>
                   </tr>
                 ) : (
-                  b2bBookings.map(booking => (
+                  upcomingBookings.map(booking => (
                     <tr key={booking.id} className="hover:bg-slate-50/50 transition">
                       <td className="p-4 sticky-first-col">
                         <div className="font-bold text-slate-800">{booking.id}</div>
@@ -6271,7 +6423,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
             <ul className="list-none flex flex-col gap-1">
               {[
                 { tab: 'dashboard', label: 'Agent Dashboard', icon: <TrendingUp size={12} /> },
-                { tab: 'quotes', label: 'My Quotes', icon: <FileText size={12} /> },
+                { tab: 'quotes', label: 'Quotes & Bookings', icon: <FileText size={12} /> },
                 { tab: 'wallet', label: 'My Wallet', icon: <Wallet size={12} /> },
                 { tab: 'packages', label: 'Preset Packages', icon: <Layers size={12} /> },
                 { tab: 'wizard', label: 'Custom Planner', icon: <Compass size={12} /> },
@@ -7407,7 +7559,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                     return { ...d, hotelId: h ? h.id : '' };
                                   });
 
-                                  setEditingBookingId(null);
+                                  startFreshTrip();
                                   setCustomItinerary(resolved);
                                   setStartCity(db.settings.wizard_default_start_city || 'Gorakhpur');
                                   setEndCity(db.settings.wizard_default_end_city || 'Gorakhpur');
