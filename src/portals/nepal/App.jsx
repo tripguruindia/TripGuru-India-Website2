@@ -3048,7 +3048,22 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   };
 
   const handleSaveActivityEdit = () => {
-    const updatedActs = db.activities.map(a => a.id === editingActivityId ? activityEditState : a);
+    if (!activityEditState.name || !String(activityEditState.name).trim()) {
+      window.alert('Activity name is required.');
+      return;
+    }
+    const isPerVehicle = activityEditState.pricing_mode === 'per_vehicle';
+    // Switching an activity to per-vehicle clears the per-head prices, so a
+    // stale ticket fare cannot sit behind it looking meaningful. Switching
+    // back clears the vehicle rates for the same reason.
+    const cleaned = {
+      ...activityEditState,
+      price_adult: isPerVehicle ? 0 : Number(activityEditState.price_adult) || 0,
+      price_child: isPerVehicle ? 0 : Number(activityEditState.price_child) || 0,
+      pricing_mode: isPerVehicle ? 'per_vehicle' : 'per_person',
+      vehicle_rates: isPerVehicle ? { ...(activityEditState.vehicle_rates || {}) } : {},
+    };
+    const updatedActs = db.activities.map(a => a.id === editingActivityId ? cleaned : a);
     updateDBState({ ...db, activities: updatedActs });
     setEditingActivityId(null);
   };
@@ -9014,108 +9029,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                         </thead>
                         <tbody>
                           {db.activities.map(act => {
-                            const isEditing = editingActivityId === act.id;
                             return (
                               <tr key={act.id} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/40 transition-colors">
-                                {isEditing ? (
-                                  <>
-                                    <td className="py-2.5 px-6">
-                                      <input 
-                                        type="text" 
-                                        value={activityEditState.name}
-                                        onChange={(e) => setActivityEditState({ ...activityEditState, name: e.target.value })}
-                                        className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-800"
-                                      />
-                                    </td>
-                                    <td className="py-2.5 px-4">
-                                      <select 
-                                        value={activityEditState.city}
-                                        onChange={(e) => setActivityEditState({ ...activityEditState, city: e.target.value })}
-                                        className="py-1.5 px-3 text-xs border border-slate-300 rounded-xl bg-white font-semibold text-slate-700 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none w-[130px]"
-                                      >
-                                        {(db.cities || []).map(city => (
-                                          <option key={city} value={city}>{city}</option>
-                                        ))}
-                                      </select>
-                                    </td>
-                                    {activityEditState.pricing_mode === 'per_vehicle' ? (
-                                      <td className="py-2.5 px-4" colSpan={2}>
-                                        <div className="flex flex-wrap gap-2">
-                                          {(db.vehicles || []).map(v => (
-                                            <label key={v.id} className="flex flex-col gap-0.5">
-                                              <span className="text-[9px] uppercase font-bold text-slate-500 truncate max-w-[90px]" title={v.name}>{v.name}</span>
-                                              <input
-                                                type="number"
-                                                min="0"
-                                                value={(activityEditState.vehicle_rates || {})[v.id] ?? 0}
-                                                onChange={(e) => setActivityEditState({
-                                                  ...activityEditState,
-                                                  vehicle_rates: { ...(activityEditState.vehicle_rates || {}), [v.id]: Number(e.target.value) || 0 },
-                                                })}
-                                                className="w-24 px-2 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 transition-all font-semibold text-slate-800 text-center"
-                                              />
-                                            </label>
-                                          ))}
-                                        </div>
-                                      </td>
-                                    ) : (
-                                      <>
-                                        <td className="py-2.5 px-4">
-                                          <input
-                                            type="number"
-                                            value={activityEditState.price_adult}
-                                            onChange={(e) => setActivityEditState({ ...activityEditState, price_adult: Number(e.target.value) })}
-                                            className="w-28 px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-800 text-center"
-                                          />
-                                        </td>
-                                        <td className="py-2.5 px-4">
-                                          <input
-                                            type="number"
-                                            value={activityEditState.price_child}
-                                            onChange={(e) => setActivityEditState({ ...activityEditState, price_child: Number(e.target.value) })}
-                                            className="w-28 px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-800 text-center"
-                                          />
-                                        </td>
-                                      </>
-                                    )}
-                                    <td className="py-2.5 px-6">
-                                      <div className="flex flex-col gap-1.5">
-                                        <select
-                                          value={activityEditState.pricing_mode || 'per_person'}
-                                          onChange={(e) => setActivityEditState({ ...activityEditState, pricing_mode: e.target.value })}
-                                          className="w-full px-3 py-1.5 text-[11px] bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 font-bold text-slate-800"
-                                          title="Per person multiplies by party size; per vehicle is charged once for the day"
-                                        >
-                                          <option value="per_person">Charge per person (× party size)</option>
-                                          <option value="per_vehicle">Charge per vehicle (once per day)</option>
-                                        </select>
-                                        <input
-                                          type="text"
-                                          value={activityEditState.description}
-                                          onChange={(e) => setActivityEditState({ ...activityEditState, description: e.target.value })}
-                                          className="w-full px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-850"
-                                        />
-                                      </div>
-                                    </td>
-                                    <td className="py-2.5 px-6 text-right">
-                                      <div className="flex gap-2 justify-end">
-                                        <button 
-                                          onClick={handleSaveActivityEdit} 
-                                          className="text-emerald-600 hover:text-emerald-800 p-1.5 font-bold transition flex items-center gap-0.5"
-                                        >
-                                          <Save size={14} /> <span>Save</span>
-                                        </button>
-                                        <button 
-                                          onClick={() => setEditingActivityId(null)} 
-                                          className="text-slate-400 hover:text-slate-650 p-1.5 transition font-bold"
-                                        >
-                                          Cancel
-                                        </button>
-                                      </div>
-                                    </td>
-                                  </>
-                                ) : (
-                                  <>
                                     <td className="py-3.5 px-6 font-extrabold text-slate-805">
                                       <span className="flex items-center gap-1.5">
                                         {act.pricing_mode === 'per_vehicle' && (
@@ -9177,8 +9092,6 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                         </button>
                                       </div>
                                     </td>
-                                  </>
-                                )}
                               </tr>
                             );
                           })}
@@ -11065,6 +10978,122 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
               <div className="modal-footer">
                 <button type="button" onClick={() => setEditingUser(null)} className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 bg-transparent">Cancel</button>
                 <button type="submit" className="btn btn-primary btn-sm bg-orange-655 hover:bg-orange-700 text-white rounded-lg py-2 px-4 shadow">Save Changes</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Activity editing is a popup rather than an inline table row: a
+          per-vehicle activity needs a rate for every vehicle, which stacked
+          vertically inside a table cell and sprawled the row down the page. */}
+      {editingActivityId && (
+        <div className="modal-overlay">
+          <div className="modal-content max-w-md">
+            <div className="modal-header">
+              <h3 className="text-sm font-black uppercase tracking-wider font-heading text-slate-800">Edit Activity</h3>
+              <button onClick={() => setEditingActivityId(null)} className="text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+            <form onSubmit={(e) => { e.preventDefault(); handleSaveActivityEdit(); }}>
+              <div className="modal-body flex flex-col gap-4 text-left">
+                <div className="form-group mb-0">
+                  <label className="form-label text-[10px]">Activity Name</label>
+                  <input
+                    type="text"
+                    required
+                    value={activityEditState.name || ''}
+                    onChange={(e) => setActivityEditState({ ...activityEditState, name: e.target.value })}
+                    className="form-input text-xs"
+                  />
+                </div>
+
+                <div className="form-group mb-0">
+                  <label className="form-label text-[10px]">City</label>
+                  <select
+                    value={activityEditState.city || ''}
+                    onChange={(e) => setActivityEditState({ ...activityEditState, city: e.target.value })}
+                    className="form-input text-xs"
+                  >
+                    {(db.cities || []).map(city => (
+                      <option key={city} value={city}>{city}</option>
+                    ))}
+                  </select>
+                  <span className="text-[10px] text-slate-450 block mt-1">
+                    This activity can only be added to a day in this city.
+                  </span>
+                </div>
+
+                <div className="form-group mb-0">
+                  <label className="form-label text-[10px]">Charged</label>
+                  <select
+                    value={activityEditState.pricing_mode || 'per_person'}
+                    onChange={(e) => setActivityEditState({ ...activityEditState, pricing_mode: e.target.value })}
+                    className="form-input text-xs"
+                  >
+                    <option value="per_person">Per person (× party size)</option>
+                    <option value="per_vehicle">Per vehicle (once per day)</option>
+                  </select>
+                </div>
+
+                {activityEditState.pricing_mode === 'per_vehicle' ? (
+                  <div className="form-group mb-0">
+                    <label className="form-label text-[10px]">Rate Per Vehicle (₹ per day)</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {(db.vehicles || []).map(v => (
+                        <label key={v.id} className="flex flex-col gap-0.5">
+                          <span className="text-[9px] uppercase font-bold text-slate-500 truncate" title={v.name}>{v.name}</span>
+                          <input
+                            type="number"
+                            min="0"
+                            value={(activityEditState.vehicle_rates || {})[v.id] ?? 0}
+                            onChange={(e) => setActivityEditState({
+                              ...activityEditState,
+                              vehicle_rates: { ...(activityEditState.vehicle_rates || {}), [v.id]: Number(e.target.value) || 0 },
+                            })}
+                            className="form-input text-xs"
+                          />
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="form-group mb-0">
+                      <label className="form-label text-[10px]">Adult Ticket (₹)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={activityEditState.price_adult ?? 0}
+                        onChange={(e) => setActivityEditState({ ...activityEditState, price_adult: Number(e.target.value) || 0 })}
+                        className="form-input text-xs"
+                      />
+                    </div>
+                    <div className="form-group mb-0">
+                      <label className="form-label text-[10px]">Child Ticket (₹)</label>
+                      <input
+                        type="number"
+                        min="0"
+                        value={activityEditState.price_child ?? 0}
+                        onChange={(e) => setActivityEditState({ ...activityEditState, price_child: Number(e.target.value) || 0 })}
+                        className="form-input text-xs"
+                      />
+                    </div>
+                  </div>
+                )}
+
+                <div className="form-group mb-0">
+                  <label className="form-label text-[10px]">Description</label>
+                  <textarea
+                    rows={3}
+                    value={activityEditState.description || ''}
+                    onChange={(e) => setActivityEditState({ ...activityEditState, description: e.target.value })}
+                    className="form-input text-xs"
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" onClick={() => setEditingActivityId(null)} className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 bg-transparent">Cancel</button>
+                <button type="submit" className="btn btn-primary btn-sm">Save Changes</button>
               </div>
             </form>
           </div>
