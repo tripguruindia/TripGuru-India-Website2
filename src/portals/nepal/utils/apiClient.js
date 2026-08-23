@@ -241,6 +241,14 @@ export async function createBooking(payload) {
   return apiFetch('/bookings', { method: 'POST', body: payload });
 }
 
+// Amend a booking that already exists. Used when a confirmed trip is edited,
+// so a correction updates the one record instead of creating a second booking
+// for the same trip and counting the money twice. Ownership is checked
+// server-side against the token.
+export async function updateBooking(id, payload) {
+  return apiFetch(`/bookings/${id}`, { method: 'PATCH', body: payload });
+}
+
 export async function getMyBookings() {
   return apiFetch('/bookings/mine');
 }

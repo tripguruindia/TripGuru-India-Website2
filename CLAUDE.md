@@ -173,6 +173,50 @@ then convert) rather than creating a second parallel booking, which keeps
 `converted_booking_id` pointing at the real booking so win rates stay
 measurable.
 
+## The voucher, and its two copies
+
+The confirmation screen renders one document (`#print-sheet`) in one of two
+copies, chosen by `invoiceCopyMode`. Print and the WhatsApp export both act on
+what is rendered, so the single switch decides what both produce — four
+separate buttons would have had to rebuild the sheet anyway.
+
+- **`client`** (the default) — itinerary and one all-inclusive total. No
+  per-service split, no GST line, no agency markup. On the agent portal the
+  last two are the agent's own margin and TripGuru's price; sending them to his
+  client hands over his cost sheet. Defaulting here is deliberate: mailing an
+  internal sheet to a traveller is far worse than pressing one button for your
+  own copy.
+- **`internal`** — every line, for the operator's own record.
+
+Both are the same trip at the same grand total; only the detail differs, so the
+two copies can never quote differently.
+
+**`#print-sheet` does not follow the portal theme.** It is a document preview —
+what is on screen is what prints and what a client is shown — so it stays a
+white sheet with dark ink in both themes. Under the dark theme the portal's
+global rules had turned its surface dark while its type stayed slate-900,
+rendering the proposal title dark navy on near-black. The rules live in
+`index.css` scoped to that one id, and include a blanket `*` colour because the
+portal forces descendant text to `--text-primary` with `!important`; the class
+rules after it are more specific than `*`, so the sheet's accents survive.
+
+## Editing a confirmed booking
+
+`PATCH /bookings/:id` amends a booking in place. Editing a confirmed trip used
+to have no path at all, so the only way to change one was to build it again —
+which left two bookings for one trip and counted the money twice.
+
+*Edit This Booking* on the voucher sets `editingBookingId`; the builder's book
+button then reads *Update Booking <id>* and `handleConfirmCheckout` PATCHes
+instead of POSTing, replacing the record in the local lists rather than
+prepending to them.
+
+Ownership follows the same rule as everything else: derived from the verified
+token, never the body. A B2B agent may amend only a booking whose `agent_id` is
+his own; anyone else gets a 404, not a 403. `total_price` comes from the client
+(it has just repriced the itinerary) but `agent_commission` is always recomputed
+server-side from that total, and the type, owner and `created_at` are immutable.
+
 ## GST
 
 Two settings, not one, both in Admin -> Global Pricing Formulas:

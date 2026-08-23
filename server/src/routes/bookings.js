@@ -105,6 +105,83 @@ router.post('/', optionalAuth, async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// PATCH /bookings/:id -- amend a booking that already exists, rather than
+// booking the same trip twice.
+//
+// Editing a confirmed trip used to have no path at all, so the only way to
+// change one was to build it again -- which left two bookings for one trip and
+// counted the money twice on the dashboard. This updates the record in place,
+// so a corrected booking stays one booking.
+//
+// Ownership comes from the verified token, never the body: a B2B agent may
+// only amend a booking whose agent_id is his own, and a logged-in traveller
+// only one whose user_id is his. Anything else is a 404, not a 403 -- the same
+// rule the rest of this file follows, so guessing an id tells you nothing.
+//
+// total_price is taken from the request (the client has just repriced the
+// itinerary), but agent_commission is always recomputed here from that total.
+// The type, the owner and the created_at date are immutable.
+// ---------------------------------------------------------------------------
+router.patch('/:id', requireAuth, async (req, res) => {
+  const b = req.body || {};
+  const existing = await one('SELECT * FROM bookings WHERE id = ?', [req.params.id]);
+
+  const owns =
+    existing &&
+    ((req.user.role === 'b2b' && existing.agent_id && existing.agent_id === req.user.id) ||
+      (req.user.role === 'b2c' && existing.user_id && existing.user_id === req.user.id) ||
+      req.user.role === 'admin');
+
+  if (!owns) {
+    return res.status(404).json({ error: 'Booking not found' });
+  }
+
+  const totalPrice = b.total_price !== undefined ? Number(b.total_price) || 0 : existing.total_price;
+  const agentCommission =
+    existing.type === 'B2B' ? Math.round(totalPrice * AGENT_COMMISSION_RATE) : existing.agent_commission;
+
+  const pick = (next, current) => (next !== undefined && next !== null ? next : current);
+  const pickJSON = (next, current) => (next !== undefined && next !== null ? JSON.stringify(next) : current);
+
+  await run(
+    `UPDATE bookings SET
+       client_name = ?, email = ?, phone = ?, travel_date = ?, adults = ?, cwb = ?, cnb = ?,
+       total_price = ?, package_name = ?, itinerary_summary = ?, agent_commission = ?,
+       vehicle_id = ?, hotel_category = ?, start_city = ?, end_city = ?, notes = ?,
+       markup_percent = ?, b2b_admin_margin_percent = ?, passengers = ?, itinerary = ?,
+       rooms = ?, b2b_white_label = ?
+     WHERE id = ?`,
+    [
+      pick(b.client_name, existing.client_name),
+      pick(b.email, existing.email),
+      pick(b.phone, existing.phone),
+      pick(b.travel_date, existing.travel_date),
+      pick(b.adults, existing.adults),
+      pick(b.cwb, existing.cwb),
+      pick(b.cnb, existing.cnb),
+      totalPrice,
+      pick(b.package_name, existing.package_name),
+      pick(b.itinerary_summary, existing.itinerary_summary),
+      agentCommission,
+      pick(b.vehicleId ?? b.vehicle_id, existing.vehicle_id),
+      pick(b.hotelCategory ?? b.hotel_category, existing.hotel_category),
+      pick(b.startCity ?? b.start_city, existing.start_city),
+      pick(b.endCity ?? b.end_city, existing.end_city),
+      pick(b.notes, existing.notes),
+      pick(b.markup_percent, existing.markup_percent),
+      pick(b.b2b_admin_margin_percent, existing.b2b_admin_margin_percent),
+      pickJSON(b.passengers, existing.passengers),
+      pickJSON(b.itinerary, existing.itinerary),
+      pickJSON(b.rooms, existing.rooms),
+      pickJSON(b.b2b_white_label, existing.b2b_white_label),
+      req.params.id,
+    ]
+  );
+
+  res.json(serializeBooking(await one('SELECT * FROM bookings WHERE id = ?', [req.params.id])));
+});
+
+// ---------------------------------------------------------------------------
 // GET /bookings/mine -- requires auth (any role except admin, which already
 // has GET /admin/db for the full list). Scoped to the caller: agent_id for
 // b2b, user_id for b2c.
