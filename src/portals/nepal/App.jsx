@@ -2030,7 +2030,11 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     return { blocks, hasDepartureDay };
   };
 
-  const [structureDraft, setStructureDraft] = useState(null); // { blocks, hasDepartureDay }
+
+  // True while the intake page is being used to change a trip that already
+  // exists, rather than to start a new one. Set when a saved quote or a
+  // package is opened, cleared once a build is started from scratch.
+  const [isEditingExistingTrip, setIsEditingExistingTrip] = useState(false);
 
   // Navigation drawer on narrow screens. Closed whenever the portal or the
   // section changes, so tapping a menu item does not leave it covering the
@@ -2038,22 +2042,19 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   useEffect(() => { setMobileNavOpen(false); }, [currentRoute, activeAdminTab, b2bSubView, b2cSubView]);
 
-  const openStructureEditor = () => setStructureDraft(deriveTripStructure(customItinerary));
-
   // Rebuilds the itinerary to match the edited structure, reusing the existing
   // days for a city in order so hotels, meals and activities survive. Only
   // genuinely new days are generated, and only transitions that actually
   // changed get a new transfer.
-  const applyTripStructure = () => {
-    if (!structureDraft) return;
-    const blocks = structureDraft.blocks.filter(b => b.city && b.nights > 0);
-    if (blocks.length === 0) {
-      window.alert('Keep at least one city with at least one night.');
-      return;
-    }
-
-    const { hasDepartureDay } = structureDraft;
-    const oldDays = customItinerary || [];
+  // Rebuilds an itinerary to match a list of {city, nights} stays, reusing the
+  // days already built for each city so hotels, meals, activities and any
+  // configured flight leg survive. Returns the new days plus any route keys
+  // that had to be invented, for the caller to register.
+  //
+  // Shared by the structure editor and by the intake page: editing a saved
+  // quote from either route must never discard the work already done on it,
+  // which is exactly what the intake page used to do.
+  const rebuildItineraryForStructure = (oldDays, blocks, hasDepartureDay, tripStartCity, tripEndCity) => {
     const departureDay = hasDepartureDay ? oldDays[oldDays.length - 1] : null;
     const stayDays = hasDepartureDay ? oldDays.slice(0, -1) : oldDays;
 
@@ -2111,13 +2112,13 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       // (which would strip its transfer entirely).
       if (idx === departureIdx && idx > 0) {
         const current = getDayTransfers(numbered);
-        if (sameCity(numbered.city, endCity)) {
+        if (sameCity(numbered.city, tripEndCity)) {
           const { key } = resolveAirportTransfer(db.routes || [], db.airports || [], numbered.city);
           if (!key || current.includes(key)) return numbered;
           neededRoutes.push(key);
           return withDayTransfers(numbered, [key]);
         }
-        const outbound = cityToCityRouteKey(numbered.city, endCity);
+        const outbound = cityToCityRouteKey(numbered.city, tripEndCity);
         if (current.includes(outbound) || current.includes(reverseRouteKey(outbound))) return numbered;
         neededRoutes.push(outbound);
         return withDayTransfers(numbered, [outbound]);
@@ -2129,14 +2130,14 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       // still describes arriving here.
       if (idx === 0) {
         const current = getDayTransfers(numbered);
-        if (sameCity(startCity, numbered.city)) {
+        if (sameCity(tripStartCity, numbered.city)) {
           // Flying straight in: an airport pickup, if this city has an airport.
           const { key } = resolveAirportTransfer(db.routes || [], db.airports || [], numbered.city);
           if (!key || current.includes(key)) return numbered;
           neededRoutes.push(key);
           return withDayTransfers(numbered, [key]);
         }
-        const arrival = cityToCityRouteKey(startCity, numbered.city);
+        const arrival = cityToCityRouteKey(tripStartCity, numbered.city);
         if (current.includes(arrival) || current.includes(reverseRouteKey(arrival))) return numbered;
         neededRoutes.push(arrival);
         return withDayTransfers(numbered, [arrival]);
@@ -2171,39 +2172,9 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       };
     });
 
-    if (neededRoutes.length) ensureRoutesExist(neededRoutes);
-    setCustomItinerary(finalised);
-    setStructureDraft(null);
+    return { days: finalised, neededRoutes };
   };
 
-  const updateStructureBlock = (index, patch) => {
-    setStructureDraft(prev => prev && ({
-      ...prev,
-      blocks: prev.blocks.map((b, i) => (i === index ? { ...b, ...patch } : b)),
-    }));
-  };
-
-  const moveStructureBlock = (index, delta) => {
-    setStructureDraft(prev => {
-      if (!prev) return prev;
-      const target = index + delta;
-      if (target < 0 || target >= prev.blocks.length) return prev;
-      const blocks = [...prev.blocks];
-      [blocks[index], blocks[target]] = [blocks[target], blocks[index]];
-      return { ...prev, blocks };
-    });
-  };
-
-  const removeStructureBlock = (index) => {
-    setStructureDraft(prev => prev && ({ ...prev, blocks: prev.blocks.filter((_, i) => i !== index) }));
-  };
-
-  const addStructureBlock = () => {
-    setStructureDraft(prev => prev && ({
-      ...prev,
-      blocks: [...prev.blocks, { city: db.cities?.[0] || 'Kathmandu', nights: 1 }],
-    }));
-  };
 
   // Add Day to Itinerary
   const handleAddDay = () => {
@@ -2483,7 +2454,26 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       notes: quote.notes || '',
     });
     setQuoteSaveState('saved');
-    if (view === 'b2b') setB2bSubView('customize'); else setB2cSubView('customize');
+
+    // Reopen on the intake page, not straight into the day cards. Everything
+    // that shapes the trip -- cities, nights, start and end, date, rooms,
+    // hotel tier, vehicle -- lives there, so a quote has to remember it and
+    // come back to it. The stays are derived from the itinerary rather than
+    // stored separately, so the two can never disagree.
+    const { blocks } = deriveTripStructure(quote.itinerary || []);
+    if (blocks.length) {
+      setWizardDestinations(blocks.map(b => ({ city: b.city, nights: b.nights })));
+    }
+    if (quote.start_city) setWizardStartCity(quote.start_city);
+    if (quote.end_city) {
+      setWizardEndCity(quote.end_city);
+      setIsEndCityManuallyEdited(true);
+    }
+    if (quote.travel_date) setWizardLeavingOn(quote.travel_date);
+    if (quote.hotel_category) setWizardStarRating(quote.hotel_category);
+    setIsEditingExistingTrip(true);
+
+    if (view === 'b2b') setB2bSubView('wizard'); else setB2cSubView('wizard');
     if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
   };
 
@@ -3847,6 +3837,35 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       setShowLeadCaptureModal(true);
       return;
     }
+    // Editing a trip that already exists: reshape it rather than rebuild it.
+    // This screen used to regenerate from scratch, so reopening a quote and
+    // touching anything here -- even just the rooms -- discarded every hotel,
+    // meal and activity already chosen. Days for a city are reused in order;
+    // only genuinely new ones come in blank.
+    const existingDays = customItinerary || [];
+    if (isEditingExistingTrip && existingDays.length > 0) {
+      const blocks = wizardDestinations
+        .filter(d => d.city && Number(d.nights) > 0)
+        .map(d => ({ city: d.city, nights: Number(d.nights) }));
+      if (blocks.length === 0) {
+        window.alert('Keep at least one city with at least one night.');
+        return;
+      }
+      const { hasDepartureDay } = deriveTripStructure(existingDays);
+      const { days, neededRoutes } = rebuildItineraryForStructure(existingDays, blocks, hasDepartureDay, wizardStartCity, wizardEndCity);
+      if (neededRoutes.length) ensureRoutesExist(neededRoutes);
+
+      setCustomItinerary(days);
+      setSelectedHotelCategory(wizardStarRating);
+      setTravelDate(wizardLeavingOn);
+      setStartCity(wizardStartCity);
+      setEndCity(wizardEndCity);
+      setCustomPackageName(`${formatCityList(blocks.map(b => b.city))} Custom Itinerary`);
+      if (view === 'b2b') setB2bSubView('customize'); else setB2cSubView('customize');
+      if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
+      return;
+    }
+
     // A from-scratch build carries no preset offer -- clear any discount left
     // over from a package the user opened earlier in this session.
     setOfferDiscountPerPax(0);
@@ -4186,7 +4205,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
             </p>
             {myQuotes.length === 0 && (
               <button
-                onClick={() => (view === 'b2b' ? setB2bSubView('wizard') : setB2cSubView('wizard'))}
+                onClick={() => { setIsEditingExistingTrip(false); if (view === 'b2b') setB2bSubView('wizard'); else setB2cSubView('wizard'); }}
                 className="btn btn-primary btn-sm mt-5"
               >
                 Build a quote
@@ -4502,7 +4521,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           </div>
 
           <div 
-            onClick={() => setB2bSubView('wizard')}
+            onClick={() => { setIsEditingExistingTrip(false); setB2bSubView('wizard'); }}
             className="group cursor-pointer bg-gradient-to-br from-indigo-50 to-blue-50/50 border border-indigo-100/75 rounded-3xl p-6 shadow-sm hover:shadow-md hover:border-indigo-300 transition-all duration-300 flex items-start gap-4"
           >
             <div className="bg-indigo-600 text-white p-3 rounded-2xl group-hover:scale-105 transition-transform duration-300">
@@ -6042,7 +6061,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
         {view === 'b2c' && b2cSubView === 'customize' && (
           <div className="p-4 mt-auto flex flex-col gap-2">
             <button 
-              onClick={() => setB2cSubView('wizard')}
+              onClick={() => { setIsEditingExistingTrip(false); setB2cSubView('wizard'); }}
               className="w-full btn btn-secondary btn-sm flex items-center justify-center gap-2"
             >
               ← Trip Intake Wizard
@@ -6059,7 +6078,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
         {view === 'b2b' && b2bSubView === 'customize' && (
           <div className="p-4 mt-auto flex flex-col gap-2">
             <button 
-              onClick={() => setB2bSubView('wizard')}
+              onClick={() => { setIsEditingExistingTrip(false); setB2bSubView('wizard'); }}
               className="w-full btn btn-secondary btn-sm flex items-center justify-center gap-2"
             >
               ← Trip Intake Wizard
@@ -7483,153 +7502,68 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                   {currentSubView === 'customize' && (
                     <div className="max-w-7xl mx-auto py-4">
                       
-                      {/* Customizer Details header */}
-                      <div className="bg-gradient-to-r from-slate-900 via-[#132c44] to-[#0f2942] text-white rounded-2xl p-6 mb-8 shadow-md flex flex-col md:flex-row md:items-center justify-between gap-6 relative overflow-hidden text-left">
-                        <div className="absolute right-0 top-0 opacity-5 pointer-events-none text-9xl">🇳🇵</div>
-                        <div className="z-10 flex-1">
-                          {isB2C && (
-                            <div className="flex gap-2 mb-3.5 no-print">
-                              <button 
-                                onClick={() => setB2cSubView('packages')}
-                                className="bg-white/10 hover:bg-white/20 text-white border border-white/10 px-3 py-1.5 rounded-xl text-[10px] font-extrabold uppercase tracking-wider flex items-center gap-1 transition"
-                              >
-                                ← Preset Packages
-                              </button>
-                              <button 
-                                onClick={() => setB2cSubView('wizard')}
-                                className="bg-white/10 hover:bg-white/20 text-white border border-white/10 px-3 py-1.5 rounded-xl text-[10px] font-extrabold uppercase tracking-wider flex items-center gap-1 transition"
-                              >
-                                ← Custom Planner
-                              </button>
-                            </div>
-                          )}
-                          <div className={`text-xs text-${themeColor}-400 font-extrabold uppercase tracking-widest flex items-center gap-1.5 mb-1`}>
-                            <span className={`w-2 h-2 rounded-full bg-${themeColor}-400 animate-pulse`}></span>
-                            Itinerary Customizer & Builder
+                      {/* Trip summary.
+                          Everything that shapes the trip is edited on the
+                          intake page, so this is a read-only recap with one
+                          way back to it. It used to carry its own date, hotel
+                          tier and vehicle pickers, an "Edit Rooms" button that
+                          jumped to the intake page and silently discarded the
+                          whole itinerary, and an "Edit Cities & Nights" dialog
+                          that could not change the start or end city -- three
+                          places to edit one trip, one of them destructive.
+
+                          Themed rather than the fixed navy gradient it had, so
+                          it stops rendering as a dark slab on the cream light
+                          theme. */}
+                      <div className="trip-summary rounded-2xl p-5 mb-8 flex flex-col lg:flex-row lg:items-center justify-between gap-4 text-left">
+                        <div className="min-w-0">
+                          <div className="trip-summary-eyebrow text-[10px] font-extrabold uppercase tracking-widest mb-1.5">
+                            Itinerary Builder
                           </div>
-                          <input 
-                            type="text" 
+                          <input
+                            type="text"
                             value={customPackageName}
                             onChange={(e) => setCustomPackageName(e.target.value)}
-                            className={`text-2xl font-extrabold font-heading bg-transparent border-b-2 border-transparent hover:border-slate-500 focus:border-${themeColor}-400 outline-none w-full max-w-xl transition-all duration-200 py-1 text-white`}
+                            className="trip-summary-title text-xl font-extrabold font-heading w-full max-w-lg"
+                            aria-label="Quote name"
                           />
-                          <p className="text-xs text-slate-300 mt-1.5 leading-relaxed">
-                            Customize daily schedules, update your hotels, and select local sightseeing options in Indian Rupees (₹).
-                          </p>
-                        </div>
-
-                        <div className="z-10 flex flex-col gap-4 w-full md:w-auto">
-                          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-4 bg-slate-950/45 p-4 rounded-xl border border-white/5 backdrop-blur-md w-full">
-                            {/* Date selection */}
-                            <div className="flex flex-col w-full sm:w-auto">
-                              <label className="text-[10px] uppercase text-slate-400 font-extrabold mb-1 tracking-wider">Travel Date</label>
-                              <input 
-                                type="date"
-                                value={travelDate}
-                                onChange={(e) => setTravelDate(e.target.value)}
-                                className={`bg-slate-900 border border-slate-700 text-white rounded-lg py-1.5 px-3 text-xs w-full sm:w-[135px] focus:outline-none focus:border-${themeColor}-400 transition`}
-                              />
-                            </div>
-                            
-                            {/* Hotel Category Selector */}
-                            <div className="flex flex-col w-full sm:w-auto">
-                              <label className="text-[10px] uppercase text-slate-400 font-extrabold mb-1 tracking-wider">Hotel Tier</label>
-                              <select 
-                                value={selectedHotelCategory} 
-                                onChange={(e) => handleCategoryChange(e.target.value)}
-                                className={`bg-slate-900 border border-slate-700 text-white rounded-lg py-1.5 px-3 text-xs w-full sm:w-[125px] focus:outline-none focus:border-${themeColor}-400 transition cursor-pointer`}
-                              >
-                                <option value="3-Star">3-Star Budget</option>
-                                <option value="4-Star">4-Star Deluxe</option>
-                                <option value="5-Star">5-Star Luxury</option>
-                              </select>
-                            </div>
-
-                            {/* Vehicle Tier Selector */}
-                            <div className="flex flex-col w-full sm:w-auto">
-                              <label className="text-[10px] uppercase text-slate-400 font-extrabold mb-1 tracking-wider">Private Transport</label>
-                              <select 
-                                value={selectedVehicleId} 
-                                onChange={(e) => setSelectedVehicleId(e.target.value)}
-                                className={`bg-slate-900 border border-slate-700 text-white rounded-lg py-1.5 px-3 text-xs w-full sm:w-[160px] focus:outline-none focus:border-${themeColor}-400 transition cursor-pointer`}
-                              >
-                                {db.vehicles.map(v => (
-                                  <option key={v.id} value={v.id}>{v.name} (Max {v.capacity} pax)</option>
-                                ))}
-                              </select>
-                            </div>
-                          </div>
-                          
-                          {/* Room Configuration integrated into header */}
-                          <div className="flex justify-end w-full">
-                            <div className="bg-slate-950/45 border border-white/5 p-4 w-full flex flex-col gap-3 shadow-sm rounded-xl backdrop-blur-md">
-                              <div className="flex items-center justify-between border-b border-slate-700/50 pb-2">
-                                <h4 className="text-xs font-extrabold font-heading uppercase text-slate-200 flex items-center gap-1.5">
-                                  <Users size={15} className={`text-${themeColor}-400`} />
-                                  <span>Room Configuration</span>
-                                </h4>
-                                <button
-                                  onClick={() => setSubView('wizard')}
-                                  className={`text-[10px] font-extrabold uppercase text-${themeColor}-400 hover:text-${themeColor}-300 bg-${themeColor}-500/10 hover:bg-${themeColor}-500/20 border border-${themeColor}-500/20 px-2 py-1 rounded-lg transition`}
-                                >
-                                  Edit Rooms
-                                </button>
-                              </div>
-                              
-                              {/* Room-by-room summary */}
-                              <div className="flex flex-col gap-2">
-                                {rooms.map((room, ri) => (
-                                  <div key={ri} className="bg-slate-900/60 border border-slate-700/50 rounded-lg px-3 py-2 text-xs">
-                                    <span className="text-[9px] font-extrabold text-slate-400 uppercase">Room {ri + 1}</span>
-                                    <div className="text-slate-200 font-medium mt-0.5">
-                                      {room.adults} Adult{room.adults !== 1 ? 's' : ''}
-                                      {room.children.length > 0 && (
-                                        <span className="text-slate-400">
-                                          {' + '}{room.children.length} Child{room.children.length !== 1 ? 'ren' : ''}
-                                          <span className="text-slate-500 text-[10px]">
-                                            {' ('}
-                                            {room.children.map((c, ci) => {
-                                              const bed = room.adults >= 3 ? 'NB' : (ci === 0 ? 'WB' : 'NB');
-                                              return `${c.age}yr ${bed}`;
-                                            }).join(', ')}
-                                            {')'}
-                                          </span>
-                                        </span>
-                                      )}
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                              
-                              {/* Totals summary */}
-                              <div className="text-[10px] text-slate-400 font-medium border-t border-slate-700/50 pt-2">
-                                {derived.totalPax} total pax • {roomConfig.double > 0 && `${roomConfig.double} dbl`}{roomConfig.single > 0 && ` ${roomConfig.single} sgl`}{roomConfig.extra_adult > 0 && ` ${roomConfig.extra_adult} extra bed`}
-                              </div>
-                              
-                              {/* Validation badge */}
-                              {(() => {
-                                const validation = validateRoomCapacity(rooms);
-                                if (validation.message) {
-                                  return (
-                                    <div className={`px-2.5 py-1.5 rounded-lg text-[10px] font-semibold flex items-start gap-1.5 ${
-                                      validation.isValid ? 'bg-amber-500/10 border border-amber-500/20 text-amber-400' : 'bg-red-500/10 border border-red-500/20 text-red-400'
-                                    }`}>
-                                      <Info size={12} className="shrink-0 mt-0.5" />
-                                      <span>{validation.message}</span>
-                                    </div>
-                                  );
-                                }
-                                return (
-                                  <div className="bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 px-2.5 py-1.5 rounded-lg text-[10px] font-semibold flex items-center gap-1.5">
-                                    <CheckCircle size={12} className="shrink-0" />
-                                    <span>Rooms validated</span>
-                                  </div>
-                                );
-                              })()}
-                            </div>
+                          <div className="trip-summary-facts flex flex-wrap items-center gap-x-3 gap-y-1 mt-2.5 text-[11px] font-semibold">
+                            <span>{customItinerary.length} days</span>
+                            <span aria-hidden="true">·</span>
+                            <span>{formatCityList(customItinerary.map(d => d.city))}</span>
+                            <span aria-hidden="true">·</span>
+                            <span>{travelers.adults} adult{travelers.adults === 1 ? '' : 's'}{
+                              (travelers.cwb + travelers.cnb) > 0
+                                ? `, ${travelers.cwb + travelers.cnb} child${(travelers.cwb + travelers.cnb) === 1 ? '' : 'ren'}`
+                                : ''
+                            }</span>
+                            <span aria-hidden="true">·</span>
+                            <span>{rooms.length} room{rooms.length === 1 ? '' : 's'}</span>
+                            <span aria-hidden="true">·</span>
+                            <span>{selectedHotelCategory}</span>
+                            <span aria-hidden="true">·</span>
+                            <span>{(db.vehicles || []).find(v => v.id === selectedVehicleId)?.name || 'No vehicle'}</span>
+                            <span aria-hidden="true">·</span>
+                            <span>{travelDate || 'No date set'}</span>
                           </div>
                         </div>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            // Keeps the editing flag set, so continuing from
+                            // the intake page reshapes this trip rather than
+                            // rebuilding it.
+                            setIsEditingExistingTrip(true);
+                            if (view === 'b2b') setB2bSubView('wizard'); else setB2cSubView('wizard');
+                            if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
+                          }}
+                          className="trip-summary-edit text-[11px] font-extrabold uppercase tracking-wide py-2.5 px-4 rounded-xl flex items-center justify-center gap-1.5 shrink-0 no-print"
+                        >
+                          <Edit3 size={13} /> Edit Trip
+                        </button>
                       </div>
+
 
 
 
@@ -7644,17 +7578,6 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                               <span>Day-Wise Customizer ({customItinerary.length} Days)</span>
                             </h3>
 
-                            {/* Changing the shape of the trip -- nights per city,
-                                the order of the cities -- without going back to
-                                the intake wizard and losing the day-by-day work. */}
-                            <button
-                              type="button"
-                              onClick={openStructureEditor}
-                              className="structure-edit-btn text-[11px] font-extrabold uppercase tracking-wide py-2 px-3.5 rounded-lg flex items-center gap-1.5 shrink-0"
-                              title="Change nights per city, reorder or add cities"
-                            >
-                              <MapPin size={13} /> Edit Cities &amp; Nights
-                            </button>
                           </div>
 
                           {/* Timeline */}
@@ -11388,86 +11311,6 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       {/* Cities and nights for an itinerary that already exists. Reuses the
           days already built for each city, so reordering or adding a night
           does not discard the hotels and activities chosen for the others. */}
-      {structureDraft && (
-        <div className="modal-overlay">
-          <div className="modal-content max-w-lg">
-            <div className="modal-header">
-              <h3 className="text-sm font-black uppercase tracking-wider font-heading text-slate-800">Edit Cities &amp; Nights</h3>
-              <button onClick={() => setStructureDraft(null)} className="text-slate-400 hover:text-slate-600">✕</button>
-            </div>
-            <div className="modal-body flex flex-col gap-3 text-left">
-              <p className="text-[10px] text-slate-450 leading-relaxed">
-                Reorder the stays, change how many nights in each, or add and remove a city.
-                Hotels, meals and activities already chosen are kept — only the days you add
-                are new, and only transfers between cities that actually changed are redone.
-              </p>
-
-              <div className="flex flex-col gap-2">
-                {structureDraft.blocks.map((block, i) => (
-                  <div key={i} className="structure-row flex items-center gap-2 p-2.5 rounded-xl">
-                    <div className="flex flex-col text-slate-400 select-none shrink-0">
-                      <button type="button" onClick={() => moveStructureBlock(i, -1)} disabled={i === 0}
-                        className="hover:text-slate-800 disabled:opacity-25 font-bold text-xs px-1" title="Move earlier">▲</button>
-                      <button type="button" onClick={() => moveStructureBlock(i, 1)} disabled={i === structureDraft.blocks.length - 1}
-                        className="hover:text-slate-800 disabled:opacity-25 font-bold text-xs px-1" title="Move later">▼</button>
-                    </div>
-
-                    <select
-                      value={block.city}
-                      onChange={(e) => updateStructureBlock(i, { city: e.target.value })}
-                      className="form-input text-xs flex-1 min-w-0"
-                    >
-                      {(db.cities || []).map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <input
-                        type="number"
-                        min="1"
-                        max="30"
-                        value={block.nights}
-                        onChange={(e) => updateStructureBlock(i, { nights: Math.max(1, Number(e.target.value) || 1) })}
-                        className="form-input text-xs w-16 text-center"
-                      />
-                      <span className="text-[10px] text-slate-450 font-bold">night{block.nights === 1 ? '' : 's'}</span>
-                    </div>
-
-                    <button
-                      type="button"
-                      onClick={() => removeStructureBlock(i)}
-                      disabled={structureDraft.blocks.length <= 1}
-                      className="text-slate-300 hover:text-red-500 p-1 shrink-0 disabled:opacity-25"
-                      title="Remove this stay"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  </div>
-                ))}
-              </div>
-
-              <button
-                type="button"
-                onClick={addStructureBlock}
-                className="structure-add-btn text-[11px] font-bold py-2 rounded-lg flex items-center justify-center gap-1.5"
-              >
-                <Plus size={13} /> Add another city
-              </button>
-
-              <p className="text-[10px] text-slate-450 mt-1">
-                {(() => {
-                  const nights = structureDraft.blocks.reduce((n, b) => n + (Number(b.nights) || 0), 0);
-                  const days = nights + (structureDraft.hasDepartureDay ? 1 : 0);
-                  return `${nights} night${nights === 1 ? '' : 's'} · ${days} day${days === 1 ? '' : 's'}`;
-                })()}
-              </p>
-            </div>
-            <div className="modal-footer">
-              <button type="button" onClick={() => setStructureDraft(null)} className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 bg-transparent">Cancel</button>
-              <button type="button" onClick={applyTripStructure} className="btn btn-primary btn-sm">Apply Changes</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Renaming a city rewrites it across hotels, activities, airports and
           packages -- see handleRenameCity for what is deliberately left alone. */}
