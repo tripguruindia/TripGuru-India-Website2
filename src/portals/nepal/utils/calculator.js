@@ -484,17 +484,26 @@ export function calculateQuote({
     // transfer's stored name with every activity's, which produced things like
     // "GORAKHPUR to Kathmandu Overland & Kathmandu Full-Day Sightseeing
     // (Vehicle)" -- the city twice over and an internal label in front of the
-    // client. A whole-vehicle activity is transport, not a highlight, so it is
-    // described but never named in the title.
+    // client. A whole-vehicle activity is never NAMED in the title for that
+    // reason: "Kathmandu Full-Day Sightseeing (Vehicle)" is an operations
+    // label, not something to put in front of a traveller.
+    //
+    // It still has to COUNT, though. Leaving it out entirely headed a day
+    // "Leisure Day in Kathmandu" while the itinerary underneath it read
+    // "Private vehicle at your disposal for a full day of local sightseeing"
+    // -- the two halves of the same card contradicting each other. A day with
+    // a whole-vehicle activity on it is a sightseeing day; it just gets the
+    // generic wording rather than the activity's own name.
     const highlightActs = selectedActs.filter(a => a.pricing_mode !== 'per_vehicle');
+    const vehicleActs = selectedActs.filter(a => a.pricing_mode === 'per_vehicle');
     const prevCity = index > 0 ? itinerary[index - 1].city : null;
     const isTransitionDay = index > 0 && !!prevCity && !sameCityName(prevCity, day.city);
 
-    const highlightSuffix = highlightActs.length === 0
-      ? ''
-      : highlightActs.length === 1
-        ? ` & ${highlightActs[0].name}`
-        : ' & Sightseeing';
+    const highlightSuffix = highlightActs.length === 1
+      ? ` & ${highlightActs[0].name}`
+      : (highlightActs.length > 1 || vehicleActs.length > 0)
+        ? ' & Sightseeing'
+        : '';
 
     let heading;
     if (isFlightDay) {
@@ -507,7 +516,7 @@ export function calculateQuote({
       heading = `Drive to ${day.city}${highlightSuffix}`;
     } else if (highlightActs.length === 1) {
       heading = highlightActs[0].name;
-    } else if (highlightActs.length > 1) {
+    } else if (highlightActs.length > 1 || vehicleActs.length > 0) {
       heading = `${day.city} Sightseeing`;
     } else {
       heading = `Leisure Day in ${day.city}`;

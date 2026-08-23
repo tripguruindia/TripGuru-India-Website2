@@ -139,6 +139,10 @@ const routeLabelFromKey = (key, airportsData = []) => {
 const sameCity = (a, b) =>
   String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
 
+// A blank row in the intake wizard's destination list. Module scope, like
+// sameCity, so it can never sit in the temporal dead zone of a use above it.
+const EMPTY_WIZARD_DESTINATION = { city: '', nights: '' };
+
 function App() {
   // Routing helper
   const getRouteFromHash = () => {
@@ -625,16 +629,25 @@ function App() {
   const [adminFilterCity, setAdminFilterCity] = useState('All');
   const [adminFilterCategory, setAdminFilterCategory] = useState('All');
 
-  // B2C Custom Trip Wizard States
+  // B2C / B2B Custom Trip Wizard States.
+  //
+  // Every field a trip is actually made of starts EMPTY. The wizard used to
+  // open pre-filled -- Kathmandu, two nights, Gorakhpur both ends, a fixed
+  // date -- so pressing Create Proposal without touching anything produced a
+  // real-looking quote for a trip nobody had chosen. Blank fields with a
+  // "Select ..." prompt make the operator pick, and the form refuses to
+  // submit until they have.
   const [wizardDestinations, setWizardDestinations] = useState([
-    { city: 'Kathmandu', nights: 2 }
+    { ...EMPTY_WIZARD_DESTINATION }
   ]);
-  const [wizardStartCity, setWizardStartCity] = useState('Gorakhpur');
-  const [wizardEndCity, setWizardEndCity] = useState('Gorakhpur');
+  const [wizardStartCity, setWizardStartCity] = useState('');
+  const [wizardEndCity, setWizardEndCity] = useState('');
   const [isEndCityManuallyEdited, setIsEndCityManuallyEdited] = useState(false);
-  const [wizardNationality, setWizardNationality] = useState('India');
-  const [wizardLeavingOn, setWizardLeavingOn] = useState('2026-10-15');
-  const [wizardStarRating, setWizardStarRating] = useState('4-Star');
+  const [wizardNationality, setWizardNationality] = useState('');
+  const [wizardLeavingOn, setWizardLeavingOn] = useState('');
+  const [wizardStarRating, setWizardStarRating] = useState('');
+  // Not a trip detail but a way of travelling, and on for all but a handful of
+  // bookings -- so this one keeps its default rather than becoming a question.
   const [wizardAddTransfers, setWizardAddTransfers] = useState(true);
 
   // Confirmed itinerary-level start and end cities
@@ -1573,17 +1586,19 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       setTaxEnabledInput(db.settings.tax_enabled !== undefined ? db.settings.tax_enabled : true);
       setPosterUrlInput(db.settings.popup_poster_url || '');
       setPosterActiveInput(db.settings.popup_poster_active !== undefined ? db.settings.popup_poster_active : false);
+      // Admin's saved wizard defaults feed the Admin editor and the
+      // "Customize Recommended Itinerary" button, which reads them straight
+      // from settings. They deliberately do NOT pre-fill the blank intake
+      // form any more -- loading a template is a click the operator makes,
+      // not something that happens to them.
       if (db.settings.wizard_default_destinations) {
-        setWizardDestinations(db.settings.wizard_default_destinations);
         setAdminWizardDestinations(db.settings.wizard_default_destinations);
       }
       if (db.settings.wizard_default_start_city) {
-        setWizardStartCity(db.settings.wizard_default_start_city);
         setAdminWizardStartCity(db.settings.wizard_default_start_city);
         setWizardDefaultStartCity(db.settings.wizard_default_start_city);
       }
       if (db.settings.wizard_default_end_city) {
-        setWizardEndCity(db.settings.wizard_default_end_city);
         setAdminWizardEndCity(db.settings.wizard_default_end_city);
         setWizardDefaultEndCity(db.settings.wizard_default_end_city);
       }
@@ -3840,8 +3855,10 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
 
   // --- B2C TRIP PLANNER WIZARD HANDLERS ---
+  // A newly added stop is blank for the same reason the first one is: adding
+  // a row should not quietly add Pokhara for two nights to the trip.
   const handleAddWizardDestination = () => {
-    setWizardDestinations(prev => [...prev, { city: 'Pokhara', nights: 2 }]);
+    setWizardDestinations(prev => [...prev, { ...EMPTY_WIZARD_DESTINATION }]);
   };
 
   const handleDeleteWizardDestination = (index) => {
@@ -3852,7 +3869,13 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   const handleUpdateWizardDestination = (index, field, value) => {
     setWizardDestinations(prev => {
       const updated = [...prev];
-      updated[index] = { ...updated[index], [field]: field === 'nights' ? Number(value) : value };
+      // Keep an unpicked nights value as '' rather than coercing it to 0 --
+      // 0 matches no option, so the select would render blank instead of
+      // showing its "Select nights" prompt.
+      updated[index] = {
+        ...updated[index],
+        [field]: field === 'nights' ? (value === '' ? '' : Number(value)) : value,
+      };
       return updated;
     });
   };
@@ -3876,6 +3899,25 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       setShowLeadCaptureModal(true);
       return;
     }
+    // Every trip detail has to be chosen. The selects carry `required` so the
+    // browser normally stops a blank submit, but this path is also reached
+    // from the lead-capture modal (which resubmits the form for the user), so
+    // the check is repeated here rather than trusted to the markup.
+    const missing = [];
+    if (!wizardStartCity) missing.push('start city');
+    if (!wizardEndCity) missing.push('end city');
+    if (!wizardLeavingOn) missing.push('travel date');
+    if (!wizardStarRating) missing.push('star rating');
+    if (!wizardDestinations.some(d => d.city && Number(d.nights) > 0)) {
+      missing.push('at least one city with its nights');
+    } else if (wizardDestinations.some(d => (d.city && !Number(d.nights)) || (!d.city && d.nights))) {
+      missing.push('a city and nights on every row');
+    }
+    if (missing.length > 0) {
+      window.alert(`Please choose ${missing.join(', ')} before creating the proposal.`);
+      return;
+    }
+
     // Editing a trip that already exists: reshape it rather than rebuild it.
     // This screen used to regenerate from scratch, so reopening a quote and
     // touching anything here -- even just the rooms -- discarded every hotel,
@@ -3909,7 +3951,9 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     // over from a package the user opened earlier in this session.
     setOfferDiscountPerPax(0);
 
-    const cities = wizardDestinations;
+    // Only fully filled rows become days. A row left on "Select city" is a
+    // row the operator has not finished, not a stop on the trip.
+    const cities = wizardDestinations.filter(d => d.city && Number(d.nights) > 0);
     const rating = wizardStarRating;
     const addTransfers = wizardAddTransfers;
 
@@ -7245,8 +7289,10 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                     <select
                                       value={dest.city}
                                       onChange={(e) => handleUpdateWizardDestination(index, 'city', e.target.value)}
+                                      required
                                       className="form-select text-xs py-2 px-3 bg-white w-full border border-slate-300 rounded-lg shadow-inner"
                                     >
+                                      <option value="">Select city</option>
                                       {(db.cities || []).map(city => (
                                         <option key={city} value={city}>{city}</option>
                                       ))}
@@ -7257,8 +7303,10 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                     <select
                                       value={dest.nights}
                                       onChange={(e) => handleUpdateWizardDestination(index, 'nights', e.target.value)}
+                                      required
                                       className="form-select text-xs py-2 px-3 bg-white w-full border border-slate-300 rounded-lg shadow-inner"
                                     >
+                                      <option value="">Select nights</option>
                                       {[1, 2, 3, 4, 5, 6, 7].map(n => (
                                         <option key={n} value={n}>{n} {n === 1 ? 'night' : 'nights'}</option>
                                       ))}
@@ -7294,7 +7342,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                           
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                             <div>
-                              <label className="block text-xs font-bold text-slate-700 mb-1.5">Start City</label>
+                              <label className="block text-xs font-bold text-slate-700 mb-1.5">Start City *</label>
                               {/* Picked, not typed. These names become route keys
                                   (`gorakhpur_to_ktm`), so a typo or stray space
                                   silently created a second, unpriced sector. */}
@@ -7307,8 +7355,10 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                     setWizardEndCity(val);
                                   }
                                 }}
+                                required
                                 className="form-select text-xs py-2 px-3 w-full border border-slate-300 rounded-lg shadow-sm bg-white"
                               >
+                                <option value="">Select start city</option>
                                 {tripEndpointOptions(wizardStartCity).map(c => (
                                   <option key={c} value={c}>{c}</option>
                                 ))}
@@ -7316,15 +7366,17 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                             </div>
 
                             <div>
-                              <label className="block text-xs font-bold text-slate-700 mb-1.5">End City</label>
+                              <label className="block text-xs font-bold text-slate-700 mb-1.5">End City *</label>
                               <select
                                 value={wizardEndCity}
                                 onChange={(e) => {
                                   setWizardEndCity(e.target.value);
                                   setIsEndCityManuallyEdited(true);
                                 }}
+                                required
                                 className="form-select text-xs py-2 px-3 w-full border border-slate-300 rounded-lg shadow-sm bg-white"
                               >
+                                <option value="">Select end city</option>
                                 {tripEndpointOptions(wizardEndCity).map(c => (
                                   <option key={c} value={c}>{c}</option>
                                 ))}
@@ -7336,8 +7388,10 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                               <select 
                                 value={wizardNationality}
                                 onChange={(e) => setWizardNationality(e.target.value)}
+                                required
                                 className="form-select text-xs py-2 px-3 w-full border border-slate-300 rounded-lg bg-white shadow-sm"
                               >
+                                <option value="">Select nationality</option>
                                 <option value="India">India</option>
                                 <option value="SAARC">SAARC Countries</option>
                                 <option value="International">International</option>
@@ -7495,12 +7549,14 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                             </div>
 
                             <div>
-                              <label className="block text-xs font-bold text-slate-700 mb-1.5">Star rating</label>
+                              <label className="block text-xs font-bold text-slate-700 mb-1.5">Star rating *</label>
                               <select 
                                 value={wizardStarRating}
                                 onChange={(e) => setWizardStarRating(e.target.value)}
+                                required
                                 className="form-select text-xs py-2 px-3 w-full border border-slate-300 rounded-lg bg-white shadow-sm"
                               >
+                                <option value="">Select star rating</option>
                                 <option value="3-Star">3-Star Budget</option>
                                 <option value="4-Star">4-Star Deluxe</option>
                                 <option value="5-Star">5-Star Luxury</option>
