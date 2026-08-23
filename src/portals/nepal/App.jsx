@@ -626,6 +626,8 @@ function App() {
   const [showAddActivityModal, setShowAddActivityModal] = useState(false);
   const [newCityName, setNewCityName] = useState('');
   const [newAirportForm, setNewAirportForm] = useState({ name: '', code: '', cities: [] });
+  const [editingAirport, setEditingAirport] = useState(null);
+  const [editingCity, setEditingCity] = useState(null); // { original, name }
 
   const [globalRouteForm, setGlobalRouteForm] = useState({ fromCity: 'Kathmandu', toCity: 'Pokhara', prices: {} });
   const [globalRouteStops, setGlobalRouteStops] = useState(['Kathmandu', 'Pokhara']);
@@ -3114,8 +3116,75 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   };
 
   const handleDeleteCity = (cityName) => {
-    if (!window.confirm(`Delete city ${cityName}?`)) return;
+    // Say what will be stranded, rather than letting hotels and activities go
+    // quietly unreachable -- an activity in a city that no longer exists can
+    // never be added to a day.
+    const hotels = (db.hotels || []).filter(h => sameCity(h.city, cityName)).length;
+    const acts = (db.activities || []).filter(a => sameCity(a.city, cityName)).length;
+    const pkgs = (db.packages || []).filter(p => (p.cities || []).some(c => sameCity(c, cityName))).length;
+    const stranded = [
+      hotels && `${hotels} hotel${hotels > 1 ? 's' : ''}`,
+      acts && `${acts} activit${acts > 1 ? 'ies' : 'y'}`,
+      pkgs && `${pkgs} package${pkgs > 1 ? 's' : ''}`,
+    ].filter(Boolean);
+
+    const warning = stranded.length
+      ? `\n\n${stranded.join(', ')} still reference ${cityName}. They will stay in the system but can no longer be used in an itinerary.`
+      : '';
+    if (!window.confirm(`Delete city ${cityName}?${warning}`)) return;
     updateDBState({ ...db, cities: (db.cities || []).filter(c => c !== cityName) });
+  };
+
+  // Renaming a city has to cascade. Hotels, activities, airports and packages
+  // all reference a city by NAME, so changing it in one place alone would
+  // strand every one of them -- 19 references for Kathmandu alone.
+  //
+  // Transfer route keys deliberately do NOT change: `ktm_to_pokhara` is a
+  // stable identifier that vehicle rates and saved itineraries are keyed on,
+  // and rewriting it would unprice every sector. Existing bookings and quotes
+  // are likewise left alone -- they are the record of what was sold.
+  const handleRenameCity = (oldName, rawNewName) => {
+    const newName = String(rawNewName || '').trim();
+    if (!newName || newName === oldName) return { ok: true };
+    if ((db.cities || []).some(c => sameCity(c, newName))) {
+      window.alert(`There is already a city called ${newName}.`);
+      return { ok: false };
+    }
+
+    const counts = {
+      hotels: (db.hotels || []).filter(h => sameCity(h.city, oldName)).length,
+      activities: (db.activities || []).filter(a => sameCity(a.city, oldName)).length,
+      airports: (db.airports || []).filter(a => (a.cities || []).some(c => sameCity(c, oldName))).length,
+      packages: (db.packages || []).filter(p =>
+        (p.cities || []).some(c => sameCity(c, oldName)) ||
+        (p.days || []).some(d => sameCity(d.city, oldName))
+      ).length,
+    };
+    const touched = Object.entries(counts).filter(([, n]) => n > 0)
+      .map(([k, n]) => `${n} ${k}`).join(', ');
+
+    if (!window.confirm(
+      `Rename "${oldName}" to "${newName}"?` +
+      (touched ? `\n\nThis also updates: ${touched}.` : '') +
+      `\n\nExisting bookings and quotes keep the old name, and transfer route names are not changed.`
+    )) return { ok: false };
+
+    updateDBState({
+      ...db,
+      cities: (db.cities || []).map(c => (sameCity(c, oldName) ? newName : c)),
+      hotels: (db.hotels || []).map(h => (sameCity(h.city, oldName) ? { ...h, city: newName } : h)),
+      activities: (db.activities || []).map(a => (sameCity(a.city, oldName) ? { ...a, city: newName } : a)),
+      airports: (db.airports || []).map(a => ({
+        ...a,
+        cities: (a.cities || []).map(c => (sameCity(c, oldName) ? newName : c)),
+      })),
+      packages: (db.packages || []).map(p => ({
+        ...p,
+        cities: (p.cities || []).map(c => (sameCity(c, oldName) ? newName : c)),
+        days: (p.days || []).map(d => (sameCity(d.city, oldName) ? { ...d, city: newName } : d)),
+      })),
+    });
+    return { ok: true };
   };
 
   // ---------------------------------------------------------------------
@@ -3357,6 +3426,43 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       `Remove ${airport.name}?\n\nThe flight option will no longer be offered for ${airport.cities.join(', ')}. Existing transfer rates are kept.`
     )) return;
     updateDBState({ ...db, airports: (db.airports || []).filter(a => a.id !== airportId) });
+  };
+
+  // Editing an airport is safe to do freely: nothing is keyed on its name or
+  // code. Its `cities` list is what decides where a flight leg can be offered,
+  // and the airport-transfer route for each served city is created on demand
+  // by resolveAirportTransfer, so adding a city here does not strand anything.
+  const handleSaveAirportEdit = () => {
+    if (!editingAirport) return;
+    const name = String(editingAirport.name || '').trim();
+    if (!name) {
+      window.alert('Airport name is required.');
+      return;
+    }
+    if ((db.airports || []).some(a => a.id !== editingAirport.id && a.name.trim().toLowerCase() === name.toLowerCase())) {
+      window.alert('Another airport already has this name.');
+      return;
+    }
+    if ((editingAirport.cities || []).length === 0) {
+      window.alert('Select at least one city this airport serves.');
+      return;
+    }
+    updateDBState({
+      ...db,
+      airports: (db.airports || []).map(a => a.id === editingAirport.id
+        ? { ...a, name, code: String(editingAirport.code || '').trim().toUpperCase(), cities: [...editingAirport.cities] }
+        : a),
+    });
+    setEditingAirport(null);
+  };
+
+  const handleToggleEditAirportCity = (city) => {
+    setEditingAirport(prev => prev && ({
+      ...prev,
+      cities: (prev.cities || []).includes(city)
+        ? prev.cities.filter(c => c !== city)
+        : [...(prev.cities || []), city],
+    }));
   };
 
   const handleToggleNewAirportCity = (city) => {
@@ -8602,6 +8708,13 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                             )}
                           </div>
                           <button
+                            onClick={() => setEditingCity({ original: city, name: city })}
+                            className="text-slate-300 hover:text-indigo-500 p-1 opacity-0 group-hover:opacity-100 transition shrink-0"
+                            title="Rename City"
+                          >
+                            <Edit3 size={14} />
+                          </button>
+                          <button
                             onClick={() => handleDeleteCity(city)}
                             className="text-slate-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition shrink-0"
                             title="Delete City"
@@ -8699,6 +8812,13 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                 Serves: <strong className="text-slate-700">{(airport.cities || []).join(', ') || '—'}</strong>
                               </p>
                             </div>
+                            <button
+                              onClick={() => setEditingAirport({ ...airport, cities: [...(airport.cities || [])] })}
+                              className="text-slate-300 hover:text-indigo-500 p-1 opacity-0 group-hover:opacity-100 transition shrink-0"
+                              title="Edit Airport"
+                            >
+                              <Edit3 size={14} />
+                            </button>
                             <button
                               onClick={() => handleDeleteAirport(airport.id)}
                               className="text-slate-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition shrink-0"
@@ -10978,6 +11098,133 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
               <div className="modal-footer">
                 <button type="button" onClick={() => setEditingUser(null)} className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 bg-transparent">Cancel</button>
                 <button type="submit" className="btn btn-primary btn-sm bg-orange-655 hover:bg-orange-700 text-white rounded-lg py-2 px-4 shadow">Save Changes</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Renaming a city rewrites it across hotels, activities, airports and
+          packages -- see handleRenameCity for what is deliberately left alone. */}
+      {editingCity && (
+        <div className="modal-overlay">
+          <div className="modal-content max-w-sm">
+            <div className="modal-header">
+              <h3 className="text-sm font-black uppercase tracking-wider font-heading text-slate-800">Rename City</h3>
+              <button onClick={() => setEditingCity(null)} className="text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+            <form onSubmit={(e) => {
+              e.preventDefault();
+              const result = handleRenameCity(editingCity.original, editingCity.name);
+              if (result.ok) setEditingCity(null);
+            }}>
+              <div className="modal-body flex flex-col gap-4 text-left">
+                <div className="form-group mb-0">
+                  <label className="form-label text-[10px]">City Name</label>
+                  <input
+                    type="text"
+                    required
+                    autoFocus
+                    value={editingCity.name}
+                    onChange={(e) => setEditingCity({ ...editingCity, name: e.target.value })}
+                    className="form-input text-xs"
+                  />
+                </div>
+                {(() => {
+                  const c = editingCity.original;
+                  const airport = getAirportForCity(db.airports || [], c);
+                  const counts = [
+                    [(db.hotels || []).filter(h => sameCity(h.city, c)).length, 'hotel', 'hotels'],
+                    [(db.activities || []).filter(a => sameCity(a.city, c)).length, 'activity', 'activities'],
+                    [(db.packages || []).filter(p => (p.cities || []).some(x => sameCity(x, c))).length, 'package', 'packages'],
+                  ].filter(([n]) => n > 0);
+                  return (
+                    <div className="text-[10px] text-slate-450 leading-relaxed">
+                      {counts.length > 0 && (
+                        <p>Renaming also updates {counts.map(([n, one, many]) => `${n} ${n === 1 ? one : many}`).join(', ')}.</p>
+                      )}
+                      <p className="mt-1">
+                        Airport: {airport ? <strong>{airport.name}</strong> : <em>none — this city is road-only</em>}
+                        {' '}(change this by editing the airport below).
+                      </p>
+                      <p className="mt-1">Existing bookings and quotes keep the old name.</p>
+                    </div>
+                  );
+                })()}
+              </div>
+              <div className="modal-footer">
+                <button type="button" onClick={() => setEditingCity(null)} className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 bg-transparent">Cancel</button>
+                <button type="submit" className="btn btn-primary btn-sm">Rename</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Airport name, code, and which cities it serves. The served-cities list
+          is what decides where a flight leg can be offered. */}
+      {editingAirport && (
+        <div className="modal-overlay">
+          <div className="modal-content max-w-md">
+            <div className="modal-header">
+              <h3 className="text-sm font-black uppercase tracking-wider font-heading text-slate-800">Edit Airport</h3>
+              <button onClick={() => setEditingAirport(null)} className="text-slate-400 hover:text-slate-600">✕</button>
+            </div>
+            <form onSubmit={(e) => { e.preventDefault(); handleSaveAirportEdit(); }}>
+              <div className="modal-body flex flex-col gap-4 text-left">
+                <div className="flex gap-3">
+                  <div className="form-group mb-0 flex-1">
+                    <label className="form-label text-[10px]">Airport Name</label>
+                    <input
+                      type="text"
+                      required
+                      value={editingAirport.name || ''}
+                      onChange={(e) => setEditingAirport({ ...editingAirport, name: e.target.value })}
+                      className="form-input text-xs"
+                    />
+                  </div>
+                  <div className="form-group mb-0 w-24">
+                    <label className="form-label text-[10px]">Code</label>
+                    <input
+                      type="text"
+                      maxLength={5}
+                      value={editingAirport.code || ''}
+                      onChange={(e) => setEditingAirport({ ...editingAirport, code: e.target.value })}
+                      className="form-input text-xs uppercase"
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group mb-0">
+                  <label className="form-label text-[10px]">Cities This Airport Serves</label>
+                  <div className="flex flex-wrap gap-2">
+                    {(db.cities || []).map(city => {
+                      const selected = (editingAirport.cities || []).includes(city);
+                      return (
+                        <button
+                          key={city}
+                          type="button"
+                          onClick={() => handleToggleEditAirportCity(city)}
+                          className={`text-[11px] font-bold py-1.5 px-3 rounded-lg border transition ${
+                            selected
+                              ? 'bg-sky-600 border-sky-600 text-white shadow-sm'
+                              : 'bg-white border-slate-300 text-slate-600 hover:border-sky-400'
+                          }`}
+                        >
+                          {city}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <span className="text-[10px] text-slate-450 block mt-2 leading-relaxed">
+                    A flight is offered between two cities only when both have an airport and the
+                    two are different. Each served city keeps its own airport transfer price.
+                  </span>
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" onClick={() => setEditingAirport(null)} className="px-4 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 bg-transparent">Cancel</button>
+                <button type="submit" className="btn btn-primary btn-sm">Save Changes</button>
               </div>
             </form>
           </div>
