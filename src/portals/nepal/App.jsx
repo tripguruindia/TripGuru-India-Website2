@@ -42,6 +42,7 @@ import {
   getAdminDb,
   getPublicDb,
   createBooking,
+  updateBooking,
   getMyBookings,
   listMyQuotes,
   createQuote,
@@ -577,6 +578,23 @@ function App() {
 
   // Invoice / Saved Booking State
   const [lastBookingId, setLastBookingId] = useState(null);
+  // Which copy of the voucher is on screen -- and therefore which copy gets
+  // printed and copied to WhatsApp, since both act on what is rendered.
+  //
+  //  'client'   -- what goes to the traveller: the itinerary and one total.
+  //                No per-service split, no GST line, no agency markup. On the
+  //                agent portal those last two are the agent's own margin and
+  //                TripGuru's price; sending them to his client would hand
+  //                over his cost sheet.
+  //  'internal' -- the operator's own record, with every line.
+  //
+  // Defaults to the client copy: sending an internal sheet to a traveller by
+  // accident is far worse than having to press one button for your own.
+  const [invoiceCopyMode, setInvoiceCopyMode] = useState('client');
+  // Set when a confirmed booking is reopened for editing. Re-confirming then
+  // amends that booking instead of creating a second one for the same trip,
+  // which would count the money twice on the dashboard.
+  const [editingBookingId, setEditingBookingId] = useState(null);
   const [showCheckoutModal, setShowCheckoutModal] = useState(false);
   const [checkoutForm, setCheckoutForm] = useState({
     clientName: '',
@@ -1005,7 +1023,13 @@ function App() {
     setB2bEditingPkgId(null);
   };
 
-  const handleCopyWhatsAppMessage = (isB2BInvoice, whiteLabel, invoiceAcc, invoiceTrans, invoiceAct, displayedInvoiceTax, displayedInvoiceTotal) => {
+  // `copyMode` decides how much of the money is spelt out. The client copy
+  // gives the itinerary and one grand total; the internal copy adds the
+  // per-service split, the GST line and, on the agent portal, the agent's own
+  // markup. Both are the same trip at the same price -- only the detail
+  // differs, so the two can never quote differently.
+  const handleCopyWhatsAppMessage = (isB2BInvoice, whiteLabel, invoiceAcc, invoiceTrans, invoiceAct, displayedInvoiceTax, displayedInvoiceTotal, copyMode = 'client') => {
+    const isClientCopy = copyMode === 'client';
     // Generate daywise breakdown descriptions
     const daysText = quoteCalculation.dayWiseBreakdown.map(day => {
       const isNoStay = !day.hotelId || day.hotelId === 'no_stay';
@@ -1051,10 +1075,10 @@ ${daysText}
 
 ------------------------------------------------
 *INVESTMENT & PRICING DETAILS (INR ₹):*
-• Accommodation & Meals: ₹${invoiceAcc.toLocaleString()}
+${isClientCopy ? '' : `• Accommodation & Meals: ₹${invoiceAcc.toLocaleString()}
 • Private Transport: ₹${invoiceTrans.toLocaleString()}
 • Activities & Entry Fees: ₹${invoiceAct.toLocaleString()}
-${taxEnabledInput ? `• GST (${taxInput}%): ₹${displayedInvoiceTax.toLocaleString()}\n` : ''}• *GRAND TOTAL TOUR INVESTMENT:* *₹${displayedInvoiceTotal.toLocaleString()}*
+${taxEnabledInput ? `• GST (${taxInput}%): ₹${displayedInvoiceTax.toLocaleString()}\n` : ''}${isB2BInvoice ? `• Your markup (${activeMarkup}%): ₹${Math.round(quoteCalculation.totals.markup).toLocaleString()}\n` : ''}`}• *GRAND TOTAL TOUR INVESTMENT:* *₹${displayedInvoiceTotal.toLocaleString()}*
 
 ${(travelers.cwb + travelers.cnb > 0) 
   ? `• *Per Adult Rate:* *₹${Math.round(quoteCalculation.totals.perAdult).toLocaleString()} / adult*\n• *Per Child Rate:* *₹${Math.round(quoteCalculation.totals.perChild).toLocaleString()} / child*`
@@ -1065,7 +1089,9 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
     navigator.clipboard.writeText(msg)
       .then(() => {
-        window.alert("WhatsApp message copy-paste format has been copied to your clipboard!");
+        window.alert(isClientCopy
+          ? "Client copy copied to your clipboard — itinerary and total only, no cost breakup."
+          : "Your own copy copied to your clipboard — includes the full cost breakup.");
       })
       .catch(err => {
         console.error("Failed to copy text: ", err);
@@ -2659,7 +2685,14 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       // keeps one booking instead of two records for the same trip, and
       // leaves the quote marked Won with `converted_booking_id` pointing at
       // the booking -- which is what makes win rates measurable.
-      if (activeQuoteId) {
+      if (editingBookingId) {
+        // Amending a trip that is already booked. PATCH the same record rather
+        // than POST a new one -- booking it again would leave two bookings for
+        // one trip and double its money on the dashboard.
+        newBooking = { ...newBooking, id: editingBookingId };
+        const serverBooking = await updateBooking(editingBookingId, newBooking);
+        newBooking = { ...newBooking, ...serverBooking };
+      } else if (activeQuoteId) {
         await updateQuote(activeQuoteId, buildQuotePayload());
         const { booking, quote: wonQuote } = await convertQuote(activeQuoteId);
         newBooking = { ...newBooking, ...booking };
@@ -2679,13 +2712,21 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       // isn't blocked -- matches pre-existing offline-friendly behavior.
     }
 
-    const updatedBookings = [newBooking, ...db.bookings];
-    updateDBState({ ...db, bookings: updatedBookings });
-    setMyBookings((prev) => [newBooking, ...prev]);
+    // An amendment replaces the record in the local lists; a new booking goes
+    // on the front. Prepending on an edit would show the same trip twice and
+    // count it twice in the dashboard totals.
+    const replaceOrPrepend = (list) =>
+      editingBookingId && (list || []).some(bk => bk.id === newBooking.id)
+        ? list.map(bk => (bk.id === newBooking.id ? newBooking : bk))
+        : [newBooking, ...(list || [])];
+
+    updateDBState({ ...db, bookings: replaceOrPrepend(db.bookings) });
+    setMyBookings(replaceOrPrepend);
     // Sync Booking to Google Sheets
     syncBookingToSheet(newBooking);
 
     setLastBookingId(newBooking.id);
+    setEditingBookingId(null);
     setShowCheckoutModal(false);
     // The build is now a real booking -- the draft has served its purpose.
     clearBuilderDraft();
@@ -8293,7 +8334,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                               className={`w-full bg-${themeColor === 'emerald' ? 'emerald-600 hover:bg-emerald-700' : '[#0f2942] hover:bg-[#1a3d5e]'} text-white py-3 rounded shadow-md mt-4 flex items-center justify-center gap-2 font-bold uppercase tracking-wider transition`}
                               disabled={!quoteCalculation.roomValidation.isValid}
                             >
-                              <CheckCircle size={18} /> Book Vacation Now
+                              <CheckCircle size={18} /> {editingBookingId ? `Update Booking ${editingBookingId}` : 'Book Vacation Now'}
                             </button>
 
                             {/* Keep the build without booking it. Only offered
@@ -8340,6 +8381,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                 const displayedInvoiceTotal = Math.round(quoteCalculation.totals.total);
                 const subtotalWithMarkupRoundedInvoice = displayedInvoiceTotal - displayedInvoiceTax;
 
+                const isClientCopy = invoiceCopyMode === 'client';
+
                 let invoiceAcc = Math.round(quoteCalculation.totals.accommodation);
                 let invoiceTrans = Math.round(quoteCalculation.totals.transport);
                 let invoiceAct = Math.round(quoteCalculation.totals.activities);
@@ -8353,27 +8396,82 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                 return (
                   <div className="max-w-4xl mx-auto py-2">
                     
-                    <div className="bg-white border border-slate-200 p-4 rounded-xl mb-6 flex flex-col sm:flex-row gap-4 justify-between items-stretch sm:items-center no-print">
-                      <div className="flex items-center justify-center sm:justify-start gap-2 text-green-700 text-xs sm:text-sm font-semibold text-center sm:text-left">
-                        <ShieldCheck /> {isB2BInvoice ? "B2B Partner Voucher Generated & Confirmed" : "Quote Generated & Confirmed"} (Ref ID: {lastBookingId})
+                    {/* One column on a phone, left-aligned throughout. The
+                        confirmation line used to centre itself while the icon
+                        stayed left, so the two never lined up on either axis. */}
+                    <div className="bg-white border border-slate-200 p-4 rounded-xl mb-6 flex flex-col gap-4 no-print">
+                      <div className="flex items-start gap-2 text-green-700 text-xs sm:text-sm font-semibold text-left">
+                        <ShieldCheck size={18} className="shrink-0 mt-0.5" />
+                        <span>
+                          {isB2BInvoice ? "B2B Partner Voucher Generated & Confirmed" : "Quote Generated & Confirmed"}
+                          {" "}(Ref ID: {lastBookingId})
+                        </span>
                       </div>
-                      <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto">
+
+                      {/* Which copy is on screen. Print and WhatsApp both act on
+                          what is rendered, so this one switch decides what both
+                          of them produce -- rather than four buttons that would
+                          have to rebuild the sheet anyway. */}
+                      <div className="flex flex-col gap-1.5">
+                        <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Which copy?</span>
+                        <div className="grid grid-cols-2 gap-2 w-full sm:max-w-sm">
+                          {[
+                            { mode: 'client', label: 'For your client' },
+                            { mode: 'internal', label: 'For yourself' },
+                          ].map(opt => (
+                            <button
+                              key={opt.mode}
+                              type="button"
+                              onClick={() => setInvoiceCopyMode(opt.mode)}
+                              aria-pressed={invoiceCopyMode === opt.mode}
+                              className={`invoice-copy-tab text-xs font-bold py-2.5 px-3 rounded-xl border min-h-[42px] transition ${
+                                invoiceCopyMode === opt.mode ? 'is-active' : ''
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                        <span className="text-[10px] text-slate-500 leading-normal">
+                          {isClientCopy
+                            ? 'Itinerary and one all-inclusive total. No cost breakup' + (isB2BInvoice ? ', no GST line and no markup — nothing that shows what the trip cost you.' : ' and no GST line.')
+                            : 'Every line: the per-service split' + (taxEnabledInput ? ', GST' : '') + (isB2BInvoice ? ' and your own markup.' : '.') + ' Do not send this to a client.'}
+                        </span>
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row gap-2 w-full">
                         <button 
-                          onClick={() => handleCopyWhatsAppMessage(isB2BInvoice, whiteLabel, invoiceAcc, invoiceTrans, invoiceAct, displayedInvoiceTax, displayedInvoiceTotal)}
-                          className="btn btn-secondary btn-sm w-full sm:w-auto flex items-center justify-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-250 font-bold"
-                          title="Copy message formatted for WhatsApp"
+                          onClick={() => handleCopyWhatsAppMessage(isB2BInvoice, whiteLabel, invoiceAcc, invoiceTrans, invoiceAct, displayedInvoiceTax, displayedInvoiceTotal, invoiceCopyMode)}
+                          className="btn btn-secondary btn-sm w-full sm:flex-1 flex items-center justify-center gap-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-250 font-bold min-h-[42px]"
+                          title="Copy this message formatted for WhatsApp"
                         >
                           <MessageSquare size={13} className="text-emerald-600" /> Copy WhatsApp Msg
                         </button>
                         <button 
                           onClick={() => window.print()}
-                          className="btn btn-secondary btn-sm w-full sm:w-auto flex items-center justify-center gap-1.5"
+                          className="btn btn-secondary btn-sm w-full sm:flex-1 flex items-center justify-center gap-1.5 min-h-[42px]"
                         >
-                          <Printer size={13} /> Print Quote / Save PDF
+                          <Printer size={13} /> Print / Save PDF
+                        </button>
+                        {/* Editing a confirmed trip had no path at all: the
+                            only way to change one was to build it again, which
+                            left two bookings for one trip. This reopens the
+                            builder on the same record, and confirming again
+                            amends it rather than creating a second. */}
+                        <button
+                          onClick={() => {
+                            setEditingBookingId(lastBookingId);
+                            setSubView('customize');
+                            if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
+                          }}
+                          className="btn btn-secondary btn-sm w-full sm:flex-1 flex items-center justify-center gap-1.5 min-h-[42px]"
+                          title="Reopen this booking in the builder and change it"
+                        >
+                          <Edit3 size={13} /> Edit This Booking
                         </button>
                         <button 
-                          onClick={() => setSubView('packages')}
-                          className="btn btn-primary btn-sm w-full sm:w-auto rounded flex items-center justify-center"
+                          onClick={() => { setEditingBookingId(null); setSubView('packages'); }}
+                          className="btn btn-primary btn-sm w-full sm:flex-1 rounded flex items-center justify-center min-h-[42px]"
                         >
                           {isB2BInvoice ? "Create New Booking" : "Create Another Quote"}
                         </button>
@@ -8602,42 +8700,64 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                               </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                              <tr>
-                                <td className="p-4">
-                                  <div className="font-semibold text-slate-800 text-xs">Accommodation & Meal Plan Package</div>
-                                  <div className="text-slate-550 text-[10px] mt-0.5">{selectedHotelCategory} Hotels (Rooms: {roomConfig.double} Double, {roomConfig.single} Single, {roomConfig.extra_adult} Extra Adult, {roomConfig.cwb} CWB, {roomConfig.cnb} CNB)</div>
-                                </td>
-                                <td className="p-4 text-right font-bold text-slate-855 text-xs">₹{invoiceAcc.toLocaleString()}</td>
-                              </tr>
-                              <tr>
-                                <td className="p-4">
-                                  <div className="font-semibold text-slate-800 text-xs">Private Vehicle Charter & Route Transfers</div>
-                                  <div className="text-slate-550 text-[10px] mt-0.5">Vehicle model: {db.vehicles.find(v => v.id === selectedVehicleId)?.name}. Includes local sightseeing and standard transfers.</div>
-                                </td>
-                                <td className="p-4 text-right font-bold text-slate-855 text-xs">₹{invoiceTrans.toLocaleString()}</td>
-                              </tr>
-                              <tr>
-                                <td className="p-4">
-                                  <div className="font-semibold text-slate-800 text-xs">Sightseeing, Activity Fees & Entries</div>
-                                  <div className="text-slate-550 text-[10px] mt-0.5">Tickets, entrance fees, and activity bookings across destinations.</div>
-                                </td>
-                                <td className="p-4 text-right font-bold text-slate-855 text-xs">₹{invoiceAct.toLocaleString()}</td>
-                              </tr>
-                              {/* B2B: GST sits on the TripGuru price and the
-                                  agent's markup goes on top of it, so the rows
-                                  are laid out in that order and the markup line
-                                  no longer folds the subtotal into itself. */}
-                              {taxEnabledInput && (
-                                <tr className="bg-slate-50/30 font-semibold text-slate-700">
-                                  <td className="p-4 text-right">GST ({taxInput}%):</td>
-                                  <td className="p-4 text-right font-bold text-slate-855">₹{displayedInvoiceTax.toLocaleString()}</td>
+                              {/* The client copy states what the trip includes
+                                  and what it costs in total, and stops there.
+                                  The per-service split, the GST line and the
+                                  agency markup are the operator's own numbers:
+                                  on the agent portal the last two would hand
+                                  his client both his margin and TripGuru's
+                                  price. */}
+                              {isClientCopy ? (
+                                <tr>
+                                  <td className="p-4">
+                                    <div className="font-semibold text-slate-800 text-xs">Complete Tour Package — All Inclusive</div>
+                                    <div className="text-slate-550 text-[10px] mt-0.5">
+                                      {selectedHotelCategory} accommodation with meals as listed, private vehicle throughout
+                                      with all listed transfers, and every sightseeing and entry fee named in the itinerary.
+                                    </div>
+                                  </td>
+                                  <td className="p-4 text-right font-bold text-slate-855 text-xs">₹{displayedInvoiceTotal.toLocaleString()}</td>
                                 </tr>
-                              )}
-                              {isB2BInvoice && (
-                                <tr className="bg-slate-50/30 font-semibold text-slate-700">
-                                  <td className="p-4 text-right">Agency Markup ({activeMarkup}%):</td>
-                                  <td className="p-4 text-right font-bold text-slate-855">₹{Math.round(quoteCalculation.totals.markup).toLocaleString()}</td>
-                                </tr>
+                              ) : (
+                                <>
+                                  <tr>
+                                    <td className="p-4">
+                                      <div className="font-semibold text-slate-800 text-xs">Accommodation & Meal Plan Package</div>
+                                      <div className="text-slate-550 text-[10px] mt-0.5">{selectedHotelCategory} Hotels (Rooms: {roomConfig.double} Double, {roomConfig.single} Single, {roomConfig.extra_adult} Extra Adult, {roomConfig.cwb} CWB, {roomConfig.cnb} CNB)</div>
+                                    </td>
+                                    <td className="p-4 text-right font-bold text-slate-855 text-xs">₹{invoiceAcc.toLocaleString()}</td>
+                                  </tr>
+                                  <tr>
+                                    <td className="p-4">
+                                      <div className="font-semibold text-slate-800 text-xs">Private Vehicle Charter & Route Transfers</div>
+                                      <div className="text-slate-550 text-[10px] mt-0.5">Vehicle model: {db.vehicles.find(v => v.id === selectedVehicleId)?.name}. Includes local sightseeing and standard transfers.</div>
+                                    </td>
+                                    <td className="p-4 text-right font-bold text-slate-855 text-xs">₹{invoiceTrans.toLocaleString()}</td>
+                                  </tr>
+                                  <tr>
+                                    <td className="p-4">
+                                      <div className="font-semibold text-slate-800 text-xs">Sightseeing, Activity Fees & Entries</div>
+                                      <div className="text-slate-550 text-[10px] mt-0.5">Tickets, entrance fees, and activity bookings across destinations.</div>
+                                    </td>
+                                    <td className="p-4 text-right font-bold text-slate-855 text-xs">₹{invoiceAct.toLocaleString()}</td>
+                                  </tr>
+                                  {/* B2B: GST sits on the TripGuru price and the
+                                      agent's markup goes on top of it, so the rows
+                                      are laid out in that order and the markup line
+                                      no longer folds the subtotal into itself. */}
+                                  {taxEnabledInput && (
+                                    <tr className="bg-slate-50/30 font-semibold text-slate-700">
+                                      <td className="p-4 text-right">GST ({taxInput}%):</td>
+                                      <td className="p-4 text-right font-bold text-slate-855">₹{displayedInvoiceTax.toLocaleString()}</td>
+                                    </tr>
+                                  )}
+                                  {isB2BInvoice && (
+                                    <tr className="bg-slate-50/30 font-semibold text-slate-700">
+                                      <td className="p-4 text-right">Agency Markup ({activeMarkup}%):</td>
+                                      <td className="p-4 text-right font-bold text-slate-855">₹{Math.round(quoteCalculation.totals.markup).toLocaleString()}</td>
+                                    </tr>
+                                  )}
+                                </>
                               )}
                               <tr className={`bg-${isB2BInvoice ? 'emerald' : 'slate-900'} text-white font-extrabold`}>
                                 <td className="p-4 text-right text-xs uppercase tracking-wider font-heading">Grand Total Tour Investment:</td>
@@ -11122,7 +11242,9 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
             <div className="bg-white rounded-3xl shadow-2xl border border-slate-100 w-full max-w-lg overflow-hidden transform transition-all duration-300 scale-100">
               <div className="px-6 py-5 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                 <h3 className="text-lg font-bold font-heading text-slate-800">
-                  {isB2B ? "Finalize B2B Partner Booking" : "Finalize Custom Quote Reservation"}
+                  {editingBookingId
+                    ? `Update Booking ${editingBookingId}`
+                    : isB2B ? "Finalize B2B Partner Booking" : "Finalize Custom Quote Reservation"}
                 </h3>
                 <button onClick={() => setShowCheckoutModal(false)} className="text-slate-400 hover:text-slate-650 transition font-bold text-sm">✕</button>
               </div>
@@ -11212,13 +11334,17 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
                   <div className={`bg-${checkoutColor}-50 border border-${checkoutColor}-100 text-${checkoutColor}-800 text-[10px] p-3.5 rounded-xl leading-relaxed flex items-start gap-2 shadow-sm`}>
                     <Info size={14} className={`shrink-0 mt-0.5 text-${checkoutColor}-600`} />
-                    <span>By clicking Confirm, this quote will be saved. You will be immediately redirected to print a copy of your customized travel voucher/quotation invoice.</span>
+                    <span>
+                      {editingBookingId
+                        ? `This updates booking ${editingBookingId} in place — it does not create a second booking. You will be taken back to the voucher.`
+                        : 'By clicking Confirm, this quote will be saved. You will be immediately redirected to print a copy of your customized travel voucher/quotation invoice.'}
+                    </span>
                   </div>
                 </div>
                 <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/50 flex justify-end gap-3 items-center">
                   <button type="button" onClick={() => setShowCheckoutModal(false)} className="px-4 py-2 text-xs text-slate-500 hover:text-slate-700 bg-transparent font-bold transition">Cancel</button>
                   <button type="submit" className={`bg-${checkoutColor}-600 hover:bg-${checkoutColor}-700 text-white font-extrabold text-xs uppercase tracking-wider py-2.5 px-6 rounded-xl shadow-md transition hover:-translate-y-0.5 active:translate-y-0`}>
-                    Confirm Booking
+                    {editingBookingId ? 'Save Changes' : 'Confirm Booking'}
                   </button>
                 </div>
               </form>

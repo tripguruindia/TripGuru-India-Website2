@@ -1986,3 +1986,99 @@
   z-index: 3;
   background-color: var(--bg-card-alt);
 }
+
+/* ── Client copy / own copy switch on the voucher ────────────────────────── */
+/* Token-driven: a fixed Tailwind pair would render the unselected tab
+   cream-on-cream in dark mode, and the selected one has to stay legible in
+   both themes. */
+.nepal-portal-root .invoice-copy-tab {
+  background-color: var(--bg-card-alt);
+  border-color: var(--border-color);
+  color: var(--text-primary);
+  opacity: 0.7;
+}
+
+.nepal-portal-root .invoice-copy-tab.is-active {
+  background-color: rgba(201, 168, 76, 0.14);
+  border-color: var(--primary);
+  color: var(--text-primary);
+  opacity: 1;
+}
+
+/* ── The voucher sheet is paper, not portal chrome ───────────────────────── */
+/* #print-sheet is a document preview: what is on screen is what prints and
+   what a client is shown. Under the dark theme the portal's global rules
+   turned the sheet's surface dark while its type stayed slate-900, so the
+   proposal title and the agency name rendered dark navy on near-black.
+    
+   A document does not follow the operator's theme -- it stays a white sheet
+   with dark ink in both, which is also what comes out of the printer. Scoped
+   to this one element, so the rest of the portal keeps its theming.
+    
+   The blanket `*` rule is needed because the portal forces descendant text to
+   --text-primary with !important; the class rules that follow are more
+   specific than `*`, so the sheet's own accents survive it. */
+.nepal-portal-root #print-sheet {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  color-scheme: light;
+}
+
+.nepal-portal-root #print-sheet,
+.nepal-portal-root #print-sheet * {
+  color: #1e293b !important;
+  border-color: #e2e8f0;
+}
+
+.nepal-portal-root #print-sheet .text-slate-400,
+.nepal-portal-root #print-sheet .text-slate-450,
+.nepal-portal-root #print-sheet .text-slate-500,
+.nepal-portal-root #print-sheet .text-slate-550 {
+  color: #64748b !important;
+}
+
+.nepal-portal-root #print-sheet .text-slate-600,
+.nepal-portal-root #print-sheet .text-slate-650 {
+  color: #475569 !important;
+}
+
+.nepal-portal-root #print-sheet .text-slate-800,
+.nepal-portal-root #print-sheet .text-slate-805,
+.nepal-portal-root #print-sheet .text-slate-850,
+.nepal-portal-root #print-sheet .text-slate-855,
+.nepal-portal-root #print-sheet .text-slate-900 {
+  color: #0f172a !important;
+}
+
+/* Sits on the dark grand-total row, so it must stay white. */
+.nepal-portal-root #print-sheet .text-white {
+  color: #ffffff !important;
+}
+
+.nepal-portal-root #print-sheet .text-emerald-600,
+.nepal-portal-root #print-sheet .text-emerald-700 {
+  color: #059669 !important;
+}
+
+.nepal-portal-root #print-sheet .text-orange-600,
+.nepal-portal-root #print-sheet .text-orange-700 {
+  color: #ea580c !important;
+}
+
+.nepal-portal-root #print-sheet .text-green-700 {
+  color: #15803d !important;
+}
+
+.nepal-portal-root #print-sheet .bg-white {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+}
+
+.nepal-portal-root #print-sheet .bg-slate-50,
+.nepal-portal-root #print-sheet .bg-slate-50\/30,
+.nepal-portal-root #print-sheet .bg-slate-50\/50,
+.nepal-portal-root #print-sheet .bg-emerald-50\/60,
+.nepal-portal-root #print-sheet .bg-orange-50\/60 {
+  background-color: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+}
