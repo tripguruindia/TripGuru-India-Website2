@@ -1734,36 +1734,54 @@
   border: 1px solid rgba(220, 38, 38, 0.4) !important;
 }
 
-/* ── Trip structure editor (cities & nights) ─────────────────────────────── */
-.nepal-portal-root .structure-edit-btn {
+/* ── Trip summary bar (quote builder) ────────────────────────────────────── */
+/* Replaces a fixed navy gradient that stayed dark on the cream light theme.
+   Tokens throughout, so it belongs to whichever theme is on. */
+.nepal-portal-root .trip-summary {
   background: var(--bg-card) !important;
   border: 1px solid var(--border-color) !important;
+  box-shadow: var(--shadow-sm);
+}
+
+.nepal-portal-root .trip-summary-eyebrow {
   color: var(--primary) !important;
-  cursor: pointer;
-  transition: all 0.18s ease;
 }
 
-.nepal-portal-root .structure-edit-btn:hover {
-  border-color: var(--primary) !important;
-  background: rgba(201, 168, 76, 0.10) !important;
-}
-
-.nepal-portal-root .structure-row {
-  background: var(--bg-card-alt) !important;
-  border: 1px solid var(--border-color) !important;
-}
-
-.nepal-portal-root .structure-add-btn {
+/* The quote name is an input so it can be renamed in place, but it should read
+   as a heading rather than a form field until it is focused. */
+.nepal-portal-root .trip-summary-title {
   background: transparent !important;
-  border: 1px dashed var(--border-color) !important;
-  color: var(--text-muted) !important;
-  cursor: pointer;
-  transition: all 0.18s ease;
+  border: 1px solid transparent !important;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary) !important;
+  padding: 0.15rem 0.35rem;
+  margin-left: -0.35rem;
+  outline: none;
 }
 
-.nepal-portal-root .structure-add-btn:hover {
-  color: var(--primary) !important;
+.nepal-portal-root .trip-summary-title:hover {
+  border-color: var(--border-color) !important;
+}
+
+.nepal-portal-root .trip-summary-title:focus {
   border-color: var(--primary) !important;
+  background: var(--bg-card-alt) !important;
+}
+
+.nepal-portal-root .trip-summary-facts {
+  color: var(--text-muted) !important;
+}
+
+.nepal-portal-root .trip-summary-edit {
+  background: var(--primary) !important;
+  border: 1px solid var(--primary) !important;
+  color: #0D0B08 !important;
+  cursor: pointer;
+  transition: filter 0.18s ease;
+}
+
+.nepal-portal-root .trip-summary-edit:hover {
+  filter: brightness(1.08);
 }
 
 /* ── Full-day sightseeing toggle (quote builder day card) ────────────────── */
