@@ -9089,7 +9089,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
               {activeAdminTab === 'cities' && (
                 <div className="flex flex-col gap-6">
                   {/* Title and Form */}
-                  <div className="flex justify-between items-center bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm mt-8">
+                  <div className="flex flex-col gap-4 md:flex-row md:justify-between md:items-center bg-white p-4 sm:p-6 rounded-2xl border border-slate-200/80 shadow-sm mt-8">
                     <div>
                       <h2 className="text-2xl font-bold font-heading text-[#0f2942]">Cities Master</h2>
                       <p className="text-slate-500 text-sm mt-1">Manage standard cities available across the platform.</p>
@@ -9261,20 +9261,24 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                 <div className="flex flex-col gap-6">
                   
                   {/* Title and Add New Button */}
-                  <div className="flex justify-between items-center bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm mt-8">
+                  <div className="flex flex-col gap-4 md:flex-row md:justify-between md:items-center bg-white p-4 sm:p-6 rounded-2xl border border-slate-200/80 shadow-sm mt-8">
                     <div>
                       <h3 className="text-xl font-bold font-heading text-slate-800">Hotel Master Matrix Editor (INR ₹)</h3>
                       <p className="text-xs text-slate-500 mt-1">Manage 15-cell tariff rates (Single, Double, Extra Adult, CWB, and CNB across CP, MAP, AP meal packages).</p>
                     </div>
-                    <div className="flex items-center gap-3">
+                    {/* Wraps and fills the row on a phone. As a single
+                        non-wrapping row these ran off the side of the screen
+                        with no way to scroll to them, so "Add New Hotel" could
+                        not be pressed on mobile at all. */}
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full md:w-auto shrink-0">
                       <button 
                         onClick={exportHotels}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs uppercase tracking-wider py-2.5 px-4 rounded-xl shadow-md transition hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-1.5"
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs uppercase tracking-wider py-2.5 px-4 rounded-xl shadow-md transition hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-1.5 flex-1 sm:flex-none min-h-[42px]"
                       >
                         <Download size={14} /> <span>Export Excel</span>
                       </button>
                       
-                      <label className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs uppercase tracking-wider py-2.5 px-4 rounded-xl shadow-md cursor-pointer transition hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-1.5">
+                      <label className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs uppercase tracking-wider py-2.5 px-4 rounded-xl shadow-md cursor-pointer transition hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-1.5 flex-1 sm:flex-none min-h-[42px]">
                         <Upload size={14} /> <span>Import Excel</span>
                         <input 
                           type="file" 
@@ -9286,7 +9290,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
                       <button 
                         onClick={() => setShowAddHotelModal(true)}
-                        className="bg-orange-600 hover:bg-orange-700 text-white font-extrabold text-xs uppercase tracking-wider py-2.5 px-5 rounded-xl shadow-md transition hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-1.5"
+                        className="bg-orange-600 hover:bg-orange-700 text-white font-extrabold text-xs uppercase tracking-wider py-2.5 px-5 rounded-xl shadow-md transition hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-1.5 w-full sm:w-auto min-h-[42px]"
                       >
                         <Plus size={14} /> <span>Add New Hotel</span>
                       </button>
@@ -9294,13 +9298,13 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                   </div>
 
                   {/* Filter Controls */}
-                  <div className="bg-slate-50 border border-slate-200/80 p-5 rounded-2xl flex flex-wrap items-center gap-6 text-xs text-slate-700 shadow-sm">
-                    <div className="flex items-center gap-2.5">
+                  <div className="bg-slate-50 border border-slate-200/80 p-4 sm:p-5 rounded-2xl flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-3 sm:gap-6 text-xs text-slate-700 shadow-sm">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2.5 w-full sm:w-auto">
                       <span className="font-extrabold uppercase text-[10px] text-slate-400 tracking-wider">City Location:</span>
                       <select 
                         value={adminFilterCity} 
                         onChange={(e) => setAdminFilterCity(e.target.value)}
-                        className="py-2 px-3 text-xs w-[150px] bg-white border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 font-semibold text-slate-700 transition"
+                        className="py-2 px-3 text-xs w-full sm:w-[150px] min-h-[42px] bg-white border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 font-semibold text-slate-700 transition"
                       >
                         <option value="All">All Cities</option>
                         {(db.cities || []).map(city => (
@@ -9309,12 +9313,12 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                       </select>
                     </div>
 
-                    <div className="flex items-center gap-2.5">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2.5 w-full sm:w-auto">
                       <span className="font-extrabold uppercase text-[10px] text-slate-400 tracking-wider">Hotel Tier:</span>
                       <select 
                         value={adminFilterCategory} 
                         onChange={(e) => setAdminFilterCategory(e.target.value)}
-                        className="py-2 px-3 text-xs w-[150px] bg-white border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 font-semibold text-slate-700 transition"
+                        className="py-2 px-3 text-xs w-full sm:w-[150px] min-h-[42px] bg-white border border-slate-200 rounded-xl outline-none focus:ring-4 focus:ring-indigo-500/10 focus:border-indigo-500 font-semibold text-slate-700 transition"
                       >
                         <option value="All">All Categories</option>
                         <option value="3-Star">3-Star</option>
@@ -9524,20 +9528,22 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                 <div className="flex flex-col gap-6">
                   
                   {/* Title and Add Button */}
-                  <div className="flex justify-between items-center bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
+                  <div className="flex flex-col gap-4 md:flex-row md:justify-between md:items-center bg-white p-4 sm:p-6 rounded-2xl border border-slate-200/80 shadow-sm">
                     <div>
                       <h3 className="text-xl font-bold font-heading text-slate-800">Excursion & Ticket Tariffs (INR)</h3>
                       <p className="text-xs text-slate-500 mt-1">Edit tickets, flight and safari pricing by age configurations.</p>
                     </div>
-                    <div className="flex items-center gap-3">
+                    {/* Same as the hotels header: wrapped and full width on a
+                        phone, so "Add New Activity" is reachable. */}
+                    <div className="flex flex-wrap items-center gap-2 sm:gap-3 w-full md:w-auto shrink-0">
                       <button 
                         onClick={exportActivities}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs uppercase tracking-wider py-2.5 px-4 rounded-xl shadow-md transition hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-1.5"
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-xs uppercase tracking-wider py-2.5 px-4 rounded-xl shadow-md transition hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-1.5 flex-1 sm:flex-none min-h-[42px]"
                       >
                         <Download size={14} /> <span>Export Excel</span>
                       </button>
                       
-                      <label className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs uppercase tracking-wider py-2.5 px-4 rounded-xl shadow-md cursor-pointer transition hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-1.5">
+                      <label className="bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs uppercase tracking-wider py-2.5 px-4 rounded-xl shadow-md cursor-pointer transition hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-1.5 flex-1 sm:flex-none min-h-[42px]">
                         <Upload size={14} /> <span>Import Excel</span>
                         <input 
                           type="file" 
@@ -9549,7 +9555,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
                       <button 
                         onClick={() => setShowAddActivityModal(true)}
-                        className="bg-orange-600 hover:bg-orange-700 text-white font-extrabold text-xs uppercase tracking-wider py-2.5 px-5 rounded-xl shadow-md transition hover:-translate-y-0.5 active:translate-y-0 flex items-center gap-1.5"
+                        className="bg-orange-600 hover:bg-orange-700 text-white font-extrabold text-xs uppercase tracking-wider py-2.5 px-5 rounded-xl shadow-md transition hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-1.5 w-full sm:w-auto min-h-[42px]"
                       >
                         <Plus size={14} /> <span>Add New Activity</span>
                       </button>
@@ -9558,11 +9564,15 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
                   {/* Activity Table Container */}
                   <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+                    {/* Wider than a phone, so it scrolls sideways in its own
+                        box while the activity name stays pinned on the left --
+                        otherwise a scrolled row is three numbers with nothing
+                        to say which activity they belong to. */}
                     <div className="overflow-x-auto">
-                      <table className="w-full text-xs text-left border-collapse">
+                      <table className="w-full min-w-[720px] text-xs text-left border-collapse">
                         <thead>
                           <tr className="bg-slate-50/70 border-b border-slate-200 text-slate-500 font-extrabold uppercase text-[9px] tracking-wider">
-                            <th className="py-3.5 px-6">Activity name</th>
+                            <th className="py-3.5 px-6 admin-sticky-col">Activity name</th>
                             <th className="py-3.5 px-4">City Location</th>
                             <th className="py-3.5 px-4">Adult cost (₹)</th>
                             <th className="py-3.5 px-4">Child cost (₹)</th>
@@ -9574,7 +9584,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                           {db.activities.map(act => {
                             return (
                               <tr key={act.id} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/40 transition-colors">
-                                    <td className="py-3.5 px-6 font-extrabold text-slate-805">
+                                    <td className="py-3.5 px-6 font-extrabold text-slate-805 admin-sticky-col">
                                       <span className="flex items-center gap-1.5">
                                         {act.pricing_mode === 'per_vehicle' && (
                                           <span className="sightseeing-pip text-[9px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0">Per vehicle</span>
@@ -9616,7 +9626,14 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                         <td className="py-3.5 px-4 font-bold text-slate-850">₹{act.price_child.toLocaleString()}</td>
                                       </>
                                     )}
-                                    <td className="py-3.5 px-6 text-xs text-slate-500 leading-relaxed">{act.description}</td>
+                                    {/* Clamped on a phone: a long description
+                                        wrapped into a narrow column made every
+                                        row several hundred pixels tall, so two
+                                        activities filled the screen. The full
+                                        text is still in the edit form. */}
+                                    <td className="py-3.5 px-6 text-xs text-slate-500 leading-relaxed align-top">
+                                      <span className="block max-w-[260px] line-clamp-3 md:line-clamp-none">{act.description}</span>
+                                    </td>
                                     <td className="py-3.5 px-6 text-right">
                                       <div className="flex gap-2 justify-end">
                                         <button 
