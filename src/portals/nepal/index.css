@@ -821,6 +821,63 @@
   }
 }
 
+/* ── Navigation on narrow screens ────────────────────────────────────────── */
+/* The sidebar is a fixed 260px column that does not shrink, so on a 375px
+   phone it took 69% of the width and left the agent 115px of workspace. Below
+   1024px it becomes a drawer that slides in over the page instead. */
+.sidebar-toggle {
+  display: none;
+}
+
+@media (max-width: 1024px) {
+  .sidebar-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    margin-right: 0.5rem;
+    border-radius: var(--radius-sm);
+    background: var(--bg-card-alt);
+    border: 1px solid var(--border-color);
+    color: var(--text-primary);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  /* !important throughout, matching the rest of this file: the portal's
+     theme overrides are all !important, and a plain declaration here loses to
+     them regardless of being more specific. */
+  .nepal-portal-root .sidebar {
+    position: fixed !important;
+    top: 0 !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    transform: translateX(-100%) !important;
+    transition: transform 0.22s ease !important;
+    z-index: 60 !important;
+    overflow-y: auto !important;
+  }
+
+  .nepal-portal-root .sidebar.is-open {
+    transform: translateX(0) !important;
+  }
+
+  .sidebar-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 55;
+  }
+
+  /* The header lays its own children out; the toggle must sit beside them
+     rather than being stretched by the flex row it lands in. */
+  .nepal-portal-root .top-nav {
+    display: flex;
+    align-items: center;
+  }
+}
+
 /* Responsive Sticky Pricing Sidebar behavior */
 @media (max-width: 1024px) {
   .quote-sidebar {
