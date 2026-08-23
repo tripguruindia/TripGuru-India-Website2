@@ -1965,24 +1965,24 @@
   color: var(--primary) !important;
 }
 
-/* ── Wide admin tables on a phone ────────────────────────────────────────── */
-/* The activities and hotels rate sheets are wider than a phone screen and
-   scroll sideways inside their own container. Scrolled right, every row read
-   "Child cost / Brief description / Actions" with nothing left to say WHICH
-   activity the row belonged to. Pinning the first column keeps the name in
-   view while the rates scroll under it.
+/* ── Wide tables on a phone ──────────────────────────────────────────────── */
+/* The rate sheets and the agent's booking history are wider than a phone
+   screen and scroll sideways inside their own container. Scrolled right, every
+   row read "Child cost / Brief description / Actions" -- or a commission and a
+   status pip -- with nothing left to say WHICH row it was. Pinning the first
+   column keeps the row's identity in view while the rest scrolls under it.
 
    Token-driven rather than a fixed Tailwind background: a sticky cell needs an
    opaque surface to cover what slides beneath it, and `bg-white` would both
    render cream-on-cream in dark mode and pick up the global border rule. */
-.nepal-portal-root .admin-sticky-col {
+.nepal-portal-root .sticky-first-col {
   position: sticky;
   left: 0;
   z-index: 2;
   background-color: var(--bg-card);
 }
 
-.nepal-portal-root thead .admin-sticky-col {
+.nepal-portal-root thead .sticky-first-col {
   z-index: 3;
   background-color: var(--bg-card-alt);
 }

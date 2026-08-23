@@ -4486,11 +4486,18 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
                   <div className="flex flex-wrap gap-2 mt-4 pt-3.5 border-t" style={{ borderColor: 'var(--border-color)' }}>
                     {locked ? (
-                      <div className="flex flex-wrap items-center gap-2 w-full">
-                        <div className="quote-locked-note text-[11px] flex items-center gap-1.5">
-                          <CheckCircle size={13} />
-                          Booked as <strong>{q.converted_booking_id}</strong> — this quote is now the
-                          record of what the client agreed to, so it can't be changed.
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full">
+                        {/* The sentence lives in ONE span. As bare text beside
+                            a <strong> inside a flex row, each fragment became
+                            its own flex item, so "Booked as", the reference and
+                            the rest of the sentence stacked into three narrow
+                            columns. */}
+                        <div className="quote-locked-note text-[11px] flex items-start gap-1.5 min-w-0 flex-1">
+                          <CheckCircle size={13} className="shrink-0 mt-0.5" />
+                          <span className="leading-normal">
+                            Booked as <strong>{q.converted_booking_id}</strong> — this quote is now the
+                            record of what the client agreed to, so it can&apos;t be changed.
+                          </span>
                         </div>
                         {/* The quote stays locked, but the booking it became is
                             editable -- so give a way through to it. Without this
@@ -4506,7 +4513,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                             }
                             handleViewVoucher(booked);
                           }}
-                          className="btn btn-secondary btn-sm flex items-center gap-1.5 text-[11px] ml-auto"
+                          className="btn btn-secondary btn-sm flex items-center justify-center gap-1.5 text-[11px] w-full sm:w-auto sm:ml-auto shrink-0 min-h-[38px]"
                         >
                           <FileText size={12} /> Open Booking
                         </button>
@@ -4800,12 +4807,16 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
             </span>
           </div>
 
+          {/* Eight columns is wider than a phone, so this scrolls sideways.
+              The booking's identity -- its reference and whose trip it is --
+              is pinned, because scrolled right every row was otherwise a
+              commission and a Confirmed pip with nothing to say which booking
+              it belonged to. */}
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full min-w-[820px] text-left text-xs">
               <thead>
                 <tr className="bg-slate-100/80 border-b border-slate-200 text-slate-500 font-bold uppercase text-[9px] tracking-wider">
-                  <th className="p-4">Reference</th>
-                  <th className="p-4">Traveler Name</th>
+                  <th className="p-4 sticky-first-col">Booking</th>
                   <th className="p-4">Package & Duration</th>
                   <th className="p-4">Travel Date</th>
                   <th className="p-4 text-right">Gross Cost</th>
@@ -4817,15 +4828,15 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
               <tbody className="divide-y divide-slate-100">
                 {b2bBookings.length === 0 ? (
                   <tr>
-                    <td colSpan="8" className="p-8 text-center text-slate-400">
+                    <td colSpan="7" className="p-8 text-center text-slate-400">
                       No partner bookings recorded yet. Launch a package to make a reservation.
                     </td>
                   </tr>
                 ) : (
                   b2bBookings.map(booking => (
                     <tr key={booking.id} className="hover:bg-slate-50/50 transition">
-                      <td className="p-4 font-bold text-slate-800">{booking.id}</td>
-                      <td className="p-4">
+                      <td className="p-4 sticky-first-col">
+                        <div className="font-bold text-slate-800">{booking.id}</div>
                         <div className="font-semibold text-slate-800">{booking.client_name}</div>
                         <div className="text-[10px] text-slate-400">{booking.email}</div>
                       </td>
@@ -9834,7 +9845,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                       <table className="w-full min-w-[720px] text-xs text-left border-collapse">
                         <thead>
                           <tr className="bg-slate-50/70 border-b border-slate-200 text-slate-500 font-extrabold uppercase text-[9px] tracking-wider">
-                            <th className="py-3.5 px-6 admin-sticky-col">Activity name</th>
+                            <th className="py-3.5 px-6 sticky-first-col">Activity name</th>
                             <th className="py-3.5 px-4">City Location</th>
                             <th className="py-3.5 px-4">Adult cost (₹)</th>
                             <th className="py-3.5 px-4">Child cost (₹)</th>
@@ -9846,7 +9857,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                           {db.activities.map(act => {
                             return (
                               <tr key={act.id} className="border-b border-slate-100 last:border-b-0 hover:bg-slate-50/40 transition-colors">
-                                    <td className="py-3.5 px-6 font-extrabold text-slate-805 admin-sticky-col">
+                                    <td className="py-3.5 px-6 font-extrabold text-slate-805 sticky-first-col">
                                       <span className="flex items-center gap-1.5">
                                         {act.pricing_mode === 'per_vehicle' && (
                                           <span className="sightseeing-pip text-[9px] font-bold px-1.5 py-0.5 rounded uppercase shrink-0">Per vehicle</span>
