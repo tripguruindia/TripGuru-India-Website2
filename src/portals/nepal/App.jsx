@@ -1073,7 +1073,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                     onChange={(e) => setWizardDefaultStartCity(e.target.value)}
                     className="bg-slate-900 border border-slate-700 text-white rounded-lg py-1.5 px-3 text-xs w-[140px] focus:outline-none cursor-pointer font-bold"
                   >
-                    {['Gorakhpur', 'Kathmandu', 'Raxaul', 'Bagdogra'].map(c => (
+                    {tripEndpointOptions(wizardDefaultStartCity).map(c => (
                       <option key={c} value={c}>{c}</option>
                     ))}
                   </select>
@@ -1081,11 +1081,11 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                 <div className="flex flex-col">
                   <label className="text-[9px] uppercase text-slate-400 font-extrabold mb-1 tracking-wider">End City</label>
                   <select 
-                    value={wizardDefaultEndCity} 
+                    value={wizardDefaultEndCity}
                     onChange={(e) => setWizardDefaultEndCity(e.target.value)}
                     className="bg-slate-900 border border-slate-700 text-white rounded-lg py-1.5 px-3 text-xs w-[140px] focus:outline-none cursor-pointer font-bold"
                   >
-                    {['Gorakhpur', 'Kathmandu', 'Raxaul', 'Bagdogra'].map(c => (
+                    {tripEndpointOptions(wizardDefaultEndCity).map(c => (
                       <option key={c} value={c}>{c}</option>
                     ))}
                   </select>
@@ -3518,6 +3518,21 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       ),
     });
     setEditingVehicleDetails(null);
+  };
+
+  // Options for the trip's start and end point. Picked from the Cities master
+  // rather than typed, because these names are turned into route keys
+  // (`gorakhpur_to_ktm`) -- a typo or a stray space quietly produced a second,
+  // unpriced sector that looked identical on screen.
+  //
+  // `current` is always included even if it is not in the master: an older
+  // quote may hold a value since renamed or removed, and a select would
+  // otherwise silently snap it to the first city in the list and reprice the
+  // trip without anyone noticing.
+  const tripEndpointOptions = (current) => {
+    const list = [...(db.cities || [])];
+    if (current && !list.some(c => sameCity(c, current))) list.unshift(current);
+    return list;
   };
 
   // An activity belongs to exactly one city and may only be added to a day in
@@ -7181,8 +7196,10 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                             <div>
                               <label className="block text-xs font-bold text-slate-700 mb-1.5">Start City</label>
-                              <input 
-                                type="text"
+                              {/* Picked, not typed. These names become route keys
+                                  (`gorakhpur_to_ktm`), so a typo or stray space
+                                  silently created a second, unpriced sector. */}
+                              <select
                                 value={wizardStartCity}
                                 onChange={(e) => {
                                   const val = e.target.value;
@@ -7191,23 +7208,28 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                     setWizardEndCity(val);
                                   }
                                 }}
-                                className="form-input text-xs py-2 px-3 w-full border border-slate-300 rounded-lg shadow-sm"
-                                placeholder="Gorakhpur"
-                              />
+                                className="form-select text-xs py-2 px-3 w-full border border-slate-300 rounded-lg shadow-sm bg-white"
+                              >
+                                {tripEndpointOptions(wizardStartCity).map(c => (
+                                  <option key={c} value={c}>{c}</option>
+                                ))}
+                              </select>
                             </div>
 
                             <div>
                               <label className="block text-xs font-bold text-slate-700 mb-1.5">End City</label>
-                              <input 
-                                type="text"
+                              <select
                                 value={wizardEndCity}
                                 onChange={(e) => {
                                   setWizardEndCity(e.target.value);
                                   setIsEndCityManuallyEdited(true);
                                 }}
-                                className="form-input text-xs py-2 px-3 w-full border border-slate-300 rounded-lg shadow-sm"
-                                placeholder="Gorakhpur"
-                              />
+                                className="form-select text-xs py-2 px-3 w-full border border-slate-300 rounded-lg shadow-sm bg-white"
+                              >
+                                {tripEndpointOptions(wizardEndCity).map(c => (
+                                  <option key={c} value={c}>{c}</option>
+                                ))}
+                              </select>
                             </div>
 
                             <div>
