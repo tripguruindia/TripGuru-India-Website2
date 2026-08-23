@@ -105,18 +105,19 @@ async function main() {
 
   console.log('Seeding settings...');
   await run(
-    `INSERT INTO settings (id, markup_percent, b2c_markup_percent, b2b_markup_percent, b2b_admin_margin_percent, tax_percent, exchange_rate, popup_poster_url, popup_poster_active)
-     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO settings (id, markup_percent, b2c_markup_percent, b2b_markup_percent, b2b_admin_margin_percent, tax_percent, tax_enabled, exchange_rate, popup_poster_url, popup_poster_active)
+     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET markup_percent=excluded.markup_percent, b2c_markup_percent=excluded.b2c_markup_percent,
        b2b_markup_percent=excluded.b2b_markup_percent, b2b_admin_margin_percent=excluded.b2b_admin_margin_percent,
-       tax_percent=excluded.tax_percent, exchange_rate=excluded.exchange_rate, popup_poster_url=excluded.popup_poster_url,
-       popup_poster_active=excluded.popup_poster_active`,
+       tax_percent=excluded.tax_percent, tax_enabled=excluded.tax_enabled, exchange_rate=excluded.exchange_rate,
+       popup_poster_url=excluded.popup_poster_url, popup_poster_active=excluded.popup_poster_active`,
     [
       INITIAL_SETTINGS.markup_percent,
       INITIAL_SETTINGS.b2c_markup_percent,
       INITIAL_SETTINGS.b2b_markup_percent,
       INITIAL_SETTINGS.b2b_admin_margin_percent,
       INITIAL_SETTINGS.tax_percent,
+      INITIAL_SETTINGS.tax_enabled === false ? 0 : 1,
       INITIAL_SETTINGS.exchange_rate,
       INITIAL_SETTINGS.popup_poster_url,
       INITIAL_SETTINGS.popup_poster_active ? 1 : 0,

@@ -300,7 +300,20 @@ export function calculateQuote({
     markup_percent,
     b2b_admin_margin_percent = 0,
     b2c_markup_percent = 15,
-    tax_percent = 13,
+    tax_percent = 5,
+    // Whether GST is charged at all. Set in Admin -> Global Pricing Formulas.
+    // Turning it off is not the same as setting the rate to 0: the quote also
+    // stops showing a GST line, so nothing claims a tax was collected.
+    tax_enabled = true,
+    // Where GST sits relative to the markup.
+    //
+    // B2C: the markup IS the selling price, so GST is charged on the marked-up
+    // amount -- that is what the traveller pays tax on.
+    //
+    // B2B: the markup is the agent's OWN margin, which is not TripGuru's to
+    // tax. GST is charged on TripGuru's price and the agent's margin goes on
+    // top of the GST-inclusive figure. Set `tax_before_markup` for that.
+    tax_before_markup = false,
     // Per-pax, GST-inclusive reduction applied to the final total. Set when a
     // preset package carries a `starting_price_override` (a "special offer"
     // headline price) so the advertised rate is actually honoured downstream
@@ -308,6 +321,22 @@ export function calculateQuote({
     offer_discount_per_pax = 0
   } = settings || {};
   const activeMarkupPercent = markup_percent !== undefined ? markup_percent : b2c_markup_percent;
+  const activeTaxPercent = tax_enabled ? tax_percent : 0;
+
+  // subtotal -> (markup, tax) in whichever order this portal charges them.
+  // One helper so the grand total and the adult/child split can never drift
+  // apart, which is exactly how a per-pax rate ends up not summing to the
+  // total anybody was quoted.
+  const applyMarkupAndTax = (base) => {
+    if (tax_before_markup) {
+      const t = base * (activeTaxPercent / 100);
+      const m = (base + t) * (activeMarkupPercent / 100);
+      return { markup: m, tax: t, gross: base + t + m };
+    }
+    const m = base * (activeMarkupPercent / 100);
+    const t = (base + m) * (activeTaxPercent / 100);
+    return { markup: m, tax: t, gross: base + m + t };
+  };
   const adminMarginFactor = 1 + (b2b_admin_margin_percent / 100);
 
   // Find vehicle details
@@ -579,10 +608,7 @@ export function calculateQuote({
   const transportCostChild = transportCost - transportCostAdult;
 
   const subtotal = accommodationCost + transportCost + activityCost;
-  const markup = subtotal * (activeMarkupPercent / 100);
-  const subtotalWithMarkup = subtotal + markup;
-  const tax = subtotalWithMarkup * (tax_percent / 100);
-  const grossTotal = subtotalWithMarkup + tax;
+  const { markup, tax, gross: grossTotal } = applyMarkupAndTax(subtotal);
 
   // The offer discount is GST-inclusive and applied last, so the advertised
   // per-pax price is what the traveller actually sees at checkout. It never
@@ -603,14 +629,11 @@ export function calculateQuote({
   const subtotalAdult = accommodationCostAdult + transportCostAdult + activityCostAdult;
   const subtotalChild = accommodationCostChild + transportCostChild + activityCostChild;
 
-  const markupAdult = subtotalAdult * (activeMarkupPercent / 100);
-  const markupChild = subtotalChild * (activeMarkupPercent / 100);
+  const adultCharges = applyMarkupAndTax(subtotalAdult);
+  const childCharges = applyMarkupAndTax(subtotalChild);
 
-  const taxAdult = (subtotalAdult + markupAdult) * (tax_percent / 100);
-  const taxChild = (subtotalChild + markupChild) * (tax_percent / 100);
-
-  const totalAdult = (subtotalAdult + markupAdult + taxAdult) * offerRatio;
-  const totalChild = (subtotalChild + markupChild + taxChild) * offerRatio;
+  const totalAdult = adultCharges.gross * offerRatio;
+  const totalChild = childCharges.gross * offerRatio;
 
   const perAdult = adults > 0 ? totalAdult / adults : 0;
   const perChild = (cwb + cnb) > 0 ? totalChild / (cwb + cnb) : 0;
@@ -629,6 +652,11 @@ export function calculateQuote({
       subtotal,
       markup,
       tax,
+      // Echoed back so the UI can hide the GST line entirely when GST is off,
+      // rather than printing a misleading "GST (0%): 0".
+      taxEnabled: !!tax_enabled,
+      taxPercent: activeTaxPercent,
+      taxBeforeMarkup: !!tax_before_markup,
       grossTotal,
       offerDiscount,
       total,

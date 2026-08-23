@@ -75,7 +75,11 @@ CREATE TABLE IF NOT EXISTS settings (
   b2c_markup_percent        REAL NOT NULL DEFAULT 15,
   b2b_markup_percent        REAL NOT NULL DEFAULT 10,
   b2b_admin_margin_percent  REAL NOT NULL DEFAULT 10,
-  tax_percent               REAL NOT NULL DEFAULT 13,
+  tax_percent               REAL NOT NULL DEFAULT 5,
+  -- Whether GST is charged at all. Separate from a 0% rate on purpose: with
+  -- this off the quote prints no GST line, so nothing claims a tax was
+  -- collected. Existing rows default to 1 so nothing changes on migrate.
+  tax_enabled               INTEGER NOT NULL DEFAULT 1,
   exchange_rate             REAL,
   popup_poster_url          TEXT,
   popup_poster_active       INTEGER NOT NULL DEFAULT 0

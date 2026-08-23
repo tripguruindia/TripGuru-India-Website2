@@ -168,6 +168,38 @@ then convert) rather than creating a second parallel booking, which keeps
 `converted_booking_id` pointing at the real booking so win rates stay
 measurable.
 
+## GST
+
+Two settings, not one, both in Admin -> Global Pricing Formulas:
+
+- **`tax_enabled`** — whether GST is charged at all. Deliberately separate from
+  a 0% rate: with it off the quote prints **no GST line**, so nothing tells a
+  client a tax was collected and came to nothing.
+- **`tax_percent`** — the rate. 5% is the default for a fresh install; the live
+  row keeps whatever it already had until it is changed in Admin.
+
+`tax_enabled` is an `ADDITIVE_COLUMNS` entry defaulting to 1, so the live
+settings row keeps charging GST exactly as before the column existed.
+
+**Where GST sits relative to the markup differs by portal**, via the
+`tax_before_markup` flag passed into `calculateQuote`:
+
+- **B2C** — the markup *is* the selling price, so GST is charged on the
+  marked-up amount. That is what the traveller pays tax on.
+- **B2B** — the markup is the agent's *own* margin, which is not TripGuru's to
+  tax. GST is charged on TripGuru's price and the agent's margin goes on top of
+  the GST-inclusive figure.
+
+The grand total is the same either way (multiplication commutes); what changes
+is the **split**. On a ₹17,600 B2B trip at 5% GST and 10% agent markup, GST is
+₹880 rather than ₹968 — the honest figure for what TripGuru actually collected.
+Both orderings run through one `applyMarkupAndTax()` helper so the grand total
+and the per-adult/per-child split can never drift apart.
+
+**Bookings and quotes do not store the tax rate.** A saved quote reprices
+against whatever GST is set when it is reopened — pre-existing behaviour, now
+also true of the on/off switch.
+
 ## Deployment
 
 - **Frontend:** Vercel project `trip-guru-india-website2`, auto-deploys from

@@ -660,7 +660,10 @@ function App() {
   const [b2cMarkupInput, setB2cMarkupInput] = useState(15);
   const [b2bMarkupInput, setB2bMarkupInput] = useState(10);
   const [agentMarkupInput, setAgentMarkupInput] = useState(0);
-  const [taxInput, setTaxInput] = useState(13);
+  const [taxInput, setTaxInput] = useState(5);
+  // Whether GST is charged at all. Distinct from a 0% rate: with GST off the
+  // quote shows no GST line, so nothing tells a client a tax was collected.
+  const [taxEnabledInput, setTaxEnabledInput] = useState(true);
   const [posterUrlInput, setPosterUrlInput] = useState('');
   const [posterActiveInput, setPosterActiveInput] = useState(false);
   const [showPosterPopup, setShowPosterPopup] = useState(false);
@@ -1038,8 +1041,7 @@ ${daysText}
 • Accommodation & Meals: ₹${invoiceAcc.toLocaleString()}
 • Private Transport: ₹${invoiceTrans.toLocaleString()}
 • Activities & Entry Fees: ₹${invoiceAct.toLocaleString()}
-• GST (${taxInput}%): ₹${displayedInvoiceTax.toLocaleString()}
-• *GRAND TOTAL TOUR INVESTMENT:* *₹${displayedInvoiceTotal.toLocaleString()}*
+${taxEnabledInput ? `• GST (${taxInput}%): ₹${displayedInvoiceTax.toLocaleString()}\n` : ''}• *GRAND TOTAL TOUR INVESTMENT:* *₹${displayedInvoiceTotal.toLocaleString()}*
 
 ${(travelers.cwb + travelers.cnb > 0) 
   ? `• *Per Adult Rate:* *₹${Math.round(quoteCalculation.totals.perAdult).toLocaleString()} / adult*\n• *Per Child Rate:* *₹${Math.round(quoteCalculation.totals.perChild).toLocaleString()} / child*`
@@ -1567,7 +1569,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     if (db.settings) {
       setB2cMarkupInput(db.settings.b2c_markup_percent || db.settings.markup_percent || 15);
       setB2bMarkupInput(db.settings.b2b_markup_percent || 10);
-      setTaxInput(db.settings.tax_percent || 13);
+      setTaxInput(db.settings.tax_percent ?? 5);
+      setTaxEnabledInput(db.settings.tax_enabled !== undefined ? db.settings.tax_enabled : true);
       setPosterUrlInput(db.settings.popup_poster_url || '');
       setPosterActiveInput(db.settings.popup_poster_active !== undefined ? db.settings.popup_poster_active : false);
       if (db.settings.wizard_default_destinations) {
@@ -2250,6 +2253,11 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       markup_percent: activeMarkup,
       b2b_admin_margin_percent: activeB2bAdminMargin,
       tax_percent: taxInput,
+      tax_enabled: taxEnabledInput,
+      // On the agent portal the markup is the agent's OWN margin, which is not
+      // TripGuru's to charge GST on. GST is levied on TripGuru's price and the
+      // agent's margin sits on top of the GST-inclusive figure.
+      tax_before_markup: view === 'b2b',
       offer_discount_per_pax: offerDiscountPerPax
     },
     startCity,
@@ -2257,7 +2265,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   }), [
     rooms, customItinerary, selectedVehicleId,
     db.hotels, db.vehicles, db.activities, db.routes, db.airports,
-    activeMarkup, activeB2bAdminMargin, taxInput, offerDiscountPerPax,
+    activeMarkup, activeB2bAdminMargin, taxInput, taxEnabledInput, view, offerDiscountPerPax,
     startCity, endCity
   ]);
 
@@ -2758,6 +2766,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
         b2c_markup_percent: Number(b2cMarkupInput),
         b2b_markup_percent: Number(b2bMarkupInput),
         tax_percent: Number(taxInput),
+        tax_enabled: !!taxEnabledInput,
         exchange_rate: 1.0,
         popup_poster_url: posterUrlInput,
         popup_poster_active: posterActiveInput,
@@ -8118,12 +8127,28 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                 <strong>₹{sidebarAct.toLocaleString()}</strong>
                               </div>
 
+                              {/* Agent portal: GST is charged on the TripGuru
+                                  price and the agent's own markup goes on top
+                                  of the GST-inclusive figure, so the rows read
+                                  in the order the money is actually added. */}
                               {isB2B ? (
                                 <div className="border-t border-slate-800 pt-3 flex flex-col gap-2">
                                   <div className="cost-row text-xs">
                                     <span>Agency Subtotal:</span>
                                     <strong>₹{Math.round(quoteCalculation.totals.subtotal).toLocaleString()}</strong>
                                   </div>
+                                  {taxEnabledInput && (
+                                    <>
+                                      <div className="cost-row text-xs text-slate-400">
+                                        <span>GST ({taxInput}%):</span>
+                                        <strong>+₹{displayedTax.toLocaleString()}</strong>
+                                      </div>
+                                      <div className="cost-row text-xs text-slate-400">
+                                        <span>Your cost (incl. GST):</span>
+                                        <strong>₹{Math.round(quoteCalculation.totals.subtotal + quoteCalculation.totals.tax).toLocaleString()}</strong>
+                                      </div>
+                                    </>
+                                  )}
                                   <div className={`cost-row text-xs text-${themeColor}-400 flex items-center justify-between`}>
                                     <span>Markup:</span>
                                     <div className="flex items-center gap-1">
@@ -8141,19 +8166,15 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                     <span>Markup Amount:</span>
                                     <strong>+₹{Math.round(quoteCalculation.totals.markup).toLocaleString()}</strong>
                                   </div>
-                                  <div className="cost-row text-xs text-slate-400">
-                                    <span>GST ({taxInput}%):</span>
-                                    <strong>+₹{displayedTax.toLocaleString()}</strong>
-                                  </div>
                                 </div>
-                              ) : (
+                              ) : taxEnabledInput ? (
                                 <div className="border-t border-slate-800 pt-3 flex flex-col gap-2">
                                   <div className="cost-row text-xs text-slate-400">
                                     <span>GST ({taxInput}%):</span>
                                     <strong>+₹{displayedTax.toLocaleString()}</strong>
                                   </div>
                                 </div>
-                              )}
+                              ) : null}
 
                               {displayedOfferDiscount > 0 && (
                                 <div className="cost-row text-xs text-emerald-400">
@@ -8546,16 +8567,22 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                 </td>
                                 <td className="p-4 text-right font-bold text-slate-855 text-xs">₹{invoiceAct.toLocaleString()}</td>
                               </tr>
-                              {isB2BInvoice && (
+                              {/* B2B: GST sits on the TripGuru price and the
+                                  agent's markup goes on top of it, so the rows
+                                  are laid out in that order and the markup line
+                                  no longer folds the subtotal into itself. */}
+                              {taxEnabledInput && (
                                 <tr className="bg-slate-50/30 font-semibold text-slate-700">
-                                  <td className="p-4 text-right">Agency Subtotal + Markup ({activeMarkup}%):</td>
-                                  <td className="p-4 text-right font-bold text-slate-855">₹{Math.round(quoteCalculation.totals.subtotal + quoteCalculation.totals.markup).toLocaleString()}</td>
+                                  <td className="p-4 text-right">GST ({taxInput}%):</td>
+                                  <td className="p-4 text-right font-bold text-slate-855">₹{displayedInvoiceTax.toLocaleString()}</td>
                                 </tr>
                               )}
-                              <tr className="bg-slate-50/30 font-semibold text-slate-700">
-                                <td className="p-4 text-right">GST ({taxInput}%):</td>
-                                <td className="p-4 text-right font-bold text-slate-855">₹{displayedInvoiceTax.toLocaleString()}</td>
-                              </tr>
+                              {isB2BInvoice && (
+                                <tr className="bg-slate-50/30 font-semibold text-slate-700">
+                                  <td className="p-4 text-right">Agency Markup ({activeMarkup}%):</td>
+                                  <td className="p-4 text-right font-bold text-slate-855">₹{Math.round(quoteCalculation.totals.markup).toLocaleString()}</td>
+                                </tr>
+                              )}
                               <tr className={`bg-${isB2BInvoice ? 'emerald' : 'slate-900'} text-white font-extrabold`}>
                                 <td className="p-4 text-right text-xs uppercase tracking-wider font-heading">Grand Total Tour Investment:</td>
                                 <td className="p-4 text-right text-sm font-heading">₹{displayedInvoiceTotal.toLocaleString()}</td>
@@ -8745,7 +8772,9 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                         <Settings size={16} className="text-indigo-650" /> <span>Global Pricing Formulas (INR)</span>
                       </h4>
                       <p className="text-xs text-slate-500">
-                        Markups and government GST are calculated dynamically on B2C client checkout.
+                        Markups and government GST are calculated dynamically on every quote.
+                        On the agent portal GST is charged on the TripGuru price and the
+                        agent&apos;s own markup goes on top of it.
                       </p>
                     </div>
 
@@ -8770,14 +8799,34 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                           min="0"
                         />
                       </div>
+                      {/* GST is two settings, not one. Charging it is a business
+                          decision; the rate is a number. A 0% rate would still
+                          print a GST line on the client's quote, which reads as
+                          a tax that was collected and came to nothing. */}
                       <div className="w-[130px]">
-                        <label className="text-[9px] uppercase font-bold text-slate-400 tracking-wider block mb-1.5">Nepal GST (%)</label>
+                        <label className="text-[9px] uppercase font-bold text-slate-400 tracking-wider block mb-1.5">Charge GST?</label>
+                        <label className="flex items-center gap-2 cursor-pointer bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 hover:bg-slate-100 transition">
+                          <input
+                            type="checkbox"
+                            checked={taxEnabledInput}
+                            onChange={(e) => setTaxEnabledInput(e.target.checked)}
+                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                          />
+                          <span className="text-xs font-semibold text-slate-700">
+                            {taxEnabledInput ? 'Yes, charge GST' : 'No GST'}
+                          </span>
+                        </label>
+                      </div>
+                      <div className="w-[130px]">
+                        <label className="text-[9px] uppercase font-bold text-slate-400 tracking-wider block mb-1.5">GST Rate (%)</label>
                         <input 
                           type="number"
                           value={taxInput}
                           onChange={(e) => setTaxInput(Number(e.target.value))}
-                          className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-800"
+                          disabled={!taxEnabledInput}
+                          className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold text-slate-800 disabled:opacity-50 disabled:cursor-not-allowed"
                           min="0"
+                          step="0.5"
                         />
                       </div>
                       <button 
