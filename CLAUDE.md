@@ -236,6 +236,21 @@ button then reads *Update Booking <id>* and `handleConfirmCheckout` PATCHes
 instead of POSTing, replacing the record in the local lists rather than
 prepending to them.
 
+**`editingBookingId` must be cleared wherever a different trip is loaded** —
+the from-scratch branch of `handleCreateProposal`, both preset-package
+handlers, `resumeBuilderDraft`, `handleResumeQuote`, and the *Customize
+Recommended Itinerary* button. It shipped without those clears, and the result
+destroyed data: press *Edit This Booking*, navigate away, build something else,
+press Book, and the new trip silently **overwrote** the old booking instead of
+creating its own. Deliberately *not* cleared in the reshape branch — the
+builder's *Edit Trip* button goes through that same screen and must keep
+amending the same booking. The builder shows a banner naming the booking being
+amended, so the state is never invisible.
+
+A **converted quote stays locked** but is no longer a dead end: its card
+carries an *Open Booking* button through to the voucher, where the trip can be
+edited.
+
 Ownership follows the same rule as everything else: derived from the verified
 token, never the body. A B2B agent may amend only a booking whose `agent_id` is
 his own; anyone else gets a 404, not a 403. `total_price` comes from the client
