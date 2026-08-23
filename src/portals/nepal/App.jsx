@@ -2032,6 +2032,12 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
   const [structureDraft, setStructureDraft] = useState(null); // { blocks, hasDepartureDay }
 
+  // Navigation drawer on narrow screens. Closed whenever the portal or the
+  // section changes, so tapping a menu item does not leave it covering the
+  // page you just navigated to.
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
+  useEffect(() => { setMobileNavOpen(false); }, [currentRoute, activeAdminTab, b2bSubView, b2cSubView]);
+
   const openStructureEditor = () => setStructureDraft(deriveTripStructure(customItinerary));
 
   // Rebuilds the itinerary to match the edited structure, reusing the existing
@@ -5933,9 +5939,16 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   return (
     <div className="nepal-portal-root" data-theme={themeMode}>
       <div className="app-container">
-      {/* Sidebar Navigation */}
+      {/* Sidebar Navigation.
+          On a phone the sidebar is a drawer rather than a column: at 260px
+          fixed width it was taking 69% of a 375px screen and leaving the
+          agent 115px to work in. It slides in over the content instead, and
+          the backdrop below closes it. */}
+      {view !== 'b2c' && mobileNavOpen && (
+        <div className="sidebar-backdrop no-print" onClick={() => setMobileNavOpen(false)} />
+      )}
       {view !== 'b2c' && (
-        <aside className="sidebar no-print">
+        <aside className={`sidebar no-print ${mobileNavOpen ? 'is-open' : ''}`}>
         <div className="sidebar-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <div className="logo-icon">🇳🇵</div>
@@ -6126,6 +6139,19 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
         
         {/* Top Navbar */}
         <header className="top-nav no-print">
+          {/* Opens the navigation drawer. Only rendered where there is a
+              sidebar to open, and only shown on narrow screens by its CSS. */}
+          {view !== 'b2c' && (
+            <button
+              type="button"
+              onClick={() => setMobileNavOpen(o => !o)}
+              className="sidebar-toggle no-print"
+              aria-label={mobileNavOpen ? 'Close navigation' : 'Open navigation'}
+              aria-expanded={mobileNavOpen}
+            >
+              {mobileNavOpen ? <X size={18} /> : <Layers size={18} />}
+            </button>
+          )}
           {view === 'b2c' ? (
             <div className="w-full flex items-center justify-between gap-4">
               {/* Left Side: Brand Logo & Title */}
