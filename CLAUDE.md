@@ -231,20 +231,75 @@ confused the form. Flight is offered only between cities with *different*
 airports. The airfare itself is never priced (no flight inventory); the
 itinerary says "not included" in as many words.
 
+## Activities
+
+Most are sold per head (`price_adult`/`price_child` × party size). A full-day
+sightseeing run is not: it is one vehicle out for one day, costing the same
+for two people or twelve, and a Coaster day costs four times a Sedan day. Those
+carry **`pricing_mode: 'per_vehicle'`** and bill once from `vehicle_rates`,
+keyed by vehicle id, ignoring the per-head prices entirely. Charging one per
+head would quote ₹65,000 for a twelve-seater instead of ₹9,500.
+
+Sightseeing is an **activity, not a transfer** — it was briefly both, and the
+`local_sightseeing` route key still prices for old saved quotes but is gone
+from the route master.
+
+An activity is only offerable on a day in its **own city**; compare through
+`activitiesInCity()`, which trims and is null-safe. One whose city is not in
+the Cities master can never be used, so the Admin list flags it.
+
+## The quote builder
+
+**One place edits a trip: the intake page.** A saved quote reopens there, not
+in the day cards. Its stays are derived from the itinerary
+(`deriveTripStructure`) rather than stored, so the two cannot disagree.
+
+Continuing from the intake page **reshapes** the itinerary via
+`rebuildItineraryForStructure()` — days for a city are reused in order, so
+hotels, meals, activities and flight legs survive; only new days come in
+blank. It used to rebuild from scratch, which silently discarded the whole
+itinerary if you went there to change the rooms. **Never reintroduce a path
+that regenerates over an existing itinerary.**
+
+That function takes the trip's start/end city **as arguments**. The intake page
+calls it before its own `setState` has landed, so reading them from state
+rebuilt day one against the previous start city.
+
+The builder header is a read-only summary plus one *Edit Trip* button. The
+former per-field pickers, "Edit Rooms" and "Edit Cities & Nights" are gone.
+
+Day headings and descriptions are generated in `calculator.js` and are what the
+client reads: lead with the movement (Arrive / Drive to / Fly to / Depart),
+keep whole-vehicle activities out of the title, and spell meal plans out.
+
 ## Current state and what's next
 
-As of 2026-08-22, `main` is at PR #15. Live: saved quotes, the wallet ledger,
-airports + Road/Flight transfers. Portal isolation and the credential exposure
-are fixed; demo passwords rotated.
+As of 2026-08-23, `main` is at PR #26 and everything is merged and deployed;
+no open PRs. Live since the last handoff: the wallet ledger, airports and
+Road/Flight transfers, airports as route stops, the transfer rate sheet,
+two-way sector pricing, per-vehicle sightseeing activities, editable
+cities/airports/activities, editing a saved trip's cities and nights,
+readable itinerary copy, and a mobile navigation drawer.
 
-**Outstanding setup Tanmay owes:** the airport transfer rates for Pokhara,
-Chitwan, Lumbini, Butwal, Bhairahawa and Jomsom are all ₹0 (only Kathmandu is
-priced, at 1200/2000/3500/6000). Flight legs under-quote until those are set
-in Admin > Vehicles Editor.
+**Outstanding data Tanmay owes** (all Admin work, no code):
 
-Next, roughly in order: client list for agents; filters and export on booking
-history; splitting the portals into separate builds (awaiting his decision);
-Open Graph prerendering; and 6.2 MB of PNGs in `/public` (largest >1 MB).
+- Five transfers still at ₹0: Bhairahawa, Butwal, Lumbini and Jomsom airport
+  transfers, plus *Gorakhpur Airport (GOP) to Gorakhpur*.
+- The activity *"Kathmandu Full Day Sightseeing (5-6 Hours"* is per-vehicle
+  with **no rates at all**, so it charges nothing. Created through the old
+  broken inline editor.
+- Seven cities have no hotels and so cannot host a paid overnight: Bagdogra,
+  Bhairahawa, Butwal, Gorakhpur, Lumbini, Mankamna, Raxaul.
+
+**Known and deliberate:** flight airfare is never priced (the portal has no
+flight inventory) — the itinerary says so instead.
+
+Next, roughly in order: the rest of the mobile pass (27 of 39 tap targets are
+under 40px and 54 text elements under 12px — a deliberate rescale of the
+portal's type and controls, not a bug fix); client list for agents; filters and
+export on booking history; splitting the portals into separate builds
+(awaiting his decision); Open Graph prerendering; and 6.2 MB of PNGs in
+`/public` (largest >1 MB).
 
 ## Operating on live data
 
@@ -262,3 +317,36 @@ the first one instead. That happened: it silently removed `local_sightseeing`
 and `ktm_airport_transfer` (and stripped the Kathmandu rates from every
 vehicle) while appearing to target a test route. Verify what actually
 disappeared *before* saving, and re-read the API afterwards to confirm.
+
+Routes the builder invents mid-quote (`ensureRoutesExist`) only reach the
+server from an **admin** session — `saveDB` syncs on `isAdminSession()`. One
+created while testing in the B2C/B2B builder stays local.
+
+## Verifying changes
+
+Two traps, each of which cost an hour:
+
+**`npm run lint` is `tsc --noEmit` and does not type-check JSX bodies.** An
+undefined variable inside JSX passes lint and crashes at runtime. Render the
+screen before believing it works.
+
+**CSS transitions outrank `!important`,** and in a headless tab that never
+paints, a transition starts and then freezes — pinning the property to its
+start value and overriding even inline styles. Any measurement of an animated
+element reports the *pre-animation* value, which reads exactly like a broken
+implementation. Disable the transition at **matching specificity** first;
+`* { transition: none }` loses to `.nepal-portal-root .sidebar`.
+
+Pricing changes are worth a throwaway Node script against `calculator.js`
+rather than clicking through the UI. Bundle it first — the source uses Vite's
+extensionless imports, which Node will not resolve:
+
+```
+node node_modules/esbuild/bin/esbuild test.mjs --bundle --platform=node \
+  --format=esm --outfile=out.mjs && node out.mjs
+```
+
+Suites written this way have covered flight legs, airport-served-by-another-
+city, reverse pricing, per-vehicle activities and the structure merge. They
+live in the session scratchpad, not the repo — **there is still no committed
+test suite, and adding one remains a genuine improvement.**
