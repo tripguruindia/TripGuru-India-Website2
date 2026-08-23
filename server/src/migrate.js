@@ -26,6 +26,14 @@ const ADDITIVE_COLUMNS = [
     ddl: "ALTER TABLE activities ADD COLUMN pricing_mode TEXT NOT NULL DEFAULT 'per_person'",
   },
   { table: 'activities', column: 'vehicle_rates', ddl: 'ALTER TABLE activities ADD COLUMN vehicle_rates TEXT' },
+  // Charging GST is now a switch, not just a rate. Defaults to 1 so the live
+  // settings row keeps charging GST exactly as it did before this column
+  // existed -- turning it off has to be a deliberate act in Admin.
+  {
+    table: 'settings',
+    column: 'tax_enabled',
+    ddl: 'ALTER TABLE settings ADD COLUMN tax_enabled INTEGER NOT NULL DEFAULT 1',
+  },
 ];
 
 async function applyAdditiveColumns() {

@@ -85,6 +85,9 @@ function serializeSettings(s) {
     b2b_markup_percent: s.b2b_markup_percent,
     b2b_admin_margin_percent: s.b2b_admin_margin_percent,
     tax_percent: s.tax_percent,
+    // Null only on a row written before the column existed; that row was
+    // charging GST, so treat a missing value as on.
+    tax_enabled: s.tax_enabled === null || s.tax_enabled === undefined ? true : !!s.tax_enabled,
     exchange_rate: s.exchange_rate,
     popup_poster_url: s.popup_poster_url || '',
     popup_poster_active: !!s.popup_poster_active,

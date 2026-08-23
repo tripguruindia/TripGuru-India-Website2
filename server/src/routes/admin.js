@@ -428,21 +428,25 @@ router.put('/settings', async (req, res) => {
     b2c_markup_percent: b.b2c_markup_percent ?? existing?.b2c_markup_percent ?? 15,
     b2b_markup_percent: b.b2b_markup_percent ?? existing?.b2b_markup_percent ?? 10,
     b2b_admin_margin_percent: b.b2b_admin_margin_percent ?? existing?.b2b_admin_margin_percent ?? 10,
-    tax_percent: b.tax_percent ?? existing?.tax_percent ?? 13,
+    tax_percent: b.tax_percent ?? existing?.tax_percent ?? 5,
+    // Missing on both body and row only before the column existed, and that
+    // row was charging GST -- so a missing value means on.
+    tax_enabled: (b.tax_enabled ?? existing?.tax_enabled ?? 1) ? 1 : 0,
     exchange_rate: b.exchange_rate ?? existing?.exchange_rate ?? null,
     popup_poster_url: b.popup_poster_url ?? existing?.popup_poster_url ?? null,
     popup_poster_active: (b.popup_poster_active ?? existing?.popup_poster_active) ? 1 : 0,
   };
 
   await run(
-    `INSERT INTO settings (id, markup_percent, b2c_markup_percent, b2b_markup_percent, b2b_admin_margin_percent, tax_percent, exchange_rate, popup_poster_url, popup_poster_active)
-     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)
+    `INSERT INTO settings (id, markup_percent, b2c_markup_percent, b2b_markup_percent, b2b_admin_margin_percent, tax_percent, tax_enabled, exchange_rate, popup_poster_url, popup_poster_active)
+     VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON CONFLICT(id) DO UPDATE SET
        markup_percent = excluded.markup_percent,
        b2c_markup_percent = excluded.b2c_markup_percent,
        b2b_markup_percent = excluded.b2b_markup_percent,
        b2b_admin_margin_percent = excluded.b2b_admin_margin_percent,
        tax_percent = excluded.tax_percent,
+       tax_enabled = excluded.tax_enabled,
        exchange_rate = excluded.exchange_rate,
        popup_poster_url = excluded.popup_poster_url,
        popup_poster_active = excluded.popup_poster_active`,
@@ -452,6 +456,7 @@ router.put('/settings', async (req, res) => {
       values.b2b_markup_percent,
       values.b2b_admin_margin_percent,
       values.tax_percent,
+      values.tax_enabled,
       values.exchange_rate,
       values.popup_poster_url,
       values.popup_poster_active,

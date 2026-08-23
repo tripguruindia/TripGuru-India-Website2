@@ -570,7 +570,8 @@ export const INITIAL_SETTINGS = {
   markup_percent: 15,
   b2c_markup_percent: 15,
   b2b_markup_percent: 10,
-  tax_percent: 13,
+  tax_percent: 5,
+  tax_enabled: true,
   exchange_rate: 1.0,
   popup_poster_url: "/nepal_hero.png",
   popup_poster_active: true
