@@ -7,6 +7,7 @@ const {
   serializeAirport,
   serializeActivity,
   serializeCityDefault,
+  serializeVehiclePackage,
   serializePackage,
   serializeSettings,
 } = require('../serializers');
@@ -31,7 +32,7 @@ async function one(sql, args = []) {
 // admin-only (full list) or owner-scoped (see routes/bookings.js).
 // ---------------------------------------------------------------------------
 router.get('/db', async (req, res) => {
-  const [cities, airports, hotels, vehicles, routes, activities, packages, settings, cityDefaults] = await Promise.all([
+  const [cities, airports, hotels, vehicles, routes, activities, packages, settings, cityDefaults, vehiclePackages] = await Promise.all([
     all('SELECT name FROM cities ORDER BY name ASC'),
     all('SELECT * FROM airports'),
     all('SELECT * FROM hotels'),
@@ -43,6 +44,8 @@ router.get('/db', async (req, res) => {
     // The builder applies these when it makes a day, so the traveller portal
     // needs them too -- they are pricing inputs, not admin-only data.
     all('SELECT * FROM city_defaults'),
+    // Priced by the builder on both portals, so not admin-only.
+    all('SELECT * FROM vehicle_packages'),
   ]);
 
   res.json({
@@ -55,6 +58,7 @@ router.get('/db', async (req, res) => {
     packages: packages.map(serializePackage),
     settings: serializeSettings(settings) || {},
     city_defaults: cityDefaults.map(serializeCityDefault),
+    vehicle_packages: vehiclePackages.map(serializeVehiclePackage),
   });
 });
 

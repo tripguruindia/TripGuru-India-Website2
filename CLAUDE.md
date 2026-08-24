@@ -53,9 +53,10 @@ dev server after changing them.
 
 Two committed test suites:
 
-- **`npm test`** (repo root) — `test/cityDefaults.test.mjs`, the City Defaults
-  resolver. Bundled with esbuild first, because the source uses Vite's
-  extensionless imports.
+- **`npm test`** (repo root) — `test/cityDefaults.test.mjs` (the City Defaults
+  resolver) and `test/vehiclePackages.test.mjs` (package matching, and that a
+  package never charges the vehicle twice). Bundled with esbuild first, because
+  the source uses Vite's extensionless imports.
 - **`npm test`** from **`server/`** — `server/test/approval.test.js`, the agent
   approval gate. It boots the real Express app against a throwaway libSQL file
   in the temp directory, so it touches nothing live and needs no credentials,
@@ -511,6 +512,56 @@ terms it failed on: driven by **Admin -> City Defaults** rather than hardcoded
 ids, and **announced** — the builder shows a banner naming every day that was
 pre-filled, and each item is removable on its day card. See *City Defaults*
 below.
+
+## Vehicle packages — one rate for the whole trip
+
+How Nepal actually works: a party leaves an Indian border town (Gorakhpur,
+Raxaul) in an **Indian vehicle**, tours Nepal, and the same vehicle brings them
+back to a border town — the same one or another. That is roughly 90% of trips.
+The other case is a **Nepali vehicle** picked up inside Nepal, after flying into
+Kathmandu or being dropped at the border.
+
+Either way the vehicle is **hired for the trip, not for each leg**, and the
+empty return run is part of what is being paid for. So it is quoted as one
+figure, not as a sum of sectors.
+
+**Admin -> Vehicle Packages** holds those rates. A row is
+*vehicle + start city + end city + overnight cities + days -> rate*, and
+`utils/vehiclePackages.js` matches a trip against it.
+
+- Matching is **exact**. A package rate is a negotiated number for a specific
+  run; picking the nearest one would put a figure on a quote nobody agreed.
+- City **order is ignored** — Kathmandu then Pokhara is the same road as
+  Pokhara then Kathmandu — so each circuit is entered once.
+- Only **overnight** cities count. Somewhere visited for a few hours is charged
+  as its own extra, not folded into the key.
+- **Days** is the whole itinerary length, departure day included.
+
+**When a row matches, the vehicle is paid for once.** Every sector charge is
+suppressed and the package figure is added instead. So is the basic local
+sightseeing — which is the trap: a full day of sightseeing is billed as a
+**per-vehicle activity**, so leaving it alone would charge the same vehicle
+twice on the same day and the quote would go out high with nothing to explain
+it. `activities.covered_by_vehicle_package` decides, defaulting to **covered**,
+because ordinary sightseeing is what a package includes and the extras are the
+exception. A genuine extra run — Sarangkot at sunrise, a Pumdikot detour — is
+marked not covered and still charges on top. Per-head tickets are never
+affected.
+
+**No match falls back to sector pricing and says so**, on the agent portal:
+the builder names the exact combination that has no row. A gap in the rate
+sheet then shows up on a real quote instead of as a wrong price.
+
+**The builder had no vehicle picker at all.** `selectedVehicleId` defaulted to
+`v-suv` and could only be changed by loading a preset package, draft, quote or
+booking — so a Coaster could not be quoted for twelve people, and a package
+keyed to a Hiace could never be matched. The intake wizard now has a required
+**Vehicle** field, showing each vehicle's capacity.
+
+Still to do: **a trip can only have one vehicle**, so "Indian vehicle to
+Kathmandu, then a Nepali vehicle onward" cannot be quoted. Tanmay's call was to
+do packages first and come back to this. Nothing marks a vehicle as Indian or
+Nepali either.
 
 ## City Defaults — what a new day starts as
 
