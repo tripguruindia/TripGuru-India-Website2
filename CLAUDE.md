@@ -51,9 +51,12 @@ npm run lint         # tsc --noEmit
 (see `.env.example`). **Vite reads env files only at startup** — restart the
 dev server after changing them.
 
-There is **no automated test suite.** All verification to date has been
-throwaway scripts plus manual browser checks. If you add tests, that is a
-genuine improvement, not scope creep.
+There is **one** committed test suite: `server/test/approval.test.js`, run with
+`npm test` from `server/`. It boots the real Express app against a throwaway
+libSQL file in the temp directory, so it touches nothing live and needs no
+credentials, then tears both down. Everything else is still verified by
+throwaway scripts and browser checks. **More tests are a genuine improvement,
+not scope creep.**
 
 ## The three portals
 
@@ -232,6 +235,45 @@ So `markup_percent` means TripGuru's margin on a B2C trip and the agent's
 margin on a B2B one. In `App.jsx` the state is `b2cMarkupInput` /
 `b2bMarkupInput` (both TripGuru's, bound to the Admin fields) versus
 `agentMarkupInput` (the agent's own box in the builder).
+
+### Agent accounts are approved before they can trade
+
+A B2B signup creates a **`pending`** account. It cannot quote or book until an
+admin approves it in **Admin -> Users Master**, where pending agents sit in a
+queue at the top of the screen with Approve / Reject beside them.
+
+Enforcement is **server-side**, by `requireApprovedAgent` in
+`middleware/auth.js`, on every route where an agent creates or amends money:
+`POST`/`PATCH` on `/bookings`, and `POST`/`PATCH`/`DELETE`/`:id/convert` on
+`/quotes`. Hiding the buttons would not have been protection.
+
+It reads the status from the **database, never the token**. Tokens last 30
+days, so an agent rejected this morning would still be carrying one minted
+while he was approved. Reads are deliberately left unguarded so the waiting
+screen can still load. Non-agents pass straight through — this is a rule about
+agent accounts, not a general permission check.
+
+**`approval_status` defaults to `'approved'`, not `'pending'`.** Every account
+that already existed when the column arrived is a real, working account;
+defaulting to pending would have locked every current agent out the moment
+Render deployed. Only a fresh B2B signup writes `'pending'`, explicitly. The
+same rule holds in the UI: a missing status reads as approved everywhere.
+
+Only `PATCH /admin/users/:id/approval` may write the status. `PATCH /auth/me`
+deliberately cannot, or the queue would be self-service. A rejection carries a
+reason, shown to the agent; a rejected agent can be approved after all from his
+row, because rejecting the wrong one is a slip.
+
+The **front end has one gate**, at the point where every B2B sub-view renders —
+not a guard per screen, which the next new screen would quietly miss. The agent
+navigation is hidden while waiting, since every item led to the same screen.
+
+### The GST number
+
+Optional at B2B signup, stored on `users.gst_number`, editable by the agent
+through `PATCH /auth/me`, and printed on the **internal copy of the voucher
+only** — a traveller has no use for the agency's GST registration, and the
+client copy carries no trade wording.
 
 ### Saved quotes
 
@@ -532,8 +574,18 @@ leisure while the itinerary under it described a full day of sightseeing.
 
 ## Current state and what's next
 
-As of 2026-08-24, `main` is at PR #36 and everything is merged and deployed;
-no open PRs. Live since the last handoff, in the order it shipped:
+As of 2026-08-24, `main` is at PR #37. **PR #38 is open and not yet merged** —
+Tanmay asked to work through the whole agreed list and merge it in one go, so
+it carries all three items below rather than shipping one at a time:
+
+- There is no commission anywhere; the agent keeps the markup he adds, and the
+  Admin markup fields say whose markup they are.
+- A new agent account is `pending` until an admin approves it, enforced
+  server-side.
+- B2B signup collects an optional GST number.
+- First committed test suite: `server/test/approval.test.js`.
+
+Live since the last handoff, in the order it shipped:
 
 - Room rates show every bed the party occupies, and warn when a bed has no
   rate set; hotels in a city offer other star ratings when the trip's rating
@@ -576,14 +628,10 @@ flight inventory) — the itinerary says so instead.
    **Done.** Tanmay's ruling: there is no commission structure at all — the
    agent simply adds his markup to the cost shown to him. See *There is no
    commission* above.
-2. **A new B2B account must not work until an admin approves it.** Signup
-   currently creates a live agent account that can quote and book immediately.
-   Needs an approval state on `users`, a signed-out "awaiting approval" screen,
-   an Admin queue to approve or reject, and server-side enforcement — an
-   unapproved agent's token must be refused by the booking and quote routes,
-   not merely hidden in the UI.
-3. **B2B signup should collect a GST number.** A field on signup, stored on
-   `users`, shown in the agent profile and on the internal copy of the voucher.
+2. ~~A new B2B account must not work until an admin approves it.~~ **Done.**
+   See *Agent accounts are approved before they can trade* above.
+3. ~~B2B signup should collect a GST number.~~ **Done**, and **optional** —
+   Tanmay's call: an agent may register without one and add it later.
 4. **Email, later.** OTP and email verification at signup, and automatic mail
    (booking confirmations, quotes to clients). Nothing exists today: "Forgot
    Password?" only tells the user to contact the administrator. This one is
@@ -644,6 +692,7 @@ node node_modules/esbuild/bin/esbuild test.mjs --bundle --platform=node \
 ```
 
 Suites written this way have covered flight legs, airport-served-by-another-
-city, reverse pricing, per-vehicle activities and the structure merge. They
-live in the session scratchpad, not the repo — **there is still no committed
-test suite, and adding one remains a genuine improvement.**
+city, reverse pricing, per-vehicle activities and the structure merge. Those
+live in the session scratchpad. The one suite that **is** in the repo is
+`server/test/approval.test.js` (`npm test` from `server/`) — follow its shape
+for anything else worth committing.
