@@ -49,7 +49,7 @@ async function run(sql, args = []) {
 router.get('/db', async (req, res) => {
   const [cities, airports, hotels, vehicles, routes, activities, packages, settings, bookings, leads, users, cityDefaults, vehiclePackages] =
     await Promise.all([
-      all('SELECT name FROM cities ORDER BY name ASC'),
+      all('SELECT name, country FROM cities ORDER BY name ASC'),
       all('SELECT * FROM airports'),
       all('SELECT * FROM hotels'),
       all('SELECT * FROM vehicles'),
@@ -66,6 +66,12 @@ router.get('/db', async (req, res) => {
 
   res.json({
     cities: cities.map((c) => c.name),
+    // A parallel map rather than turning `cities` into objects: every dropdown
+    // in the portal reads that flat name list, and reshaping it would ripple
+    // through all of them for one extra field.
+    city_countries: Object.fromEntries(
+      cities.map((c) => [c.name, c.country === 'india' ? 'india' : 'nepal'])
+    ),
     airports: airports.map(serializeAirport),
     hotels: hotels.map(serializeHotel),
     vehicles: vehicles.map(serializeVehicle),
@@ -190,6 +196,21 @@ router.get('/cities', async (req, res) => {
   res.json(cities.map((c) => c.name));
 });
 
+// Which side of the border a city is on. Kept as its own route rather than
+// folded into PUT /cities, which replaces the whole list from an array of
+// names -- a shape that has no room for a country and would drop them all.
+router.patch('/cities/:name/country', async (req, res) => {
+  const country = String(req.body?.country || '').trim().toLowerCase();
+  if (!['india', 'nepal'].includes(country)) {
+    return res.status(400).json({ error: "country must be 'india' or 'nepal'" });
+  }
+  const name = String(req.params.name || '').trim();
+  const existing = await one('SELECT name FROM cities WHERE name = ?', [name]);
+  if (!existing) return res.status(404).json({ error: 'City not found' });
+  await run('UPDATE cities SET country = ? WHERE name = ?', [country, name]);
+  res.json({ name, country });
+});
+
 router.put('/cities', async (req, res) => {
   const names = Array.isArray(req.body?.cities) ? req.body.cities : req.body;
   if (!Array.isArray(names)) {
@@ -306,8 +327,15 @@ router.post('/vehicles', async (req, res) => {
   if (!b.name) return res.status(400).json({ error: 'name is required' });
   const id = b.id || genId('v');
   await run(
-    'INSERT INTO vehicles (id, name, description, capacity, daily_sightseeing_rate, route_rates) VALUES (?, ?, ?, ?, ?, ?)',
-    [id, b.name, b.description || '', b.capacity ?? null, b.daily_sightseeing_rate ?? null, JSON.stringify(b.route_rates || {})]
+    `INSERT INTO vehicles (id, name, description, capacity, daily_sightseeing_rate, route_rates, origin)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      id, b.name, b.description || '', b.capacity ?? null, b.daily_sightseeing_rate ?? null,
+      // An Indian vehicle is quoted only from a package, so it never carries
+      // sector rates -- store none rather than leaving stale numbers behind.
+      JSON.stringify(b.origin === 'india' ? {} : (b.route_rates || {})),
+      b.origin === 'india' ? 'india' : 'nepal',
+    ]
   );
   res.status(201).json(serializeVehicle(await one('SELECT * FROM vehicles WHERE id = ?', [id])));
 });
@@ -317,15 +345,25 @@ router.put('/vehicles/:id', async (req, res) => {
   const existing = await one('SELECT * FROM vehicles WHERE id = ?', [req.params.id]);
   if (!existing) return res.status(404).json({ error: 'Vehicle not found' });
   await run(
-    'UPDATE vehicles SET name = ?, description = ?, capacity = ?, daily_sightseeing_rate = ?, route_rates = ? WHERE id = ?',
-    [
-      b.name ?? existing.name,
-      b.description ?? existing.description,
-      b.capacity ?? existing.capacity,
-      b.daily_sightseeing_rate ?? existing.daily_sightseeing_rate,
-      JSON.stringify(b.route_rates ?? JSON.parse(existing.route_rates)),
-      req.params.id,
-    ]
+    `UPDATE vehicles SET name = ?, description = ?, capacity = ?, daily_sightseeing_rate = ?,
+       route_rates = ?, origin = ? WHERE id = ?`,
+    (() => {
+      const origin = b.origin === undefined
+        ? (existing.origin === 'india' ? 'india' : 'nepal')
+        : (b.origin === 'india' ? 'india' : 'nepal');
+      return [
+        b.name ?? existing.name,
+        b.description ?? existing.description,
+        b.capacity ?? existing.capacity,
+        b.daily_sightseeing_rate ?? existing.daily_sightseeing_rate,
+        // Switching a vehicle to Indian clears its sector rates: it is quoted
+        // only from a package, and leaving the old numbers behind would let a
+        // stale rate reappear if it were ever switched back.
+        JSON.stringify(origin === 'india' ? {} : (b.route_rates ?? JSON.parse(existing.route_rates))),
+        origin,
+        req.params.id,
+      ];
+    })()
   );
   res.json(serializeVehicle(await one('SELECT * FROM vehicles WHERE id = ?', [req.params.id])));
 });

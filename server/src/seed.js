@@ -58,10 +58,15 @@ async function main() {
   console.log('Seeding vehicles...');
   for (const v of INITIAL_VEHICLES) {
     await run(
-      `INSERT INTO vehicles (id, name, description, capacity, daily_sightseeing_rate, route_rates) VALUES (?, ?, ?, ?, ?, ?)
+      `INSERT INTO vehicles (id, name, description, capacity, daily_sightseeing_rate, route_rates, origin)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(id) DO UPDATE SET name=excluded.name, description=excluded.description, capacity=excluded.capacity,
-         daily_sightseeing_rate=excluded.daily_sightseeing_rate, route_rates=excluded.route_rates`,
-      [v.id, v.name, v.description, v.capacity, v.daily_sightseeing_rate, JSON.stringify(v.route_rates)]
+         daily_sightseeing_rate=excluded.daily_sightseeing_rate, route_rates=excluded.route_rates,
+         origin=excluded.origin`,
+      [
+        v.id, v.name, v.description, v.capacity, v.daily_sightseeing_rate ?? null,
+        JSON.stringify(v.route_rates || {}), v.origin === 'india' ? 'india' : 'nepal',
+      ]
     );
   }
 

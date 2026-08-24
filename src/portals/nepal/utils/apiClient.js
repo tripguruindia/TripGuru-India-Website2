@@ -207,6 +207,15 @@ export async function syncAdminDb(oldDb, newDb) {
 // Users -- explicit calls (not generic diffing) because create needs a
 // password and edits never touch the password field (see resetUserPassword).
 // ---------------------------------------------------------------------------
+// Which side of the border a city is on. Its own route because PUT /cities
+// replaces the whole list from an array of names and has no room for it.
+export async function setCityCountry(city, country) {
+  return apiFetch(`/admin/cities/${encodeURIComponent(city)}/country`, {
+    method: 'PATCH',
+    body: { country },
+  });
+}
+
 // Whole-trip vehicle rates (Admin -> Vehicle Packages).
 export async function saveVehiclePackage(payload) {
   return apiFetch('/admin/vehicle-packages', { method: 'POST', body: payload });

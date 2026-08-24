@@ -10,6 +10,7 @@ import {
   TRAVEL_MODE_FLIGHT,
 } from './transfers';
 import { findVehiclePackage } from './vehiclePackages';
+import { isIndianVehicle } from './vehicleOrigin';
 
 /**
  * Converts a rooms array into flat travelers and roomConfig objects
@@ -358,6 +359,14 @@ export function calculateQuote({
   });
   const onVehiclePackage = !!vehiclePackage;
 
+  // An Indian vehicle is hired for the whole trip from a border town and has
+  // no sector rates at all, so it must never be priced leg by leg. Without
+  // this it would total ZERO rather than fall back -- a missing sector rate
+  // contributes nothing -- and the quote would go out with no vehicle cost.
+  // `vehicleNeedsPackage` says so out loud; the builder warns on it.
+  const vehicleIsIndian = isIndianVehicle(vehicle);
+  const vehicleNeedsPackage = vehicleIsIndian && !onVehiclePackage;
+
   let accommodationCost = 0;
   let accommodationCostAdult = 0;
   let accommodationCostChild = 0;
@@ -417,7 +426,7 @@ export function calculateQuote({
     // On a package the vehicle is hired for the trip, so the individual legs
     // are not charged -- the one package figure is added after this loop. The
     // transfers still describe the day on the itinerary; only the money moves.
-    if (vehicle && !onVehiclePackage) {
+    if (vehicle && !onVehiclePackage && !vehicleIsIndian) {
       dayTransfers.forEach((route) => {
         if (route === "local_sightseeing") {
           dayTransportCost += (vehicle.daily_sightseeing_rate || 0) * adminMarginFactor;
@@ -722,6 +731,10 @@ export function calculateQuote({
     },
     dayWiseBreakdown: dayWiseDetails,
     roomValidation,
+    // True when the vehicle can ONLY be priced from a package and no row
+    // matches. The transport figure is not merely approximate in that case --
+    // there is none, so the quote must not be sent.
+    vehicleNeedsPackage,
     // Which package rate was used, if any. The builder shows this as one
     // vehicle line, and shows a note naming the missing combination when it
     // is null -- so a gap in the rate sheet surfaces on a real quote rather

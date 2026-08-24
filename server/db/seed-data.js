@@ -4,9 +4,14 @@
 // the database is the source of truth -- this file is not imported at
 // request time.
 
+// Nepali cities, plus the Indian border towns a trip starts and ends at.
+// A city's country lives on the row (cities.country) and is set in Admin; the
+// seed writes names only, so nothing here decides it for a live database.
 const INITIAL_CITIES = [
   'Kathmandu', 'Pokhara', 'Chitwan', 'Nagarkot', 'Lumbini',
   'Butwal', 'Bhairahawa', 'Jomsom',
+  // Indian side -- mark these as India in Admin -> Cities.
+  'Gorakhpur', 'Raxaul', 'Bagdogra',
 ];
 
 // One airport can serve several cities (Bhairahawa serves Lumbini, Butwal
@@ -42,6 +47,18 @@ const INITIAL_VEHICLES = [
   { id: 'v-suv', name: 'SUV / Scorpio', description: 'Spacious rough-terrain vehicle, great for families. Fits 4-5 passengers.', capacity: 5, daily_sightseeing_rate: 6500, route_rates: { ktm_airport_transfer: 2000, ktm_to_pokhara: 12500, pokhara_to_chitwan: 11000, chitwan_to_ktm: 14500, ktm_to_nagarkot: 5000, nagarkot_to_ktm: 5000, pokhara_to_ktm: 12500, local_sightseeing: 6500 } },
   { id: 'v-hiace', name: 'Toyota Hiace (Minivan)', description: 'Excellent for small tour groups. Fits 6-12 passengers comfortably.', capacity: 12, daily_sightseeing_rate: 9500, route_rates: { ktm_airport_transfer: 3500, ktm_to_pokhara: 18000, pokhara_to_chitwan: 16000, chitwan_to_ktm: 21000, ktm_to_nagarkot: 7500, nagarkot_to_ktm: 7500, pokhara_to_ktm: 18000, local_sightseeing: 9500 } },
   { id: 'v-coaster', name: 'Toyota Coaster (Mini Bus)', description: 'Standard option for larger groups. Fits 13-20 passengers with luggage.', capacity: 20, daily_sightseeing_rate: 15000, route_rates: { ktm_airport_transfer: 6000, ktm_to_pokhara: 30000, pokhara_to_chitwan: 26000, chitwan_to_ktm: 35000, ktm_to_nagarkot: 12000, nagarkot_to_ktm: 12000, pokhara_to_ktm: 30000, local_sightseeing: 15000 } },
+  // --- Indian fleet, hired from a border town for the whole trip. ---------
+  // No route_rates by design: these are quoted only from Vehicle Packages, so
+  // a sector rate could never be the right answer for one.
+  { id: 'v-in-sedan',    name: 'Sedan (India)',            description: 'Indian vehicle from the border. Fits up to 3 passengers.', capacity: 3,  origin: 'india', route_rates: {} },
+  { id: 'v-in-ertiga',   name: 'Ertiga (India)',           description: 'Indian vehicle from the border. Fits up to 5 passengers.', capacity: 5,  origin: 'india', route_rates: {} },
+  { id: 'v-in-crysta',   name: 'Innova Crysta (India)',    description: 'Indian vehicle from the border. Fits up to 6 passengers.', capacity: 6,  origin: 'india', route_rates: {} },
+  { id: 'v-in-tt12',     name: 'Tempo Traveller 12 (India)', description: 'Indian 12-seater from the border.', capacity: 12, origin: 'india', route_rates: {} },
+  { id: 'v-in-urbania14',name: 'Urbania 14 (India)',       description: 'Indian 14-seater from the border.', capacity: 14, origin: 'india', route_rates: {} },
+  { id: 'v-in-tt17',     name: 'Tempo Traveller 17 (India)', description: 'Indian 17-seater from the border.', capacity: 17, origin: 'india', route_rates: {} },
+  { id: 'v-in-tt20',     name: 'Tempo Traveller 20 (India)', description: 'Indian 20-seater from the border.', capacity: 20, origin: 'india', route_rates: {} },
+  { id: 'v-in-tt26',     name: 'Tempo Traveller 26 (India)', description: 'Indian 26-seater from the border.', capacity: 26, origin: 'india', route_rates: {} }
+
 ];
 
 const INITIAL_ACTIVITIES = [

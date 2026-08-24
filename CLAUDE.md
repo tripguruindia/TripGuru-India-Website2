@@ -54,9 +54,11 @@ dev server after changing them.
 Two committed test suites:
 
 - **`npm test`** (repo root) — `test/cityDefaults.test.mjs` (the City Defaults
-  resolver) and `test/vehiclePackages.test.mjs` (package matching, and that a
-  package never charges the vehicle twice). Bundled with esbuild first, because
-  the source uses Vite's extensionless imports.
+  resolver), `test/vehiclePackages.test.mjs` (package matching, and that a
+  package never charges the vehicle twice) and `test/vehicleOrigin.test.mjs`
+  (which fleet a trip may use, and that an Indian vehicle is never priced by
+  sector). Bundled with esbuild first, because the source uses Vite's
+  extensionless imports.
 - **`npm test`** from **`server/`** — `server/test/approval.test.js`, the agent
   approval gate. It boots the real Express app against a throwaway libSQL file
   in the temp directory, so it touches nothing live and needs no credentials,
@@ -558,10 +560,40 @@ booking — so a Coaster could not be quoted for twelve people, and a package
 keyed to a Hiace could never be matched. The intake wizard now has a required
 **Vehicle** field, showing each vehicle's capacity.
 
+### Indian and Nepali vehicles are separate fleets
+
+`vehicles.origin` is `'india'` or `'nepal'`, and `cities.country` says which
+side of the border a city is on. Both default to **`'nepal'`** — every vehicle
+and city that already existed is a Nepali one apart from a handful of border
+towns, which are marked by hand in **Admin -> Cities** (click the India/Nepal
+badge). An unmarked city always reads as Nepal, never India.
+
+**An Indian vehicle has no sector rates at all.** It is hired from a border
+town for the whole trip and is priced *only* from a Vehicle Package. This is
+enforced, not merely documented: `calculateQuote` never sums sectors for one,
+because a missing sector rate contributes nothing and the vehicle would have
+totalled **₹0** with nothing on screen to say so. `vehicleNeedsPackage` on the
+result says exactly that, and the builder shows it in **red** — "this quote has
+no vehicle cost" — rather than the ordinary amber "priced leg by leg" note.
+The Admin rate sheet and the vehicle editor both hide sector rates for an
+Indian vehicle, and switching a vehicle to Indian clears any it had.
+
+Which fleet a trip may use follows from its two endpoints, via
+`vehiclesForTrip()` in **`utils/vehicleOrigin.js`**:
+
+| Start | End | Offered |
+|---|---|---|
+| India | India | Indian vehicles only |
+| Nepal | Nepal | Nepali vehicles only |
+| mixed | | both — an Indian vehicle dropping at Kathmandu, or a border drop and a Nepali vehicle onward, are both real |
+
+Before both endpoints are chosen nothing is filtered, so the dropdown is never
+mysteriously empty. Changing an endpoint clears a vehicle that is no longer
+offered — leaving it selected would quote a vehicle that has no rate.
+
 Still to do: **a trip can only have one vehicle**, so "Indian vehicle to
-Kathmandu, then a Nepali vehicle onward" cannot be quoted. Tanmay's call was to
-do packages first and come back to this. Nothing marks a vehicle as Indian or
-Nepali either.
+Kathmandu, then a Nepali vehicle onward" cannot be quoted as two vehicles.
+Tanmay's call was to do packages first and come back to this.
 
 ## City Defaults — what a new day starts as
 

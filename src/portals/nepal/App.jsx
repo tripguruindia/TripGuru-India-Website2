@@ -59,6 +59,7 @@ import {
   deleteCityDefaults,
   saveVehiclePackage,
   deleteVehiclePackage,
+  setCityCountry,
   getMyWallet,
   getAgentWallet,
   addWalletTransaction,
@@ -69,6 +70,7 @@ import {
   defaultMealPlan,
 } from './utils/cityDefaults';
 import { describeMissingPackage } from './utils/vehiclePackages';
+import { vehiclesForTrip, isIndianVehicle, countryOfCity } from './utils/vehicleOrigin';
 import './App.css';
 import './index.css';
 
@@ -333,6 +335,7 @@ function App() {
           // showed the defaults saved correctly.
           city_defaults: fresh.city_defaults ?? prev.city_defaults ?? [],
           vehicle_packages: fresh.vehicle_packages ?? prev.vehicle_packages ?? [],
+          city_countries: fresh.city_countries ?? prev.city_countries ?? {},
         }));
       })
       .catch((err) => {
@@ -3605,6 +3608,26 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     });
   };
 
+  // Which side of the border a city is on. Decides which fleet a trip that
+  // starts or ends there can use, so it is a two-state toggle rather than
+  // buried in a rename dialog.
+  const handleToggleCityCountry = async (city) => {
+    const next = countryOfCity(db.city_countries, city) === 'india' ? 'nepal' : 'india';
+    if (!isApiSession()) {
+      window.alert('Sign in as an admin to change this.');
+      return;
+    }
+    try {
+      await setCityCountry(city, next);
+      setDb((prev) => ({
+        ...prev,
+        city_countries: { ...(prev.city_countries || {}), [city]: next },
+      }));
+    } catch (err) {
+      window.alert('Could not change this: ' + (err.message || 'Unknown error'));
+    }
+  };
+
   // Cities Master Helpers
   const handleAddNewCity = (e) => {
     e.preventDefault();
@@ -4480,6 +4503,16 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       setB2cSubView('customize');
     }
   };
+
+  // Changing where the trip starts or ends can change which fleet it needs, so
+  // a vehicle chosen before that is no longer offered must not stay silently
+  // selected -- it would be quoted, and for an Indian vehicle on a Nepali run
+  // there is no rate at all.
+  useEffect(() => {
+    if (!wizardVehicleId) return;
+    const allowed = vehiclesForTrip(db.vehicles, db.city_countries, wizardStartCity, wizardEndCity);
+    if (!allowed.some((v) => v.id === wizardVehicleId)) setWizardVehicleId('');
+  }, [wizardStartCity, wizardEndCity, db.vehicles, db.city_countries, wizardVehicleId]);
 
   // An agent session, not merely "the b2b route is open".
   const isB2bAuthenticated = !!currentUser && currentUser.role === 'b2b';
@@ -8804,7 +8837,11 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                 className="form-select text-xs py-2 px-3 w-full border border-slate-300 rounded-lg bg-white shadow-sm"
                               >
                                 <option value="">Select vehicle</option>
-                                {(db.vehicles || []).map((v) => (
+                                {/* A run that starts and ends in India is an
+                                    Indian vehicle; one that stays inside Nepal
+                                    is a Nepali one. Crossing the border one way
+                                    could be either, so nothing is hidden. */}
+                                {vehiclesForTrip(db.vehicles, db.city_countries, wizardStartCity, wizardEndCity).map((v) => (
                                   <option key={v.id} value={v.id}>
                                     {v.name}{v.capacity ? ` — up to ${v.capacity}` : ''}
                                   </option>
@@ -8979,7 +9016,33 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                   The legs and the basic sightseeing are included in that figure.
                                 </span>
                               </div>
-                            ) : (() => {
+                            ) : quoteCalculation.vehicleNeedsPackage ? (() => {
+                              // An Indian vehicle has no sector rates at all,
+                              // so this is not "priced another way" -- there is
+                              // no vehicle cost in this quote. Red, not amber.
+                              const miss = describeMissingPackage({
+                                vehicles: db.vehicles,
+                                vehicleId: selectedVehicleId,
+                                startCity,
+                                endCity,
+                                itinerary: customItinerary,
+                              });
+                              return (
+                                <div className="text-[11px] text-red-800 bg-red-50 border border-red-200 p-3 rounded-xl flex items-start gap-2 leading-normal font-medium mb-5">
+                                  <AlertTriangle size={14} className="shrink-0 text-red-500 mt-0.5" />
+                                  <span>
+                                    <strong>This quote has no vehicle cost.</strong>{' '}
+                                    {miss.vehicleName} is an Indian vehicle, which is only ever priced
+                                    from a package — it has no per-sector rates. There is no rate for{' '}
+                                    <strong>
+                                      {miss.startCity || '—'} → {miss.endCity || '—'} ·{' '}
+                                      {miss.cities.join(' + ') || 'no overnight cities'} · {miss.days} days
+                                    </strong>, so the vehicle is currently costing ₹0. Add the rate in
+                                    Admin → Vehicle Packages before sending this quote.
+                                  </span>
+                                </div>
+                              );
+                            })() : (() => {
                               const miss = describeMissingPackage({
                                 vehicles: db.vehicles,
                                 vehicleId: selectedVehicleId,
@@ -10573,7 +10636,11 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                   <div className="flex flex-col gap-4 md:flex-row md:justify-between md:items-center bg-white p-4 sm:p-6 rounded-2xl border border-slate-200/80 shadow-sm mt-8">
                     <div>
                       <h2 className="text-2xl font-bold font-heading text-[#0f2942]">Cities Master</h2>
-                      <p className="text-slate-500 text-sm mt-1">Manage standard cities available across the platform.</p>
+                      <p className="text-slate-500 text-sm mt-1">
+                        Manage standard cities available across the platform. Mark your Indian border
+                        towns as India — a trip that starts and ends in India is run by an Indian
+                        vehicle, and only those are then offered.
+                      </p>
                     </div>
                   </div>
 
@@ -10610,6 +10677,21 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                 <Plane size={10} /> {airport.code || 'Air'}
                               </span>
                             )}
+                            {/* Nepal is the unmarked default, so only India is
+                                worth a badge -- the handful of border towns are
+                                the exception that changes which fleet is used. */}
+                            <button
+                              type="button"
+                              onClick={() => handleToggleCityCountry(city)}
+                              className={`mt-1 text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border transition ${
+                                countryOfCity(db.city_countries, city) === 'india'
+                                  ? 'bg-amber-100 text-amber-800 border-amber-200 hover:bg-amber-200'
+                                  : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'
+                              }`}
+                              title="Which side of the border this city is on. Click to change."
+                            >
+                              {countryOfCity(db.city_countries, city) === 'india' ? 'India' : 'Nepal'}
+                            </button>
                           </div>
                           <button
                             onClick={() => setEditingCity({ original: city, name: city })}
@@ -11211,7 +11293,10 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                           <Edit3 size={12} className="opacity-50 shrink-0" />
                         </div>
                         <span className="rate-vehicle-meta text-[10px] block mt-1">
-                          Up to {v.capacity || '—'} pax · Sightseeing ₹{Number(v.daily_sightseeing_rate || 0).toLocaleString()}/day
+                          Up to {v.capacity || '—'} pax ·{' '}
+                          {isIndianVehicle(v)
+                            ? 'Indian — package rates only'
+                            : `Sightseeing ₹${Number(v.daily_sightseeing_rate || 0).toLocaleString()}/day`}
                         </span>
                       </button>
                     ))}
@@ -11284,8 +11369,11 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                           </p>
                         </div>
 
+                        {/* Sector rates are a Nepali-vehicle idea. An Indian
+                            vehicle is hired for the whole trip and priced only
+                            from Vehicle Packages, so it gets no column here. */}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-2 pt-2 border-t border-orange-100">
-                          {(db.vehicles || []).map(v => (
+                          {(db.vehicles || []).filter(v => !isIndianVehicle(v)).map(v => (
                             <div key={v.id}>
                               <label className="block text-[9px] uppercase font-bold text-slate-500 mb-0.5 truncate" title={v.name}>{v.name} (₹)</label>
                               <input
@@ -11367,7 +11455,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                         <thead>
                           <tr>
                             <th className="rate-col-name text-left py-3 px-4 text-[9px] uppercase font-extrabold tracking-wider">Transfer</th>
-                            {(db.vehicles || []).map(v => (
+                            {(db.vehicles || []).filter(v => !isIndianVehicle(v)).map(v => (
                               <th key={v.id} className="py-3 px-3 text-[9px] uppercase font-extrabold tracking-wider text-center whitespace-nowrap">
                                 {v.name}
                               </th>
@@ -11378,7 +11466,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                         <tbody>
                           {visibleRateRoutes.length === 0 ? (
                             <tr>
-                              <td colSpan={(db.vehicles || []).length + 2} className="py-10 text-center text-xs rate-empty">
+                              <td colSpan={(db.vehicles || []).filter(v => !isIndianVehicle(v)).length + 2} className="py-10 text-center text-xs rate-empty">
                                 No transfers match this filter.
                               </td>
                             </tr>
@@ -11395,7 +11483,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                   </div>
                                 </th>
 
-                                {(db.vehicles || []).map(v => {
+                                {(db.vehicles || []).filter(v => !isIndianVehicle(v)).map(v => {
                                   const isDirty = rateEdits[route.key]?.[v.id] !== undefined;
                                   const fromReverse = rateIsFromReverse(route.key, v);
                                   return (
@@ -13357,9 +13445,28 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                     className="form-input text-xs"
                   />
                 </div>
+                <div className="form-group mb-0">
+                  <label className="form-label text-[10px]">Hired from</label>
+                  <select
+                    value={editingVehicleDetails.origin === 'india' ? 'india' : 'nepal'}
+                    onChange={(e) => setEditingVehicleDetails({ ...editingVehicleDetails, origin: e.target.value })}
+                    className="form-input text-xs"
+                  >
+                    <option value="nepal">Nepal — worked inside Nepal</option>
+                    <option value="india">India — taken from a border town</option>
+                  </select>
+                  <span className="text-[10px] text-slate-450 block mt-1 leading-relaxed">
+                    An Indian vehicle is hired for the whole trip and is priced <strong>only</strong> from
+                    Vehicle Packages — it has no per-sector rates and none can be entered for it.
+                    It is offered only on trips that start and end in India.
+                  </span>
+                </div>
+
                 {/* A full-day sightseeing hire is a property of the vehicle,
                     not a sector between two places, so it is priced here
-                    rather than in the transfer sheet. */}
+                    rather than in the transfer sheet. Meaningless for an
+                    Indian vehicle, whose whole price is the package. */}
+                {editingVehicleDetails.origin !== 'india' && (
                 <div className="form-group mb-0">
                   <label className="form-label text-[10px]">Full-Day Sightseeing Rate (₹ per day)</label>
                   <input
@@ -13374,6 +13481,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                     sightseeing. Not a point-to-point transfer, so it is not in the rate sheet.
                   </span>
                 </div>
+                )}
                 <div className="form-group mb-0">
                   <label className="form-label text-[10px]">Description</label>
                   <textarea
