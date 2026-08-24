@@ -1,6 +1,7 @@
 const express = require('express');
 const client = require('../db');
 const { optionalAuth, requireAuth } = require('../middleware/auth');
+const { agentEarnings } = require('../agentEarnings');
 const { serializeBooking } = require('../serializers');
 
 const router = express.Router();
@@ -23,13 +24,15 @@ async function run(sql, args = []) {
   return client.execute({ sql, args });
 }
 
-const AGENT_COMMISSION_RATE = 0.1;
+// The agent's earnings are his own markup, not a commission TripGuru pays --
+// see src/agentEarnings.js. Both this file and routes/quotes.js import the one
+// helper so the same trip can never be worth two different amounts.
 
 // ---------------------------------------------------------------------------
 // POST /bookings -- optionalAuth, not requireAuth: B2C guest checkout has
 // never required an account (see App.jsx handleConfirmCheckout /
 // isLeadCaptured), so this route must keep working for anonymous visitors.
-// B2B bookings DO require a real logged-in agent, since agent_id/commission
+// B2B bookings DO require a real logged-in agent, since agent_id/earnings
 // must come from the server, never the client (the old frontend hardcoded
 // agent_id: 'AGT-9021' for every single B2B booking -- this route is what
 // fixes that).
@@ -50,7 +53,7 @@ router.post('/', optionalAuth, async (req, res) => {
       return res.status(401).json({ error: 'A B2B agent account is required to submit a B2B booking' });
     }
     agentId = req.user.id;
-    agentCommission = Math.round(Number(b.total_price || 0) * AGENT_COMMISSION_RATE);
+    agentCommission = agentEarnings(b.total_price, b.markup_percent);
   } else if (req.user && req.user.role === 'b2c') {
     // Logged-in traveler: link the booking to their account. Anonymous
     // B2C checkout (no account) still works -- userId just stays null,
@@ -137,8 +140,12 @@ router.patch('/:id', requireAuth, async (req, res) => {
   }
 
   const totalPrice = b.total_price !== undefined ? Number(b.total_price) || 0 : existing.total_price;
+  const markupPercent =
+    b.markup_percent !== undefined && b.markup_percent !== null
+      ? b.markup_percent
+      : existing.markup_percent;
   const agentCommission =
-    existing.type === 'B2B' ? Math.round(totalPrice * AGENT_COMMISSION_RATE) : existing.agent_commission;
+    existing.type === 'B2B' ? agentEarnings(totalPrice, markupPercent) : existing.agent_commission;
 
   const pick = (next, current) => (next !== undefined && next !== null ? next : current);
   const pickJSON = (next, current) => (next !== undefined && next !== null ? JSON.stringify(next) : current);

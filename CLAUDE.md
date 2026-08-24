@@ -181,17 +181,57 @@ Each portal is an **independent session in the same browser**: tokens live in
 `nepal_quote_user_<route>`. Do not reintroduce a shared token or user key —
 both have caused cross-portal leaks before.
 
-### Agent commission
+### There is no commission — the agent keeps his own markup
 
-A flat **10%**, from `AGENT_COMMISSION_RATE = 0.1` hardcoded in **both**
-`routes/bookings.js` and `routes/quotes.js` — change one and the other will
-disagree. It is computed server-side from the stored total, never taken from
-the client.
+**TripGuru pays agents nothing.** The agent is shown a cost, adds his own
+markup on top of it, and collects the whole amount from his client. His
+earnings are simply that markup. There is no commission rate, no tier system,
+and nothing for TripGuru to pay out.
 
-There is **no tier system.** "Partner Status: Gold Tier (10% Comm.)" is a
-hardcoded string in the agent dashboard and the agent profile; there is no
-Silver, and no tier column on `users`. Making tiers real means a per-agent rate
-on `users`, set in Admin, read by both routes, with the label derived from it.
+`agentEarnings(totalPrice, markupPercent)` in **`server/src/agentEarnings.js`**
+is the single definition, imported by both `routes/bookings.js` and
+`routes/quotes.js`. It replaced `AGENT_COMMISSION_RATE = 0.1`, which was
+declared separately in each of those files — changing one left the two
+disagreeing about what the same trip was worth. `agentEarningsOn(booking)` at
+module scope in `App.jsx` mirrors it for display.
+
+The markup is applied **last** on the agent portal (GST is charged on
+TripGuru's price, the markup goes on top of the GST-inclusive figure), so it
+works back out of the stored total exactly:
+
+    markup = total x pct / (100 + pct)
+
+Deriving it from `total_price` and `markup_percent` — both of which have always
+been stored — means it is right for **every booking ever made**, including the
+ones written while the flat 10% was still being recorded. The
+`bookings.agent_commission` column is kept and now holds this real figure; the
+name is legacy.
+
+The decorative badges are gone: "Partner Status: Gold Tier (10% Comm.)" (agent
+dashboard *and* agent profile), the "Commissions (10%)" dashboard card, the
+"Commission (10%)" table column, and the sidebar's "Comm: 10%". Do not
+reintroduce a commission figure — there is nothing behind it.
+
+### TripGuru's own markup lives in Admin, and always did
+
+Admin → Global Pricing Formulas has **both** rates, and had them all along —
+they were simply labelled ambiguously ("B2B Partner Markup" reads as the
+*partner's* markup when it is in fact TripGuru's margin on the price the
+partner is shown). They now read **"Your markup on B2C (%)"** and **"Your
+markup on B2B (%)"**.
+
+Watch the names, which do not match what they hold:
+
+| Stored as | Really is | Reaches `calculateQuote` as |
+|---|---|---|
+| `settings.b2c_markup_percent` | TripGuru's markup on B2C | `markup_percent` |
+| `settings.b2b_markup_percent` | TripGuru's markup on B2B | `b2b_admin_margin_percent` |
+| `bookings/quotes.markup_percent` | on B2B, the **agent's own** markup | `markup_percent` |
+
+So `markup_percent` means TripGuru's margin on a B2C trip and the agent's
+margin on a B2B one. In `App.jsx` the state is `b2cMarkupInput` /
+`b2bMarkupInput` (both TripGuru's, bound to the Admin fields) versus
+`agentMarkupInput` (the agent's own box in the builder).
 
 ### Saved quotes
 
@@ -532,14 +572,10 @@ flight inventory) — the itinerary says so instead.
 
 ### Agreed next, in Tanmay's words
 
-1. **"Partner Status: Gold Tier (10% Comm.)" is not a real feature.** It is a
-   hardcoded string in two places (the agent dashboard and the agent profile),
-   there is no Silver anywhere, and there is no tier column. Every agent earns
-   10%, from `AGENT_COMMISSION_RATE = 0.1` hardcoded in *both*
-   `server/src/routes/bookings.js` and `server/src/routes/quotes.js`. Either
-   make tiers real — a per-agent rate on `users`, set in Admin, read by both
-   routes, with the label derived from it — or drop the wording. Do not leave
-   a decorative badge implying a commission structure that does not exist.
+1. ~~"Partner Status: Gold Tier (10% Comm.)" is not a real feature.~~
+   **Done.** Tanmay's ruling: there is no commission structure at all — the
+   agent simply adds his markup to the cost shown to him. See *There is no
+   commission* above.
 2. **A new B2B account must not work until an admin approves it.** Signup
    currently creates a live agent account that can quote and book immediately.
    Needs an approval state on `users`, a signed-out "awaiting approval" screen,

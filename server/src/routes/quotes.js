@@ -2,6 +2,7 @@ const express = require('express');
 const client = require('../db');
 const { requireAuth } = require('../middleware/auth');
 const { serializeQuote } = require('../serializers');
+const { agentEarnings } = require('../agentEarnings');
 
 const router = express.Router();
 
@@ -24,7 +25,8 @@ async function run(sql, args = []) {
 }
 
 const VALID_STATUSES = ['Draft', 'Sent', 'Won', 'Lost'];
-const AGENT_COMMISSION_RATE = 0.1;
+// See src/agentEarnings.js -- the agent keeps his own markup; there is no
+// commission rate to hardcode here.
 
 // Every quote belongs to exactly one account, and which column holds that
 // depends on the role. Ownership is derived from the verified JWT only --
@@ -324,7 +326,7 @@ router.post('/:id/convert', requireAuth, async (req, res) => {
       itinerarySummary,
       isB2B ? 'B2B' : 'B2C',
       isB2B ? ownerId : null,
-      isB2B ? Math.round(Number(quote.total_price || 0) * AGENT_COMMISSION_RATE) : null,
+      isB2B ? agentEarnings(quote.total_price, quote.markup_percent) : null,
       quote.vehicle_id || '',
       quote.hotel_category || '',
       quote.start_city || '',

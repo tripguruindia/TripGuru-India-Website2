@@ -145,6 +145,25 @@ const sameCity = (a, b) =>
 // sameCity, so it can never sit in the temporal dead zone of a use above it.
 const EMPTY_WIZARD_DESTINATION = { city: '', nights: '' };
 
+// What a B2B agent actually earns on a trip: his own markup, not a commission.
+// TripGuru does not pay agents a percentage -- the agent is shown a cost, adds
+// his markup on top, and keeps it. The markup is applied last on the agent
+// portal (GST is charged on TripGuru's price, the markup goes on top of the
+// GST-inclusive figure), so it works back out of the stored total exactly:
+// markup = total x pct / (100 + pct).
+//
+// Derived from total_price and markup_percent -- both always stored -- so it is
+// right for every booking ever made, including those written while the flat 10%
+// commission was still being recorded. Mirrors server/src/agentEarnings.js.
+//
+// Module scope, above App(), on purpose: see the sameCity() note in CLAUDE.md.
+const agentEarningsOn = (booking) => {
+  const total = Number(booking?.total_price) || 0;
+  const pct = Number(booking?.markup_percent) || 0;
+  if (total <= 0 || pct <= 0) return 0;
+  return Math.round((total * pct) / (100 + pct));
+};
+
 function App() {
   // Routing helper
   const getRouteFromHash = () => {
@@ -2713,8 +2732,9 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   };
 
   // Turn an accepted quote into a real booking. The server does the work --
-  // it creates the booking, recomputes commission from the stored total, and
-  // marks the quote Won -- so nothing about the money is decided here.
+  // it creates the booking, recomputes the agent's markup earnings from the
+  // stored total, and marks the quote Won -- so nothing about the money is
+  // decided here.
   const handleConvertQuote = async (quote) => {
     if (!quote.client_name || !quote.client_email || !quote.client_phone) {
       window.alert("This quote needs the client's name, email and mobile number before it can be booked. Open it, fill those in on the booking form, and save it again.");
@@ -2791,7 +2811,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       itinerary_summary: `${customItinerary.length} Nights, ${travelers.adults} Adults, ${travelers.cwb} CWB, ${travelers.cnb} CNB, ${selectedHotelCategory} Hotels.`,
       passengers: Array.from({ length: travelers.adults }).map((_, i) => ({ name: `${checkoutForm.clientName} (Pax ${i+1})`, type: 'Adult' })),
       type: isB2B ? 'B2B' : 'B2C',
-      // agent_id/agent_commission are assigned server-side, from the real
+      // agent_id and the agent's markup earnings are assigned server-side,
+      // from the real
       // logged-in agent -- never trusted from the client (fixes the old
       // hardcoded 'AGT-9021' bug). Left off here; filled in below from the
       // server's response once the booking is actually persisted.
@@ -4718,9 +4739,9 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
         <div className="mb-6">
           <h2 className="quote-card-title text-2xl font-extrabold">My Wallet</h2>
           <p className="quote-card-meta text-xs mt-1.5 leading-relaxed max-w-2xl">
-            Every credit and debit TripGuru has logged against your account. Balances are added by
-            the TripGuru team once a commission payout is actually made — not automatically when a
-            booking is created.
+            Every credit and debit TripGuru has logged against your account. Balances are adjusted
+            by the TripGuru team by hand — this is not your markup, which you collect from your own
+            client directly.
           </p>
         </div>
 
@@ -4734,7 +4755,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
             <Wallet size={26} className="mx-auto mb-3 opacity-60" />
             <p className="text-sm font-bold quote-card-title">No wallet activity yet</p>
             <p className="quote-card-meta text-xs mt-2 max-w-md mx-auto leading-relaxed">
-              Once TripGuru pays out a commission, it'll show up here with a note explaining what it's for.
+              Once TripGuru credits or debits your account, it'll show up here with a note explaining what it's for.
             </p>
           </div>
         ) : (
@@ -4767,7 +4788,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
         <span className="bg-emerald-600 text-xs px-3 py-1 rounded-full uppercase tracking-wider font-semibold">B2B Partner Portal</span>
         <h2 className="text-3xl font-extrabold mt-4 font-heading leading-tight">Sign in to your agent account</h2>
         <p className="mt-3 text-sm leading-relaxed max-w-lg mx-auto">
-          Your dashboard, commission rates, wallet balance and booking history are available once you sign in.
+          Your dashboard, markup settings, wallet balance and booking history are available once you sign in.
         </p>
         <button
           onClick={() => setShowB2bLoginPortal(true)}
@@ -4796,7 +4817,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       .sort((a, b) => new Date(a.travel_date || 0) - new Date(b.travel_date || 0))
       .slice(0, 5);
     const totalSales = b2bBookings.reduce((sum, b) => sum + (b.total_price || 0), 0);
-    const totalCommission = b2bBookings.reduce((sum, b) => sum + (b.agent_commission || 0), 0);
+    // The agent's own markup on every booking -- what he actually keeps.
+    const totalMarkupEarned = b2bBookings.reduce((sum, b) => sum + agentEarningsOn(b), 0);
     // "Open" = still winnable. Won quotes are already counted as bookings
     // above, and Lost ones are closed, so neither belongs in a follow-up count.
     const openQuoteCount = myQuotes.filter((q) => q.status === 'Draft' || q.status === 'Sent').length;
@@ -4815,7 +4837,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
             Welcome back, {b2bProfile.agentName || "Travel Partner"}! 👋
           </h2>
           <p className="text-slate-300 mt-2 max-w-xl text-sm leading-relaxed">
-            Manage your customer inquiries, generate live customized itineraries, check B2B commission rates, and track your wallet balances directly.
+            Manage your customer inquiries, generate live customized itineraries, set your own markup on every quote, and track your wallet balance directly.
           </p>
           
           <div className="flex flex-wrap gap-4 mt-6 border-t border-emerald-700/50 pt-6 text-xs text-slate-300">
@@ -4823,7 +4845,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 self-center"></div>
             <div>Agent ID: <strong className="text-white font-semibold">{currentUser?.id}</strong></div>
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 self-center"></div>
-            <div>Partner Status: <strong className="text-emerald-400 font-semibold">Gold Tier (10% Comm.)</strong></div>
+            <div>Account: <strong className="text-emerald-400 font-semibold">B2B Travel Partner</strong></div>
           </div>
         </div>
 
@@ -4851,14 +4873,15 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
             </div>
           </div>
 
-          {/* Card 3: Earned Commission */}
+          {/* Card 3: the agent's own markup across his bookings. Not a
+              commission -- TripGuru pays him nothing; he keeps what he adds. */}
           <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm flex items-center gap-4 hover:shadow-md transition duration-300">
             <div className="bg-indigo-100 text-indigo-600 p-4 rounded-2xl">
               <ShieldCheck size={24} />
             </div>
             <div>
-              <span className="text-[10px] text-slate-500 uppercase font-extrabold tracking-wider block">Commissions (10%)</span>
-              <strong className="text-2xl font-bold text-slate-800">₹{totalCommission.toLocaleString()}</strong>
+              <span className="text-[10px] text-slate-500 uppercase font-extrabold tracking-wider block">Your Markup Earned</span>
+              <strong className="text-2xl font-bold text-slate-800">₹{totalMarkupEarned.toLocaleString()}</strong>
             </div>
           </div>
 
@@ -4964,7 +4987,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           {/* Eight columns is wider than a phone, so this scrolls sideways.
               The booking's identity -- its reference and whose trip it is --
               is pinned, because scrolled right every row was otherwise a
-              commission and a Confirmed pip with nothing to say which booking
+              markup figure and a Confirmed pip with nothing to say which booking
               it belonged to. */}
           <div className="overflow-x-auto">
             <table className="w-full min-w-[820px] text-left text-xs">
@@ -4973,8 +4996,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                   <th className="p-4 sticky-first-col">Booking</th>
                   <th className="p-4">Package & Duration</th>
                   <th className="p-4">Travel Date</th>
-                  <th className="p-4 text-right">Gross Cost</th>
-                  <th className="p-4 text-right">Commission (10%)</th>
+                  <th className="p-4 text-right">Client Pays</th>
+                  <th className="p-4 text-right">Your Markup</th>
                   <th className="p-4 text-center">Status</th>
                   <th className="p-4 text-center">Actions</th>
                 </tr>
@@ -5005,7 +5028,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                         ₹{booking.total_price.toLocaleString()}
                       </td>
                       <td className="p-4 text-right font-bold text-emerald-600">
-                        ₹{(booking.agent_commission || Math.round(booking.total_price * 0.1)).toLocaleString()}
+                        ₹{agentEarningsOn(booking).toLocaleString()}
                       </td>
                       <td className="p-4 text-center">
                         <span className="bg-green-50 text-green-700 text-[10px] font-bold px-2 py-0.5 rounded-full border border-green-200">
@@ -5364,8 +5387,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                     <strong className="block text-slate-800 font-extrabold mt-0.5">{currentUser?.id}</strong>
                   </div>
                   <div>
-                    <span className="text-slate-500">Partner Status:</span>
-                    <strong className="block text-emerald-600 font-extrabold mt-0.5">Gold Tier (10% Comm.)</strong>
+                    <span className="text-slate-500">Account Type:</span>
+                    <strong className="block text-emerald-600 font-extrabold mt-0.5">B2B Travel Partner</strong>
                   </div>
                 </div>
               </div>
@@ -6592,7 +6615,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           {view === 'b2b' ? (
             <div className="text-[9px] text-slate-500 flex justify-between px-1">
               <span>B2B Portal</span>
-              <span className="text-emerald-450 font-bold">Comm: 10%</span>
+              <span className="text-emerald-450 font-bold">Your markup, your margin</span>
             </div>
           ) : (
             <div className="text-[9px] text-slate-500 text-center px-1">
@@ -6861,7 +6884,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
             return (
               <div className="fade-in">
                 {/* The dashboard shows agent-identifying data (agency, agent id,
-                    commission tier, wallet balance) and must never render to a
+                    markup earned, wallet balance) and must never render to a
                     visitor without an authenticated agent session. */}
                 {isB2B && b2bSubView === 'dashboard' && (
                   isB2bAuthenticated ? renderB2bDashboard() : renderB2bSignedOutPrompt()
@@ -9319,15 +9342,17 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                         <Settings size={16} className="text-indigo-650" /> <span>Global Pricing Formulas (INR)</span>
                       </h4>
                       <p className="text-xs text-slate-500">
-                        Markups and government GST are calculated dynamically on every quote.
-                        On the agent portal GST is charged on the TripGuru price and the
-                        agent&apos;s own markup goes on top of it.
+                        Both figures below are <strong>TripGuru&apos;s own markup</strong> over net cost, and
+                        both are applied on every quote automatically. On the traveller portal the
+                        markup is the selling price, so GST is charged on top of it. On the agent
+                        portal GST is charged on the TripGuru price, and the agent then adds his own
+                        markup over that — the agent keeps that markup; TripGuru pays no commission.
                       </p>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-4">
                       <div className="w-[130px]">
-                        <label className="text-[9px] uppercase font-bold text-slate-400 tracking-wider block mb-1.5">B2C Client Markup (%)</label>
+                        <label className="text-[9px] uppercase font-bold text-slate-400 tracking-wider block mb-1.5">Your markup on B2C (%)</label>
                         <input 
                           type="number"
                           value={b2cMarkupInput}
@@ -9337,7 +9362,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                         />
                       </div>
                       <div className="w-[130px]">
-                        <label className="text-[9px] uppercase font-bold text-slate-400 tracking-wider block mb-1.5">B2B Partner Markup (%)</label>
+                        <label className="text-[9px] uppercase font-bold text-slate-400 tracking-wider block mb-1.5">Your markup on B2B (%)</label>
                         <input 
                           type="number"
                           value={b2bMarkupInput}
@@ -9553,7 +9578,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                   <div>₹{b.total_price.toLocaleString()}</div>
                                   {b.type === 'B2B' && (
                                     <div className="text-[10px] text-emerald-600 font-bold mt-0.5">
-                                      Comm: ₹{(b.agent_commission || Math.round(b.total_price * 0.1)).toLocaleString()}
+                                      Agent markup: ₹{agentEarningsOn(b).toLocaleString()}
                                     </div>
                                   )}
                                 </td>
@@ -12402,7 +12427,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                     </div>
                     <input
                       type="text"
-                      placeholder="Reason (e.g. Commission payout for booking #1234)"
+                      placeholder="Reason (e.g. Refund for booking #1234)"
                       value={walletEntryForm.reason}
                       onChange={(e) => setWalletEntryForm({ ...walletEntryForm, reason: e.target.value })}
                       className="form-input text-xs"
