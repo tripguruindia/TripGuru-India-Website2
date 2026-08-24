@@ -9,6 +9,7 @@ const {
   serializeRoute,
   serializeAirport,
   serializeActivity,
+  serializeCityDefault,
   serializePackage,
   serializeSettings,
   serializeBooking,
@@ -45,7 +46,7 @@ async function run(sql, args = []) {
 // produced, so the frontend's `db` object needs no restructuring.
 // ---------------------------------------------------------------------------
 router.get('/db', async (req, res) => {
-  const [cities, airports, hotels, vehicles, routes, activities, packages, settings, bookings, leads, users] =
+  const [cities, airports, hotels, vehicles, routes, activities, packages, settings, bookings, leads, users, cityDefaults] =
     await Promise.all([
       all('SELECT name FROM cities ORDER BY name ASC'),
       all('SELECT * FROM airports'),
@@ -58,6 +59,7 @@ router.get('/db', async (req, res) => {
       all('SELECT * FROM bookings ORDER BY created_at DESC'),
       all('SELECT * FROM leads ORDER BY created_at DESC'),
       all('SELECT * FROM users'),
+      all('SELECT * FROM city_defaults'),
     ]);
 
   res.json({
@@ -72,7 +74,48 @@ router.get('/db', async (req, res) => {
     bookings: bookings.map(serializeBooking),
     leads: leads.map(serializeLead),
     users: users.map(serializeUser),
+    city_defaults: cityDefaults.map(serializeCityDefault),
   });
+});
+
+// ---------------------------------------------------------------------------
+// City defaults -- what a freshly built day in this city starts out as.
+// Upsert by city name; DELETE clears the city back to the built-in fallback.
+// ---------------------------------------------------------------------------
+router.get('/city-defaults', async (req, res) => {
+  res.json((await all('SELECT * FROM city_defaults')).map(serializeCityDefault));
+});
+
+router.put('/city-defaults/:city', async (req, res) => {
+  const b = req.body || {};
+  const city = String(req.params.city || '').trim();
+  if (!city) return res.status(400).json({ error: 'city is required' });
+
+  const meals = b.default_meals === undefined || b.default_meals === null ? '' : String(b.default_meals).trim();
+  if (meals && !['CP', 'MAP', 'AP'].includes(meals)) {
+    return res.status(400).json({ error: "default_meals must be 'CP', 'MAP', 'AP', or empty" });
+  }
+
+  await run(
+    `INSERT INTO city_defaults (city, default_hotels, default_meals, night_plans)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(city) DO UPDATE SET
+       default_hotels = excluded.default_hotels,
+       default_meals  = excluded.default_meals,
+       night_plans    = excluded.night_plans`,
+    [
+      city,
+      JSON.stringify(b.default_hotels || {}),
+      meals || null,
+      JSON.stringify(b.night_plans || {}),
+    ]
+  );
+  res.json(serializeCityDefault(await one('SELECT * FROM city_defaults WHERE city = ?', [city])));
+});
+
+router.delete('/city-defaults/:city', async (req, res) => {
+  await run('DELETE FROM city_defaults WHERE city = ?', [String(req.params.city || '').trim()]);
+  res.json({ ok: true });
 });
 
 // ---------------------------------------------------------------------------
@@ -532,6 +575,33 @@ router.put('/users/:id', async (req, res) => {
       req.params.id,
     ]
   );
+  res.json(serializeUser(await one('SELECT * FROM users WHERE id = ?', [req.params.id])));
+});
+
+// ---------------------------------------------------------------------------
+// PATCH /admin/users/:id/approval -- approve or reject an agent account.
+//
+// This is the only route that may write approval_status: an agent editing his
+// own profile (PATCH /auth/me) deliberately cannot, or the pending queue would
+// be self-service. The whole admin router already sits behind
+// requireAuth + requireRole('admin').
+// ---------------------------------------------------------------------------
+router.patch('/users/:id/approval', async (req, res) => {
+  const { status, note } = req.body || {};
+  if (!['approved', 'rejected', 'pending'].includes(status)) {
+    return res.status(400).json({ error: "status must be 'approved', 'rejected' or 'pending'" });
+  }
+  const existing = await one('SELECT * FROM users WHERE id = ?', [req.params.id]);
+  if (!existing) return res.status(404).json({ error: 'User not found' });
+  if (existing.role !== 'b2b') {
+    return res.status(400).json({ error: 'Only agent accounts go through approval' });
+  }
+
+  await run('UPDATE users SET approval_status = ?, approval_note = ? WHERE id = ?', [
+    status,
+    note ? String(note).slice(0, 500) : null,
+    req.params.id,
+  ]);
   res.json(serializeUser(await one('SELECT * FROM users WHERE id = ?', [req.params.id])));
 });
 

@@ -1,4 +1,5 @@
 const jwt = require('jsonwebtoken');
+const client = require('../db');
 
 const JWT_SECRET = process.env.JWT_SECRET;
 
@@ -53,4 +54,43 @@ function optionalAuth(req, res, next) {
   next();
 }
 
-module.exports = { signToken, requireAuth, requireRole, optionalAuth };
+// ---------------------------------------------------------------------------
+// Use after requireAuth (or optionalAuth) on any route that lets an agent
+// TRADE -- create or amend a booking or a quote. A B2B account starts life
+// 'pending' and must be approved by an admin before it can do either.
+//
+// The status is read from the DATABASE, never from the token. Tokens last 30
+// days, so an agent rejected this morning would still be carrying a token
+// minted while he was approved; trusting the token would leave him trading
+// until it expired. This costs one indexed lookup on the write paths only --
+// reads are left alone so the "awaiting approval" screen can still load.
+//
+// Anyone who is not a B2B agent passes straight through: this is a rule about
+// agent accounts, not a general permission check.
+// ---------------------------------------------------------------------------
+async function requireApprovedAgent(req, res, next) {
+  if (!req.user || req.user.role !== 'b2b') return next();
+  try {
+    const rs = await client.execute({
+      sql: 'SELECT approval_status FROM users WHERE id = ?',
+      args: [req.user.id],
+    });
+    const row = rs.rows[0];
+    if (!row) return res.status(401).json({ error: 'Account not found' });
+    // Missing column/value on a database that predates the migration means an
+    // existing, working account -- treat it as approved, never as pending.
+    const status = row.approval_status || 'approved';
+    if (status === 'approved') return next();
+    return res.status(403).json({
+      error:
+        status === 'rejected'
+          ? 'This agent account has been rejected. Please contact TripGuru.'
+          : 'This agent account is awaiting approval by TripGuru.',
+      approvalStatus: status,
+    });
+  } catch (err) {
+    return next(err);
+  }
+}
+
+module.exports = { signToken, requireAuth, requireRole, optionalAuth, requireApprovedAgent };

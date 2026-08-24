@@ -54,10 +54,18 @@ import {
   updateUser,
   deleteUser,
   resetUserPassword,
+  setUserApproval,
+  saveCityDefaults,
+  deleteCityDefaults,
   getMyWallet,
   getAgentWallet,
   addWalletTransaction,
 } from './utils/apiClient';
+import {
+  buildDayDefaults,
+  defaultHotelId,
+  defaultMealPlan,
+} from './utils/cityDefaults';
 import './App.css';
 import './index.css';
 
@@ -83,7 +91,8 @@ const EMPTY_B2B_PROFILE = {
   agencyAddress: '',
   agencyEmail: '',
   agencyPhone: '',
-  agencyWebsite: ''
+  agencyWebsite: '',
+  gstNumber: ''
 };
 
 const formatCityName = (c) => {
@@ -144,6 +153,25 @@ const sameCity = (a, b) =>
 // A blank row in the intake wizard's destination list. Module scope, like
 // sameCity, so it can never sit in the temporal dead zone of a use above it.
 const EMPTY_WIZARD_DESTINATION = { city: '', nights: '' };
+
+// What a B2B agent actually earns on a trip: his own markup, not a commission.
+// TripGuru does not pay agents a percentage -- the agent is shown a cost, adds
+// his markup on top, and keeps it. The markup is applied last on the agent
+// portal (GST is charged on TripGuru's price, the markup goes on top of the
+// GST-inclusive figure), so it works back out of the stored total exactly:
+// markup = total x pct / (100 + pct).
+//
+// Derived from total_price and markup_percent -- both always stored -- so it is
+// right for every booking ever made, including those written while the flat 10%
+// commission was still being recorded. Mirrors server/src/agentEarnings.js.
+//
+// Module scope, above App(), on purpose: see the sameCity() note in CLAUDE.md.
+const agentEarningsOn = (booking) => {
+  const total = Number(booking?.total_price) || 0;
+  const pct = Number(booking?.markup_percent) || 0;
+  if (total <= 0 || pct <= 0) return 0;
+  return Math.round((total * pct) / (100 + pct));
+};
 
 function App() {
   // Routing helper
@@ -296,6 +324,11 @@ function App() {
           // configured returns [], which must win over stale local fixtures.
           // Only a missing field (older API) falls back to what we had.
           airports: fresh.airports ?? prev.airports ?? [],
+          // This merge is a whitelist, so a new master has to be named here or
+          // the agent and traveller portals never see it -- the builder would
+          // quietly fall back to picking whatever hotel came first while Admin
+          // showed the defaults saved correctly.
+          city_defaults: fresh.city_defaults ?? prev.city_defaults ?? [],
         }));
       })
       .catch((err) => {
@@ -400,7 +433,8 @@ function App() {
         agencyAddress: user.agencyAddress || '123 Travel Street, Delhi',
         agencyEmail: user.agencyEmail || user.email,
         agencyPhone: user.agencyPhone || user.phone,
-        agencyWebsite: user.agencyWebsite || ''
+        agencyWebsite: user.agencyWebsite || '',
+        gstNumber: user.gstNumber || ''
       });
     } else {
       setView('b2c');
@@ -568,6 +602,10 @@ function App() {
   
   const [selectedVehicleId, setSelectedVehicleId] = useState('v-suv');
   const [selectedHotelCategory, setSelectedHotelCategory] = useState('4-Star');
+  // Days that Admin's City Defaults pre-filled on the trip currently being
+  // built, so the builder can name them. Cleared whenever a different trip is
+  // loaded -- a notice about the previous trip's days would be a lie.
+  const [autoFilledNotice, setAutoFilledNotice] = useState([]);
   const [travelDate, setTravelDate] = useState('2026-10-15');
   const [customPackageName, setCustomPackageName] = useState('My Nepal Tour Custom');
   const [customItinerary, setCustomItinerary] = useState([]);
@@ -749,7 +787,8 @@ function App() {
     countryCode: '+91',
     agencyName: '',
     agencyAddress: '',
-    agencyWebsite: ''
+    agencyWebsite: '',
+    gstNumber: ''
   });
 
   // Admin Rate Editor States
@@ -856,6 +895,9 @@ function App() {
   const [expandedFaqIndex, setExpandedFaqIndex] = useState(null);
 
   const [userSearchQuery, setUserSearchQuery] = useState('');
+  // Which city's defaults are mid-save, and which just saved.
+  const [cityDefaultsSaving, setCityDefaultsSaving] = useState('');
+  const [cityDefaultsSavedMessage, setCityDefaultsSavedMessage] = useState('');
   const [editingUser, setEditingUser] = useState(null);
   const [showAddUserModal, setShowAddUserModal] = useState(false);
 
@@ -1807,11 +1849,12 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     travelers: { adults: 2, cwb: 0, cnb: 0 },
     roomConfig: { single: 0, double: 1, extra_adult: 0, cwb: 0, cnb: 0 },
     itinerary: pkg.days.map(d => {
-      const h = db.hotels.find(htl => sameCity(htl.city, d.city) && htl.category === pkg.default_hotel_category);
+      // The package supplies the days and their activities; the city's
+      // defaults supply the hotel and the meal plan.
       return {
         ...d,
-        hotelId: h ? h.id : '',
-        meals: d.city.toLowerCase() === 'chitwan' ? 'AP' : 'CP',
+        hotelId: defaultHotelId(db.city_defaults, db.hotels, d.city, pkg.default_hotel_category),
+        meals: defaultMealPlan(db.city_defaults, d.city),
         transfer_route: d.transfer_route !== undefined ? d.transfer_route : '',
         activity_ids: [...d.activity_ids]
       };
@@ -1869,9 +1912,9 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
     // Generate custom itinerary based on package defaults
     const generatedItinerary = pkg.days.map(day => {
-      // Find default hotel in city and category
-      const cityHotels = db.hotels.filter(h => sameCity(h.city, day.city) && h.category === pkg.default_hotel_category);
-      const defaultHotel = cityHotels.length > 0 ? cityHotels[0].id : '';
+      // The hotel and meal plan come from Admin -> City Defaults; the package
+      // supplies the days themselves and their activities.
+      const defaultHotel = defaultHotelId(db.city_defaults, db.hotels, day.city, pkg.default_hotel_category);
 
       // Rebuilt field-by-field rather than spread, so the day's transfers and
       // any flight leg have to be carried across explicitly -- dropping them
@@ -1882,7 +1925,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
         title: day.title,
         description: day.description,
         hotelId: defaultHotel,
-        meals: day.city.toLowerCase() === 'chitwan' ? 'AP' : 'CP', // Chitwan defaults to Full Board
+        meals: defaultMealPlan(db.city_defaults, day.city),
         is_sightseeing: day.is_sightseeing || false,
         activity_ids: [...day.activity_ids],
         travel_mode: day.travel_mode || '',
@@ -1892,6 +1935,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     });
 
     setCustomItinerary(generatedItinerary);
+    setAutoFilledNotice([]);
     setAgentMarkupInput(0); // Reset agent custom markup override for new trip
     if (view === 'b2b') {
       setB2bSubView('customize');
@@ -1919,8 +1963,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
     // Generate custom itinerary based on package defaults
     const generatedItinerary = pkg.days.map(day => {
-      const cityHotels = db.hotels.filter(h => sameCity(h.city, day.city) && h.category === pkg.default_hotel_category);
-      const defaultHotel = cityHotels.length > 0 ? cityHotels[0].id : '';
+      const defaultHotel = defaultHotelId(db.city_defaults, db.hotels, day.city, pkg.default_hotel_category);
 
       // See the sibling handler above: transfers and flight legs must be
       // carried explicitly because this rebuilds the day rather than spreading.
@@ -1930,7 +1973,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
         title: day.title,
         description: day.description,
         hotelId: defaultHotel,
-        meals: day.city.toLowerCase() === 'chitwan' ? 'AP' : 'CP',
+        meals: defaultMealPlan(db.city_defaults, day.city),
         is_sightseeing: day.is_sightseeing || false,
         activity_ids: [...day.activity_ids],
         travel_mode: day.travel_mode || '',
@@ -1940,6 +1983,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     });
 
     setCustomItinerary(generatedItinerary);
+    setAutoFilledNotice([]);
     if (view === 'b2b') {
       setB2bSubView('customize');
     } else {
@@ -2054,8 +2098,12 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
         if (idx !== dayIndex) return day;
         let updatedDay = { ...day, [field]: value };
         if (field === 'city') {
-          const cityHotels = db.hotels.filter(h => sameCity(h.city, value) && h.category === selectedHotelCategory);
-          updatedDay.hotelId = cityHotels.length > 0 ? cityHotels[0].id : '';
+          // Moving a day to a different city re-picks that city's default
+          // hotel and meal plan. Its activities are cleared rather than
+          // replaced: an activity is only offerable in its own city, and the
+          // operator is mid-edit, not asking for a new day to be composed.
+          updatedDay.hotelId = defaultHotelId(db.city_defaults, db.hotels, value, selectedHotelCategory);
+          updatedDay.meals = defaultMealPlan(db.city_defaults, value);
           updatedDay.activity_ids = [];
           // Changing the city invalidates every transfer on the day (they were
           // priced for the old city) and the flight leg it belonged to.
@@ -2248,18 +2296,27 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       (pool[key] = pool[key] || []).push(d);
     });
 
-    const makeFreshDay = (city) => {
-      const cityHotels = (db.hotels || []).filter(
-        h => sameCity(h.city, city) && h.category === selectedHotelCategory
-      );
+    // A day that did not exist before the reshape. It gets this city's
+    // configured defaults for the night it lands on; days reused from the old
+    // itinerary keep whatever was already set on them, so reshaping a trip
+    // never overwrites a hotel or an activity someone chose by hand.
+    const makeFreshDay = (city, nightIndex) => {
+      const d = buildDayDefaults({
+        cityDefaults: db.city_defaults,
+        hotels: db.hotels,
+        activities: db.activities,
+        city,
+        category: selectedHotelCategory,
+        nightIndex,
+      });
       return withDayTransfers({
         city,
         title: `Explore ${city}`,
         description: `Custom activities and transfer around ${city}.`,
-        hotelId: cityHotels.length > 0 ? cityHotels[0].id : '',
-        meals: String(city).toLowerCase() === 'chitwan' ? 'AP' : 'CP',
+        hotelId: d.hotelId,
+        meals: d.meals,
         is_sightseeing: false,
-        activity_ids: [],
+        activity_ids: [...d.activityIds],
         travel_mode: '',
         flight_from_city: '',
         flight_to_city: '',
@@ -2271,7 +2328,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       const key = String(block.city).trim().toLowerCase();
       for (let n = 0; n < block.nights; n++) {
         const reused = (pool[key] || []).shift();
-        rebuilt.push(reused ? { ...reused, city: block.city } : makeFreshDay(block.city));
+        rebuilt.push(reused ? { ...reused, city: block.city } : makeFreshDay(block.city, n + 1));
       }
     });
 
@@ -2365,8 +2422,9 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       const newDayNum = prev.length + 1;
       const lastDay = prev[prev.length - 1];
       const defaultCity = lastDay ? lastDay.city : 'Kathmandu';
-      const cityHotels = db.hotels.filter(h => sameCity(h.city, defaultCity) && h.category === selectedHotelCategory);
-      
+      // A day added by hand takes the city's default hotel and meal plan, but
+      // deliberately NOT its night-plan activities: the operator asked for a
+      // day, not for something paid to appear on it.
       return [
         ...prev,
         {
@@ -2374,8 +2432,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           city: defaultCity,
           title: `Explore ${defaultCity}`,
           description: `Custom activities and transfer around ${defaultCity}.`,
-          hotelId: cityHotels.length > 0 ? cityHotels[0].id : '',
-          meals: defaultCity.toLowerCase() === 'chitwan' ? 'AP' : 'CP',
+          hotelId: defaultHotelId(db.city_defaults, db.hotels, defaultCity, selectedHotelCategory),
+          meals: defaultMealPlan(db.city_defaults, defaultCity),
           transfer_route: '',
           is_sightseeing: false,
           activity_ids: []
@@ -2519,6 +2577,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     setCurrentPackageId(draft.packageId ?? null);
     setCustomPackageName(draft.packageName ?? 'My Nepal Tour Custom');
     setCustomItinerary(draft.itinerary || []);
+    setAutoFilledNotice([]);
     if (draft.rooms) setRooms(draft.rooms);
     if (draft.vehicleId) setSelectedVehicleId(draft.vehicleId);
     if (draft.hotelCategory) setSelectedHotelCategory(draft.hotelCategory);
@@ -2625,6 +2684,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     setCurrentPackageId(null);
     setCustomPackageName(quote.package_name || 'Untitled quote');
     setCustomItinerary(quote.itinerary || []);
+    setAutoFilledNotice([]);
     if (quote.rooms && quote.rooms.length) setRooms(quote.rooms);
     if (quote.vehicle_id) setSelectedVehicleId(quote.vehicle_id);
     if (quote.hotel_category) setSelectedHotelCategory(quote.hotel_category);
@@ -2713,8 +2773,9 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   };
 
   // Turn an accepted quote into a real booking. The server does the work --
-  // it creates the booking, recomputes commission from the stored total, and
-  // marks the quote Won -- so nothing about the money is decided here.
+  // it creates the booking, recomputes the agent's markup earnings from the
+  // stored total, and marks the quote Won -- so nothing about the money is
+  // decided here.
   const handleConvertQuote = async (quote) => {
     if (!quote.client_name || !quote.client_email || !quote.client_phone) {
       window.alert("This quote needs the client's name, email and mobile number before it can be booked. Open it, fill those in on the booking form, and save it again.");
@@ -2791,7 +2852,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       itinerary_summary: `${customItinerary.length} Nights, ${travelers.adults} Adults, ${travelers.cwb} CWB, ${travelers.cnb} CNB, ${selectedHotelCategory} Hotels.`,
       passengers: Array.from({ length: travelers.adults }).map((_, i) => ({ name: `${checkoutForm.clientName} (Pax ${i+1})`, type: 'Adult' })),
       type: isB2B ? 'B2B' : 'B2C',
-      // agent_id/agent_commission are assigned server-side, from the real
+      // agent_id and the agent's markup earnings are assigned server-side,
+      // from the real
       // logged-in agent -- never trusted from the client (fixes the old
       // hardcoded 'AGT-9021' bug). Left off here; filled in below from the
       // server's response once the booking is actually persisted.
@@ -2877,6 +2939,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     setLastBookingId(booking.id);
     if (booking.itinerary) {
       setCustomItinerary(booking.itinerary);
+      setAutoFilledNotice([]);
       setSelectedVehicleId(booking.vehicleId);
       setSelectedHotelCategory(booking.hotelCategory);
       setRooms(booking.rooms || [{ adults: booking.adults || 2, children: [] }]);
@@ -2896,20 +2959,21 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       const stdPkg = db.packages.find(p => p.name === booking.package_name);
       if (stdPkg) {
         const defaultItin = stdPkg.days.map(d => {
-          const h = db.hotels.find(htl => sameCity(htl.city, d.city) && htl.category === stdPkg.default_hotel_category);
           return {
             ...d,
-            hotelId: h ? h.id : '',
-            meals: d.city.toLowerCase() === 'chitwan' ? 'AP' : 'CP',
+            hotelId: defaultHotelId(db.city_defaults, db.hotels, d.city, stdPkg.default_hotel_category),
+            meals: defaultMealPlan(db.city_defaults, d.city),
             transfer_route: d.transfer_route !== undefined ? d.transfer_route : '',
             activity_ids: [...d.activity_ids]
           };
         });
         setCustomItinerary(defaultItin);
+        setAutoFilledNotice([]);
         setSelectedVehicleId(stdPkg.default_vehicle_id || 'v-suv');
         setSelectedHotelCategory(stdPkg.default_hotel_category || '4-Star');
       } else {
         setCustomItinerary([]);
+        setAutoFilledNotice([]);
       }
       setRooms([{ adults: booking.adults || 2, children: [] }]);
       setStartCity('Kathmandu');
@@ -4114,6 +4178,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       if (neededRoutes.length) ensureRoutesExist(neededRoutes);
 
       setCustomItinerary(days);
+      setAutoFilledNotice([]);
       setSelectedHotelCategory(wizardStarRating);
       setTravelDate(wizardLeavingOn);
       setStartCity(wizardStartCity);
@@ -4143,6 +4208,10 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     const addTransfers = wizardAddTransfers;
 
     const itinerary = [];
+    // What Admin's City Defaults filled in, so the builder can say so. The
+    // point of automatic suggestions failing last time was that they were
+    // silent; this is what makes them visible.
+    const autoFilled = [];
     let dayCounter = 1;
     let lastCity = null;
 
@@ -4278,16 +4347,34 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           route = '';
         }
 
-        const cityHotels = db.hotels.filter(h => sameCity(h.city, dest.city) && h.category === rating);
-        const defaultHotel = cityHotels.length > 0 ? cityHotels[0].id : '';
-
-        // No activity is ever added automatically. The wizard used to drop a
-        // hardcoded sightseeing activity (Kathmandu, Pokhara, Chitwan) on the
-        // second night in a city, so asking for two nights silently added a
-        // paid activity nobody chose and the quote came out higher than the
-        // agent expected. Activities are picked by hand in the day cards.
-        // Automatic suggestions may come back later, driven by the activities
-        // master rather than hardcoded ids.
+        // What this city's day starts out as, from Admin -> City Defaults:
+        // the hotel to use at this star rating, the meal plan, and any
+        // activities set for THIS night of the stay. `night` is the night's
+        // index within the city, which is exactly what night_plans is keyed by.
+        //
+        // Automatic activities are back, but on the terms the last attempt
+        // failed on: driven by the activities master rather than hardcoded
+        // ids, and announced. The wizard used to drop a hardcoded activity on
+        // the second night in a city, so asking for two nights silently added
+        // something paid and the quote came out higher than the agent
+        // expected. Whatever is added here is named in a banner on the builder
+        // and removable on the day card.
+        const dayDefaults = buildDayDefaults({
+          cityDefaults: db.city_defaults,
+          hotels: db.hotels,
+          activities: db.activities,
+          city: dest.city,
+          category: rating,
+          nightIndex: night,
+        });
+        if (dayDefaults.autoAdded.hotelName || dayDefaults.autoAdded.activityNames.length) {
+          autoFilled.push({
+            day: dayCounter,
+            city: dest.city,
+            hotelName: dayDefaults.autoAdded.hotelName,
+            activityNames: dayDefaults.autoAdded.activityNames,
+          });
+        }
 
         const isTransitionDay = night === 1 && !isFirstCity;
 
@@ -4311,10 +4398,10 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           city: dest.city,
           title: title,
           description: description,
-          hotelId: defaultHotel,
-          meals: dest.city.toLowerCase() === 'chitwan' ? 'AP' : 'CP',
+          hotelId: dayDefaults.hotelId,
+          meals: dayDefaults.meals,
           is_sightseeing: !isTransitionDay,
-          activity_ids: [],
+          activity_ids: [...dayDefaults.activityIds],
           // The wizard always generates road travel; switching a leg to a
           // flight is done later in the builder, where the agent can see the
           // whole trip. Keeping it out of the intake form was deliberate --
@@ -4361,6 +4448,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     setStartCity(wizardStartCity);
     setEndCity(wizardEndCity);
     setCustomItinerary(itinerary);
+    setAutoFilledNotice(autoFilled);
 
     setAgentMarkupInput(0); // Reset agent custom markup override for new trip
     if (view === 'b2b') {
@@ -4372,6 +4460,15 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
   // An agent session, not merely "the b2b route is open".
   const isB2bAuthenticated = !!currentUser && currentUser.role === 'b2b';
+
+  // A new agent account is created 'pending' and cannot trade until an admin
+  // approves it. Anything other than an explicit 'pending'/'rejected' counts
+  // as approved: an account from before this existed, or a server that has
+  // not sent the field, is a working account and must not be locked out.
+  // This only decides what is SHOWN -- the booking and quote routes enforce
+  // it server-side, so hiding the screen is convenience, not security.
+  const agentApprovalStatus = currentUser?.approvalStatus || 'approved';
+  const isB2bApproved = agentApprovalStatus === 'approved';
 
   // ---------------------------------------------------------------------
   // "My Quotes" -- the saved-quote pipeline, shared by B2B and B2C.
@@ -4718,9 +4815,9 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
         <div className="mb-6">
           <h2 className="quote-card-title text-2xl font-extrabold">My Wallet</h2>
           <p className="quote-card-meta text-xs mt-1.5 leading-relaxed max-w-2xl">
-            Every credit and debit TripGuru has logged against your account. Balances are added by
-            the TripGuru team once a commission payout is actually made — not automatically when a
-            booking is created.
+            Every credit and debit TripGuru has logged against your account. Balances are adjusted
+            by the TripGuru team by hand — this is not your markup, which you collect from your own
+            client directly.
           </p>
         </div>
 
@@ -4734,7 +4831,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
             <Wallet size={26} className="mx-auto mb-3 opacity-60" />
             <p className="text-sm font-bold quote-card-title">No wallet activity yet</p>
             <p className="quote-card-meta text-xs mt-2 max-w-md mx-auto leading-relaxed">
-              Once TripGuru pays out a commission, it'll show up here with a note explaining what it's for.
+              Once TripGuru credits or debits your account, it'll show up here with a note explaining what it's for.
             </p>
           </div>
         ) : (
@@ -4767,7 +4864,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
         <span className="bg-emerald-600 text-xs px-3 py-1 rounded-full uppercase tracking-wider font-semibold">B2B Partner Portal</span>
         <h2 className="text-3xl font-extrabold mt-4 font-heading leading-tight">Sign in to your agent account</h2>
         <p className="mt-3 text-sm leading-relaxed max-w-lg mx-auto">
-          Your dashboard, commission rates, wallet balance and booking history are available once you sign in.
+          Your dashboard, markup settings, wallet balance and booking history are available once you sign in.
         </p>
         <button
           onClick={() => setShowB2bLoginPortal(true)}
@@ -4778,6 +4875,59 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       </div>
     </div>
   );
+
+  // Shown in place of the whole agent portal while an account is pending or
+  // after it has been rejected. Deliberately not a dead end: it names the
+  // agency it is waiting on, shows the reason if one was given, and leaves
+  // sign-out available so a different account can be used.
+  const renderB2bAwaitingApproval = () => {
+    const rejected = agentApprovalStatus === 'rejected';
+    return (
+      <div className="max-w-3xl mx-auto py-10">
+        <div className={`rounded-3xl p-8 shadow-lg text-center bg-gradient-to-r ${
+          rejected ? 'from-red-900 to-slate-900' : 'from-amber-700 to-indigo-950'
+        }`}>
+          <span className={`text-xs px-3 py-1 rounded-full uppercase tracking-wider font-semibold text-white ${
+            rejected ? 'bg-red-700' : 'bg-amber-600'
+          }`}>
+            {rejected ? 'Application declined' : 'Awaiting approval'}
+          </span>
+          <h2 className="text-3xl font-extrabold mt-4 font-heading leading-tight text-white">
+            {rejected ? 'This account cannot be used' : 'Your account is being reviewed'}
+          </h2>
+          <p className="mt-4 text-sm leading-relaxed max-w-lg mx-auto text-slate-200">
+            {rejected
+              ? 'TripGuru has declined this partner application. If you believe this is a mistake, please get in touch and we will take another look.'
+              : 'Thanks for registering. A member of the TripGuru team checks every new partner account by hand, so quoting and booking stay switched off until yours is approved.'}
+          </p>
+
+          <div className="mt-6 inline-flex flex-col gap-2 text-left bg-black/25 rounded-2xl px-5 py-4 text-xs text-slate-200">
+            <div>Agency: <strong className="text-white font-semibold">{currentUser?.agencyName || '—'}</strong></div>
+            <div>Registered email: <strong className="text-white font-semibold">{currentUser?.email}</strong></div>
+            {currentUser?.gstNumber ? (
+              <div>GST number: <strong className="text-white font-semibold">{currentUser.gstNumber}</strong></div>
+            ) : null}
+          </div>
+
+          {currentUser?.approvalNote ? (
+            <p className="mt-5 text-xs text-slate-300 max-w-lg mx-auto">
+              <span className="uppercase font-bold tracking-wider text-[10px] block mb-1">Note from TripGuru</span>
+              {currentUser.approvalNote}
+            </p>
+          ) : null}
+
+          <div className="mt-7">
+            <button
+              onClick={handleLogout}
+              className="bg-white/10 hover:bg-white/20 border border-white/25 text-white font-extrabold text-xs uppercase tracking-wider py-3 px-6 rounded-xl transition"
+            >
+              Sign Out
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const renderB2bDashboard = () => {
     const b2bBookings = ownBookings;
@@ -4796,7 +4946,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       .sort((a, b) => new Date(a.travel_date || 0) - new Date(b.travel_date || 0))
       .slice(0, 5);
     const totalSales = b2bBookings.reduce((sum, b) => sum + (b.total_price || 0), 0);
-    const totalCommission = b2bBookings.reduce((sum, b) => sum + (b.agent_commission || 0), 0);
+    // The agent's own markup on every booking -- what he actually keeps.
+    const totalMarkupEarned = b2bBookings.reduce((sum, b) => sum + agentEarningsOn(b), 0);
     // "Open" = still winnable. Won quotes are already counted as bookings
     // above, and Lost ones are closed, so neither belongs in a follow-up count.
     const openQuoteCount = myQuotes.filter((q) => q.status === 'Draft' || q.status === 'Sent').length;
@@ -4815,7 +4966,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
             Welcome back, {b2bProfile.agentName || "Travel Partner"}! 👋
           </h2>
           <p className="text-slate-300 mt-2 max-w-xl text-sm leading-relaxed">
-            Manage your customer inquiries, generate live customized itineraries, check B2B commission rates, and track your wallet balances directly.
+            Manage your customer inquiries, generate live customized itineraries, set your own markup on every quote, and track your wallet balance directly.
           </p>
           
           <div className="flex flex-wrap gap-4 mt-6 border-t border-emerald-700/50 pt-6 text-xs text-slate-300">
@@ -4823,7 +4974,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 self-center"></div>
             <div>Agent ID: <strong className="text-white font-semibold">{currentUser?.id}</strong></div>
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 self-center"></div>
-            <div>Partner Status: <strong className="text-emerald-400 font-semibold">Gold Tier (10% Comm.)</strong></div>
+            <div>Account: <strong className="text-emerald-400 font-semibold">B2B Travel Partner</strong></div>
           </div>
         </div>
 
@@ -4851,14 +5002,15 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
             </div>
           </div>
 
-          {/* Card 3: Earned Commission */}
+          {/* Card 3: the agent's own markup across his bookings. Not a
+              commission -- TripGuru pays him nothing; he keeps what he adds. */}
           <div className="bg-white border border-slate-100 rounded-3xl p-6 shadow-sm flex items-center gap-4 hover:shadow-md transition duration-300">
             <div className="bg-indigo-100 text-indigo-600 p-4 rounded-2xl">
               <ShieldCheck size={24} />
             </div>
             <div>
-              <span className="text-[10px] text-slate-500 uppercase font-extrabold tracking-wider block">Commissions (10%)</span>
-              <strong className="text-2xl font-bold text-slate-800">₹{totalCommission.toLocaleString()}</strong>
+              <span className="text-[10px] text-slate-500 uppercase font-extrabold tracking-wider block">Your Markup Earned</span>
+              <strong className="text-2xl font-bold text-slate-800">₹{totalMarkupEarned.toLocaleString()}</strong>
             </div>
           </div>
 
@@ -4964,7 +5116,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           {/* Eight columns is wider than a phone, so this scrolls sideways.
               The booking's identity -- its reference and whose trip it is --
               is pinned, because scrolled right every row was otherwise a
-              commission and a Confirmed pip with nothing to say which booking
+              markup figure and a Confirmed pip with nothing to say which booking
               it belonged to. */}
           <div className="overflow-x-auto">
             <table className="w-full min-w-[820px] text-left text-xs">
@@ -4973,8 +5125,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                   <th className="p-4 sticky-first-col">Booking</th>
                   <th className="p-4">Package & Duration</th>
                   <th className="p-4">Travel Date</th>
-                  <th className="p-4 text-right">Gross Cost</th>
-                  <th className="p-4 text-right">Commission (10%)</th>
+                  <th className="p-4 text-right">Client Pays</th>
+                  <th className="p-4 text-right">Your Markup</th>
                   <th className="p-4 text-center">Status</th>
                   <th className="p-4 text-center">Actions</th>
                 </tr>
@@ -5005,7 +5157,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                         ₹{booking.total_price.toLocaleString()}
                       </td>
                       <td className="p-4 text-right font-bold text-emerald-600">
-                        ₹{(booking.agent_commission || Math.round(booking.total_price * 0.1)).toLocaleString()}
+                        ₹{agentEarningsOn(booking).toLocaleString()}
                       </td>
                       <td className="p-4 text-center">
                         <span className="bg-green-50 text-green-700 text-[10px] font-bold px-2 py-0.5 rounded-full border border-green-200">
@@ -5364,8 +5516,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                     <strong className="block text-slate-800 font-extrabold mt-0.5">{currentUser?.id}</strong>
                   </div>
                   <div>
-                    <span className="text-slate-500">Partner Status:</span>
-                    <strong className="block text-emerald-600 font-extrabold mt-0.5">Gold Tier (10% Comm.)</strong>
+                    <span className="text-slate-500">Account Type:</span>
+                    <strong className="block text-emerald-600 font-extrabold mt-0.5">B2B Travel Partner</strong>
                   </div>
                 </div>
               </div>
@@ -5386,6 +5538,20 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                   className="w-full px-4 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all font-medium text-slate-800"
                   placeholder="E.g. Horizon Travel Partners"
                 />
+              </div>
+
+              <div>
+                {/* Shown on the INTERNAL copy of the voucher only -- a
+                    traveller has no use for the agency's GST registration. */}
+                <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1.5 block">GST Number</label>
+                <input
+                  type="text"
+                  value={b2bProfile.gstNumber || ''}
+                  onChange={(e) => setB2bProfile({ ...b2bProfile, gstNumber: e.target.value.toUpperCase() })}
+                  className="w-full px-4 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all font-medium text-slate-800"
+                  placeholder="09ABCDE1234F1Z5"
+                />
+                <span className="text-[10px] text-slate-400 mt-1 block">Optional. Appears on your internal voucher copy only.</span>
               </div>
 
               <div>
@@ -5514,6 +5680,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                     agencyEmail: b2bProfile.agencyEmail,
                     agencyWebsite: b2bProfile.agencyWebsite,
                     agencyLogo: b2bProfile.agencyLogo || '',
+                    gstNumber: b2bProfile.gstNumber || '',
                   });
                   setCurrentUser((prev) => (prev ? { ...prev, ...user } : prev));
                   setProfileSuccessMessage('Partner branding saved to your account — it follows you to any device.');
@@ -5821,7 +5988,328 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     }
   };
 
+  // Approve or reject an agent. A rejection asks for a reason, because the
+  // agent is shown it on his waiting screen and "no" with no explanation is
+  // not something he can act on.
+  const handleSetUserApproval = async (user, status) => {
+    let note = '';
+    if (status === 'rejected') {
+      const reason = window.prompt(
+        `Reject ${user.agencyName || user.fullName || user.email}?\n\nOptionally give a reason — the agent sees this on their sign-in screen.`,
+        ''
+      );
+      if (reason === null) return; // cancelled
+      note = reason;
+    } else if (!window.confirm(`Approve ${user.agencyName || user.fullName || user.email}? They will be able to quote and book straight away.`)) {
+      return;
+    }
+
+    try {
+      const updated = await setUserApproval(user.id, status, note);
+      setDb((prev) => ({
+        ...prev,
+        users: (prev.users || []).map((u) => (u.id === user.id ? updated : u)),
+      }));
+    } catch (err) {
+      window.alert('Could not update this account: ' + (err.message || 'Unknown error'));
+    }
+  };
+
+  // ---------------------------------------------------------------------
+  // Admin -> City Defaults. What a freshly built day in a city starts out as:
+  // which hotel at each star rating, which meal plan, and which activities on
+  // each successive night of the stay.
+  //
+  // Night plans are keyed by the night's INDEX in the stay, not by how long
+  // the stay is, so a three-night stay takes nights 1, 2 and 3 and adding a
+  // fourth later does not mean re-entering the first three.
+  //
+  // Every field is optional. A city left alone behaves exactly as the builder
+  // did before this screen existed.
+  // ---------------------------------------------------------------------
+  const renderCityDefaults = () => {
+    const cities = db.cities || [];
+    const rows = db.city_defaults || [];
+    const rowFor = (city) => rows.find((r) => sameCity(r.city, city)) || null;
+
+    const patchCity = (city, patch) => {
+      setDb((prev) => {
+        const existing = (prev.city_defaults || []).find((r) => sameCity(r.city, city));
+        const merged = {
+          city,
+          default_hotels: {},
+          default_meals: '',
+          night_plans: {},
+          ...(existing || {}),
+          ...patch,
+        };
+        return {
+          ...prev,
+          city_defaults: [
+            ...(prev.city_defaults || []).filter((r) => !sameCity(r.city, city)),
+            merged,
+          ],
+        };
+      });
+    };
+
+    const saveCity = async (city) => {
+      const row = rowFor(city);
+      if (!isApiSession()) {
+        window.alert('Sign in as an admin to save city defaults.');
+        return;
+      }
+      setCityDefaultsSaving(city);
+      try {
+        const saved = await saveCityDefaults(city, {
+          default_hotels: row?.default_hotels || {},
+          default_meals: row?.default_meals || '',
+          night_plans: row?.night_plans || {},
+        });
+        setDb((prev) => ({
+          ...prev,
+          city_defaults: [
+            ...(prev.city_defaults || []).filter((r) => !sameCity(r.city, city)),
+            saved,
+          ],
+        }));
+        setCityDefaultsSavedMessage(city);
+        setTimeout(() => setCityDefaultsSavedMessage(''), 3000);
+      } catch (err) {
+        window.alert('Could not save defaults for ' + city + ': ' + (err.message || 'Unknown error'));
+      } finally {
+        setCityDefaultsSaving('');
+      }
+    };
+
+    const clearCity = async (city) => {
+      if (!window.confirm(`Clear all defaults for ${city}? New days there will go back to picking whatever hotel comes first, with no activities.`)) return;
+      try {
+        if (isApiSession()) await deleteCityDefaults(city);
+        setDb((prev) => ({
+          ...prev,
+          city_defaults: (prev.city_defaults || []).filter((r) => !sameCity(r.city, city)),
+        }));
+      } catch (err) {
+        window.alert('Could not clear defaults: ' + (err.message || 'Unknown error'));
+      }
+    };
+
+    return (
+      <div className="flex flex-col gap-6 text-left">
+        <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
+          <h2 className="text-2xl font-bold font-heading text-[#0f2942]">City Defaults</h2>
+          <p className="text-slate-500 text-sm mt-1 leading-relaxed max-w-3xl">
+            What a new day in each city starts out as. Set the hotel you want used at each star
+            rating, the meal plan, and which activities to include on each night of a stay — so a
+            quote comes out ready to send instead of needing to be filled in by hand.
+          </p>
+          <p className="text-slate-500 text-xs mt-3 leading-relaxed max-w-3xl">
+            Nights are counted <strong>within the stay</strong>. A three-night stay uses nights 1, 2
+            and 3, so you can leave night 1 empty for the arrival day and put the full sightseeing
+            run on night 2. Anything left blank keeps the old behaviour, and anything filled in
+            automatically is shown to the agent and can be removed.
+          </p>
+        </div>
+
+        {cities.length === 0 && (
+          <div className="bg-white p-6 rounded-2xl border border-slate-200/80 text-sm text-slate-500">
+            Add cities in the Cities Editor first.
+          </div>
+        )}
+
+        {cities.map((city) => {
+          const row = rowFor(city);
+          const cityHotels = (db.hotels || []).filter((h) => sameCity(h.city, city));
+          const ratings = [...new Set(cityHotels.map((h) => h.category))].sort();
+          const cityActs = (db.activities || []).filter((a) => a.city && sameCity(a.city, city));
+          const plans = row?.night_plans || {};
+          // One row past the deepest night already configured, so there is
+          // always an empty night to fill in without pressing anything first.
+          const deepest = Object.keys(plans)
+            .map((n) => Number(n))
+            .filter((n) => Number.isFinite(n))
+            .reduce((a, b) => Math.max(a, b), 0);
+          const nightRows = Array.from({ length: Math.max(deepest + 1, 3) }, (_, i) => i + 1);
+          const isConfigured =
+            !!row &&
+            (Object.keys(row.default_hotels || {}).length > 0 ||
+              row.default_meals ||
+              Object.keys(plans).some((k) => (plans[k] || []).length > 0));
+
+          return (
+            <div key={city} className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/60 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <h3 className="font-extrabold text-base text-slate-800 font-heading">{city}</h3>
+                  {isConfigured ? (
+                    <span className="text-[9px] uppercase font-black tracking-wider bg-emerald-100 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded">
+                      Defaults set
+                    </span>
+                  ) : (
+                    <span className="text-[9px] uppercase font-black tracking-wider bg-slate-100 text-slate-500 border border-slate-200 px-2 py-0.5 rounded">
+                      Not set up
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {cityDefaultsSavedMessage === city && (
+                    <span className="text-[11px] font-bold text-emerald-600">Saved</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => saveCity(city)}
+                    disabled={cityDefaultsSaving === city}
+                    className="bg-orange-650 hover:bg-orange-700 disabled:opacity-60 text-white font-extrabold text-[10px] uppercase tracking-wider py-2 px-4 rounded-lg transition"
+                  >
+                    {cityDefaultsSaving === city ? 'Saving…' : 'Save ' + city}
+                  </button>
+                  {isConfigured && (
+                    <button
+                      type="button"
+                      onClick={() => clearCity(city)}
+                      className="bg-white hover:bg-red-50 text-red-700 border border-red-200 font-extrabold text-[10px] uppercase tracking-wider py-2 px-3 rounded-lg transition"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-6 flex flex-col gap-6">
+                {/* Hotels, one picker per star rating the city actually has. */}
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block mb-2">
+                    Default hotel by star rating
+                  </span>
+                  {ratings.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic">
+                      No hotels in {city} yet — add them in the Hotels Editor.
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap gap-4">
+                      {ratings.map((rating) => (
+                        <div key={rating} className="min-w-[220px]">
+                          <label className="text-[10px] font-bold text-slate-500 block mb-1">{rating}</label>
+                          <select
+                            value={row?.default_hotels?.[rating] || ''}
+                            onChange={(e) =>
+                              patchCity(city, {
+                                default_hotels: {
+                                  ...(row?.default_hotels || {}),
+                                  [rating]: e.target.value,
+                                },
+                              })
+                            }
+                            className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-semibold text-slate-800"
+                          >
+                            <option value="">First one in the list (no preference)</option>
+                            {cityHotels
+                              .filter((h) => h.category === rating)
+                              .map((h) => (
+                                <option key={h.id} value={h.id}>{h.name}</option>
+                              ))}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Meal plan. */}
+                <div className="max-w-[260px]">
+                  <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block mb-2">
+                    Default meal plan
+                  </label>
+                  <select
+                    value={row?.default_meals || ''}
+                    onChange={(e) => patchCity(city, { default_meals: e.target.value })}
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-semibold text-slate-800"
+                  >
+                    <option value="">Use the old rule (Chitwan full board, elsewhere breakfast)</option>
+                    <option value="CP">CP — Breakfast only</option>
+                    <option value="MAP">MAP — Breakfast &amp; dinner</option>
+                    <option value="AP">AP — All meals</option>
+                  </select>
+                </div>
+
+                {/* Night plans. */}
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block mb-1">
+                    Sightseeing by night of the stay
+                  </span>
+                  <p className="text-[11px] text-slate-400 mb-3">
+                    A 2-night stay uses nights 1 and 2; a 3-night stay uses 1, 2 and 3.
+                  </p>
+                  {cityActs.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic">
+                      No activities in {city} yet — add them in the Activities Editor.
+                    </p>
+                  ) : (
+                    <div className="flex flex-col gap-3">
+                      {nightRows.map((n) => {
+                        const selected = plans[String(n)] || [];
+                        return (
+                          <div key={n} className="border border-slate-150 rounded-xl p-3 bg-slate-50/40">
+                            <span className="text-[11px] font-extrabold text-slate-600 block mb-2">
+                              Night {n}
+                              {n === 1 ? ' (arrival day)' : ''}
+                            </span>
+                            <div className="flex flex-wrap gap-2">
+                              {cityActs.map((a) => {
+                                const on = selected.includes(a.id);
+                                return (
+                                  <button
+                                    key={a.id}
+                                    type="button"
+                                    onClick={() =>
+                                      patchCity(city, {
+                                        night_plans: {
+                                          ...plans,
+                                          [String(n)]: on
+                                            ? selected.filter((id) => id !== a.id)
+                                            : [...selected, a.id],
+                                        },
+                                      })
+                                    }
+                                    className={`text-[11px] font-semibold px-3 py-1.5 rounded-lg border transition ${
+                                      on
+                                        ? 'bg-emerald-600 text-white border-emerald-600'
+                                        : 'bg-white text-slate-600 border-slate-200 hover:border-emerald-400'
+                                    }`}
+                                  >
+                                    {on ? '✓ ' : '+ '}{a.name}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            {selected.length === 0 && (
+                              <span className="text-[10px] text-slate-400 italic mt-2 block">
+                                Nothing added on this night.
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   const renderUsersMaster = () => {
+    // Treat a missing status as approved: an account made before approval
+    // existed is a working account, and must never appear as though it were
+    // waiting on somebody.
+    const approvalOf = (u) => u.approvalStatus || 'approved';
+    const pendingAgents = (db.users || []).filter(
+      (u) => u.role === 'b2b' && approvalOf(u) === 'pending'
+    );
     const filteredUsers = (db.users || []).filter(u => {
       const query = userSearchQuery.toLowerCase().trim();
       if (!query) return true;
@@ -5851,6 +6339,52 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
             </button>
           </div>
         </div>
+
+        {/* The approval queue. Agents who have signed up and cannot trade yet
+            sit at the top of this screen rather than buried in the table --
+            an account waiting on TripGuru is work to do, not a row to find. */}
+        {pendingAgents.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 shadow-sm">
+            <h3 className="font-extrabold text-sm text-amber-900 flex items-center gap-2">
+              <ShieldCheck size={16} />
+              {pendingAgents.length} agent account{pendingAgents.length > 1 ? 's' : ''} awaiting your approval
+            </h3>
+            <p className="text-xs text-amber-800/80 mt-1">
+              These accounts cannot quote or book until you approve them.
+            </p>
+            <div className="flex flex-col gap-2.5 mt-4">
+              {pendingAgents.map((user) => (
+                <div key={user.id} className="bg-white border border-amber-200/70 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="text-xs leading-relaxed">
+                    <div className="font-extrabold text-slate-800">{user.agencyName || 'Unnamed agency'}</div>
+                    <div className="text-slate-500">{user.fullName} · {user.email}</div>
+                    <div className="text-slate-500">
+                      {user.countryCode} {user.phone}
+                      {user.gstNumber ? <> · GSTIN <span className="font-semibold text-slate-700">{user.gstNumber}</span></> : ' · no GST number given'}
+                    </div>
+                    {user.agencyAddress && <div className="text-slate-400">{user.agencyAddress}</div>}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleSetUserApproval(user, 'approved')}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[10px] uppercase tracking-wider py-2 px-4 rounded-lg transition"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSetUserApproval(user, 'rejected')}
+                      className="bg-white hover:bg-red-50 text-red-700 border border-red-200 font-extrabold text-[10px] uppercase tracking-wider py-2 px-4 rounded-lg transition"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Search bar */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -5924,6 +6458,17 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                           Traveler
                         </span>
                       )}
+                      {/* Only an agent goes through approval, and an approved
+                          one needs no pill -- that is the normal state. */}
+                      {user.role === 'b2b' && approvalOf(user) !== 'approved' && (
+                        <span className={`inline-block mt-1 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider ${
+                          approvalOf(user) === 'pending'
+                            ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                            : 'bg-red-100 text-red-700 border border-red-200'
+                        }`}>
+                          {approvalOf(user) === 'pending' ? 'Awaiting approval' : 'Rejected'}
+                        </span>
+                      )}
                     </td>
                     <td className="py-3.5 px-6 text-xs text-slate-600 font-mono">
                       <span className="text-slate-400 font-bold mr-1">{user.countryCode}</span>
@@ -5934,6 +6479,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                         <div>
                           <strong>Agency:</strong> {user.agencyName} <br />
                           <strong>Addr:</strong> {user.agencyAddress} <br />
+                          {user.gstNumber ? <><strong>GSTIN:</strong> {user.gstNumber} <br /></> : null}
                           <strong>Wallet:</strong> ₹{Number(user.walletBalance || 0).toLocaleString()}
                         </div>
                       ) : (
@@ -5950,6 +6496,19 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                         >
                           <Edit3 size={14} />
                         </button>
+                        {/* A rejection must not be a one-way door: rejecting
+                            the wrong agent is a slip, and without this the
+                            only way back would be to rebuild the account. */}
+                        {user.role === 'b2b' && approvalOf(user) === 'rejected' && (
+                          <button
+                            type="button"
+                            onClick={() => handleSetUserApproval(user, 'approved')}
+                            className="bg-transparent text-emerald-600 hover:text-emerald-800 p-2 hover:bg-emerald-50 rounded-xl transition"
+                            title="Approve this agent after all"
+                          >
+                            <ShieldCheck size={14} />
+                          </button>
+                        )}
                         {user.role === 'b2b' && (
                           <button
                             type="button"
@@ -6027,7 +6586,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           ...(authRole === 'b2b' ? {
             agencyName: authForm.agencyName,
             agencyAddress: authForm.agencyAddress,
-            agencyWebsite: authForm.agencyWebsite || ''
+            agencyWebsite: authForm.agencyWebsite || '',
+            gstNumber: authForm.gstNumber || ''
           } : {})
         };
         
@@ -6164,7 +6724,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                     phone: '', 
                     agencyName: '', 
                     agencyAddress: '', 
-                    agencyWebsite: '' 
+                    agencyWebsite: '', 
+                    gstNumber: '' 
                   }));
                 }}
                 className={`flex-1 text-center py-2.5 text-xs font-black uppercase tracking-wider rounded-xl transition duration-200 ${
@@ -6247,6 +6808,17 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                         className="w-full px-4 py-2.5 text-xs bg-slate-900/80 border border-slate-800 rounded-xl outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition text-slate-100"
                         placeholder="City, Country"
                       />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">GST Number (Optional)</label>
+                      <input
+                        type="text"
+                        value={authForm.gstNumber}
+                        onChange={(e) => handleFormChange('gstNumber', e.target.value.toUpperCase())}
+                        className="w-full px-4 py-2.5 text-xs bg-slate-900/80 border border-slate-800 rounded-xl outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition text-slate-100"
+                        placeholder="09ABCDE1234F1Z5"
+                      />
+                      <span className="text-[9px] text-slate-500">You can add this later from your profile.</span>
                     </div>
                     <div className="flex flex-col gap-1">
                       <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Agency Website (Optional)</label>
@@ -6332,7 +6904,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                   if (currentRoute === 'b2b') setShowB2bLoginPortal(false);
                   setAuthForm({
                     email: '', password: '', fullName: '', phone: '', countryCode: '+91',
-                    agencyName: '', agencyAddress: '', agencyWebsite: ''
+                    agencyName: '', agencyAddress: '', agencyWebsite: '', gstNumber: ''
                   });
                 }}
                 className="w-full text-center text-xs text-slate-400 hover:text-white border border-slate-800 rounded-xl py-2 hover:bg-slate-900 transition font-bold cursor-pointer"
@@ -6455,7 +7027,10 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           </div>
         )}
 
-        {view === 'b2b' && (
+        {/* An agent waiting on approval reaches the same screen whichever of
+            these he presses, so offering the menu at all only invites him to
+            try them one by one. The gate lower down is what enforces it. */}
+        {view === 'b2b' && !(isB2bAuthenticated && !isB2bApproved) && (
           <div className="px-4 py-2 mt-4 border-t border-slate-800">
             <div className="text-[10px] text-slate-500 font-semibold tracking-wider uppercase mb-2">Agent Navigation</div>
             <ul className="list-none flex flex-col gap-1">
@@ -6485,7 +7060,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           <div className="px-4 py-2 mt-4 border-t border-slate-800">
             <div className="text-[10px] text-slate-500 font-semibold tracking-wider uppercase mb-2">Admin Sheets (INR)</div>
             <ul className="list-none flex flex-col gap-1">
-              {['dashboard', 'cities', 'hotels', 'activities', 'vehicles', 'packages', 'leads', 'users', 'profile'].map(tab => (
+              {['dashboard', 'cities', 'citydefaults', 'hotels', 'activities', 'vehicles', 'packages', 'leads', 'users', 'profile'].map(tab => (
                 <li key={tab}>
                   <button 
                     onClick={() => setActiveAdminTab(tab)}
@@ -6493,6 +7068,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                   >
                     {tab === 'dashboard' && <TrendingUp size={12} />}
                     {tab === 'cities' && <Compass size={12} />}
+                    {tab === 'citydefaults' && <Check size={12} />}
                     {tab === 'hotels' && <Hotel size={12} />}
                     {tab === 'activities' && <Compass size={12} />}
                     {tab === 'vehicles' && <Car size={12} />}
@@ -6500,7 +7076,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                     {tab === 'leads' && <Users size={12} />}
                     {tab === 'users' && <Users size={12} />}
                     {tab === 'profile' && <User size={12} />}
-                    <span className="capitalize">{tab === 'leads' ? 'B2C Leads' : tab === 'users' ? 'Users Master' : tab === 'profile' ? 'My Profile' : `${tab} ${tab === 'dashboard' ? '' : 'Editor'}`}</span>
+                    <span className="capitalize">{tab === 'leads' ? 'B2C Leads' : tab === 'users' ? 'Users Master' : tab === 'profile' ? 'My Profile' : tab === 'citydefaults' ? 'City Defaults' : `${tab} ${tab === 'dashboard' ? '' : 'Editor'}`}</span>
                   </button>
                 </li>
               ))}
@@ -6592,7 +7168,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           {view === 'b2b' ? (
             <div className="text-[9px] text-slate-500 flex justify-between px-1">
               <span>B2B Portal</span>
-              <span className="text-emerald-450 font-bold">Comm: 10%</span>
+              <span className="text-emerald-450 font-bold">Your markup, your margin</span>
             </div>
           ) : (
             <div className="text-[9px] text-slate-500 text-center px-1">
@@ -6748,6 +7324,12 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                         <span>Admin Cities Master (INR ₹)</span>
                       </>
                     )}
+                    {activeAdminTab === 'citydefaults' && (
+                      <>
+                        <Check className="text-blue-600" />
+                        <span>City Defaults — what a new day starts as</span>
+                      </>
+                    )}
                     {activeAdminTab === 'hotels' && (
                       <>
                         <Hotel className="text-blue-600" />
@@ -6858,10 +7440,19 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
               sidebarAct = subtotalWithMarkupRounded - sidebarAcc - sidebarTrans;
             }
 
+            // A signed-in agent who has not been approved sees the waiting
+            // screen INSTEAD of the portal -- one gate covering every sub-view,
+            // rather than a guard bolted onto each of them that the next new
+            // screen would quietly miss. The server refuses his writes anyway;
+            // this stops him building a quote he is not allowed to save.
+            if (isB2B && isB2bAuthenticated && !isB2bApproved) {
+              return <div className="fade-in">{renderB2bAwaitingApproval()}</div>;
+            }
+
             return (
               <div className="fade-in">
                 {/* The dashboard shows agent-identifying data (agency, agent id,
-                    commission tier, wallet balance) and must never render to a
+                    markup earned, wallet balance) and must never render to a
                     visitor without an authenticated agent session. */}
                 {isB2B && b2bSubView === 'dashboard' && (
                   isB2bAuthenticated ? renderB2bDashboard() : renderB2bSignedOutPrompt()
@@ -7599,6 +8190,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
                                   startFreshTrip();
                                   setCustomItinerary(resolved);
+                                  setAutoFilledNotice([]);
                                   setStartCity(db.settings.wizard_default_start_city || 'Gorakhpur');
                                   setEndCity(db.settings.wizard_default_end_city || 'Gorakhpur');
                                   setSelectedVehicleId(db.settings.wizard_default_vehicle_id || 'v-suv');
@@ -8054,6 +8646,42 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                 booking — it will not create a new one. To quote a different trip instead, start
                                 from Preset Packages or the Custom Planner.
                               </span>
+                            </div>
+                          )}
+
+                          {/* What Admin's City Defaults filled in, named.
+                              Automatic suggestions were removed once before
+                              because they were silent: a paid activity landed
+                              on the second night in a city and the quote came
+                              out higher than the agent expected, with nothing
+                              on screen to say why. Anything pre-filled is
+                              listed here and removable on its day card. */}
+                          {autoFilledNotice.length > 0 && (
+                            <div className="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-100 p-3 rounded-xl flex items-start gap-2 leading-normal font-medium mb-5">
+                              <Info size={14} className="shrink-0 text-emerald-600 mt-0.5" />
+                              <div className="flex-1">
+                                <span>
+                                  Pre-filled from your saved defaults — change or remove anything below.
+                                </span>
+                                <ul className="mt-1.5 flex flex-col gap-0.5 list-none">
+                                  {autoFilledNotice.map((n) => (
+                                    <li key={n.day} className="text-emerald-900/90">
+                                      <strong>Day {n.day}, {n.city}:</strong>{' '}
+                                      {[
+                                        n.hotelName ? `stay at ${n.hotelName}` : '',
+                                        n.activityNames.length ? n.activityNames.join(', ') : '',
+                                      ].filter(Boolean).join(' · ')}
+                                    </li>
+                                  ))}
+                                </ul>
+                                <button
+                                  type="button"
+                                  onClick={() => setAutoFilledNotice([])}
+                                  className="mt-2 text-[10px] uppercase font-extrabold tracking-wider text-emerald-700 hover:text-emerald-900 underline"
+                                >
+                                  Got it
+                                </button>
+                              </div>
                             </div>
                           )}
 
@@ -8899,6 +9527,12 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                               <div>{whiteLabel.agencyAddress || "Travel Partner Address"}</div>
                               <div className="mt-0.5">Email: <span className="text-slate-700 font-semibold">{whiteLabel.agencyEmail || "booking@agency.com"}</span> | Phone: <span className="text-slate-700 font-semibold">{whiteLabel.agencyPhone || ""}</span></div>
                               {whiteLabel.agencyWebsite && <div className="mt-0.5">Website: <span className="text-slate-700 font-semibold">{whiteLabel.agencyWebsite}</span></div>}
+                              {/* GST registration is a trade detail: it belongs
+                                  on the operator's own record, not on the
+                                  document the traveller is handed. */}
+                              {!isClientCopy && whiteLabel.gstNumber && (
+                                <div className="mt-0.5">GSTIN: <span className="text-slate-700 font-semibold">{whiteLabel.gstNumber}</span></div>
+                              )}
                             </>
                           ) : (
                             <>
@@ -9319,15 +9953,17 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                         <Settings size={16} className="text-indigo-650" /> <span>Global Pricing Formulas (INR)</span>
                       </h4>
                       <p className="text-xs text-slate-500">
-                        Markups and government GST are calculated dynamically on every quote.
-                        On the agent portal GST is charged on the TripGuru price and the
-                        agent&apos;s own markup goes on top of it.
+                        Both figures below are <strong>TripGuru&apos;s own markup</strong> over net cost, and
+                        both are applied on every quote automatically. On the traveller portal the
+                        markup is the selling price, so GST is charged on top of it. On the agent
+                        portal GST is charged on the TripGuru price, and the agent then adds his own
+                        markup over that — the agent keeps that markup; TripGuru pays no commission.
                       </p>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-4">
                       <div className="w-[130px]">
-                        <label className="text-[9px] uppercase font-bold text-slate-400 tracking-wider block mb-1.5">B2C Client Markup (%)</label>
+                        <label className="text-[9px] uppercase font-bold text-slate-400 tracking-wider block mb-1.5">Your markup on B2C (%)</label>
                         <input 
                           type="number"
                           value={b2cMarkupInput}
@@ -9337,7 +9973,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                         />
                       </div>
                       <div className="w-[130px]">
-                        <label className="text-[9px] uppercase font-bold text-slate-400 tracking-wider block mb-1.5">B2B Partner Markup (%)</label>
+                        <label className="text-[9px] uppercase font-bold text-slate-400 tracking-wider block mb-1.5">Your markup on B2B (%)</label>
                         <input 
                           type="number"
                           value={b2bMarkupInput}
@@ -9553,7 +10189,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                   <div>₹{b.total_price.toLocaleString()}</div>
                                   {b.type === 'B2B' && (
                                     <div className="text-[10px] text-emerald-600 font-bold mt-0.5">
-                                      Comm: ₹{(b.agent_commission || Math.round(b.total_price * 0.1)).toLocaleString()}
+                                      Agent markup: ₹{agentEarningsOn(b).toLocaleString()}
                                     </div>
                                   )}
                                 </td>
@@ -10475,11 +11111,10 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                             travelers: { adults: 2, cwb: 0, cnb: 0 },
                             roomConfig: { single: 0, double: 1, extra_adult: 0, cwb: 0, cnb: 0 },
                             itinerary: pkg.days.map(d => {
-                              const h = db.hotels.find(htl => sameCity(htl.city, d.city) && htl.category === pkg.default_hotel_category);
                               return {
                                 ...d,
-                                hotelId: h ? h.id : '',
-                                meals: d.city.toLowerCase() === 'chitwan' ? 'AP' : 'CP',
+                                hotelId: defaultHotelId(db.city_defaults, db.hotels, d.city, pkg.default_hotel_category),
+                                meals: defaultMealPlan(db.city_defaults, d.city),
                                 transfer_route: d.transfer_route !== undefined ? d.transfer_route : '',
                                 activity_ids: [...d.activity_ids]
                               };
@@ -10663,11 +11298,10 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                 travelers: { adults: 2, cwb: 0, cnb: 0 },
                                 roomConfig: { single: 0, double: 1, extra_adult: 0, cwb: 0, cnb: 0 },
                                 itinerary: editingPackage.days.map(d => {
-                                  const h = db.hotels.find(htl => sameCity(htl.city, d.city) && htl.category === editingPackage.default_hotel_category);
                                   return {
                                     ...d,
-                                    hotelId: h ? h.id : '',
-                                    meals: d.city.toLowerCase() === 'chitwan' ? 'AP' : 'CP',
+                                    hotelId: defaultHotelId(db.city_defaults, db.hotels, d.city, editingPackage.default_hotel_category),
+                                    meals: defaultMealPlan(db.city_defaults, d.city),
                                     transfer_route: d.transfer_route !== undefined ? d.transfer_route : '',
                                     activity_ids: [...d.activity_ids]
                                   };
@@ -11061,6 +11695,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
               })()}
 
               {/* TAB 9: Platform Users Master */}
+              {activeAdminTab === 'citydefaults' && renderCityDefaults()}
+
               {activeAdminTab === 'users' && renderUsersMaster()}
 
               {/* TAB 8: Company Profile Settings */}
@@ -12402,7 +13038,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                     </div>
                     <input
                       type="text"
-                      placeholder="Reason (e.g. Commission payout for booking #1234)"
+                      placeholder="Reason (e.g. Refund for booking #1234)"
                       value={walletEntryForm.reason}
                       onChange={(e) => setWalletEntryForm({ ...walletEntryForm, reason: e.target.value })}
                       className="form-input text-xs"

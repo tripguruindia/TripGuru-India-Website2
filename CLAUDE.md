@@ -51,9 +51,18 @@ npm run lint         # tsc --noEmit
 (see `.env.example`). **Vite reads env files only at startup** — restart the
 dev server after changing them.
 
-There is **no automated test suite.** All verification to date has been
-throwaway scripts plus manual browser checks. If you add tests, that is a
-genuine improvement, not scope creep.
+Two committed test suites:
+
+- **`npm test`** (repo root) — `test/cityDefaults.test.mjs`, the City Defaults
+  resolver. Bundled with esbuild first, because the source uses Vite's
+  extensionless imports.
+- **`npm test`** from **`server/`** — `server/test/approval.test.js`, the agent
+  approval gate. It boots the real Express app against a throwaway libSQL file
+  in the temp directory, so it touches nothing live and needs no credentials,
+  then tears both down.
+
+Everything else is still verified by throwaway scripts and browser checks.
+**More tests are a genuine improvement, not scope creep.**
 
 ## The three portals
 
@@ -181,17 +190,96 @@ Each portal is an **independent session in the same browser**: tokens live in
 `nepal_quote_user_<route>`. Do not reintroduce a shared token or user key —
 both have caused cross-portal leaks before.
 
-### Agent commission
+### There is no commission — the agent keeps his own markup
 
-A flat **10%**, from `AGENT_COMMISSION_RATE = 0.1` hardcoded in **both**
-`routes/bookings.js` and `routes/quotes.js` — change one and the other will
-disagree. It is computed server-side from the stored total, never taken from
-the client.
+**TripGuru pays agents nothing.** The agent is shown a cost, adds his own
+markup on top of it, and collects the whole amount from his client. His
+earnings are simply that markup. There is no commission rate, no tier system,
+and nothing for TripGuru to pay out.
 
-There is **no tier system.** "Partner Status: Gold Tier (10% Comm.)" is a
-hardcoded string in the agent dashboard and the agent profile; there is no
-Silver, and no tier column on `users`. Making tiers real means a per-agent rate
-on `users`, set in Admin, read by both routes, with the label derived from it.
+`agentEarnings(totalPrice, markupPercent)` in **`server/src/agentEarnings.js`**
+is the single definition, imported by both `routes/bookings.js` and
+`routes/quotes.js`. It replaced `AGENT_COMMISSION_RATE = 0.1`, which was
+declared separately in each of those files — changing one left the two
+disagreeing about what the same trip was worth. `agentEarningsOn(booking)` at
+module scope in `App.jsx` mirrors it for display.
+
+The markup is applied **last** on the agent portal (GST is charged on
+TripGuru's price, the markup goes on top of the GST-inclusive figure), so it
+works back out of the stored total exactly:
+
+    markup = total x pct / (100 + pct)
+
+Deriving it from `total_price` and `markup_percent` — both of which have always
+been stored — means it is right for **every booking ever made**, including the
+ones written while the flat 10% was still being recorded. The
+`bookings.agent_commission` column is kept and now holds this real figure; the
+name is legacy.
+
+The decorative badges are gone: "Partner Status: Gold Tier (10% Comm.)" (agent
+dashboard *and* agent profile), the "Commissions (10%)" dashboard card, the
+"Commission (10%)" table column, and the sidebar's "Comm: 10%". Do not
+reintroduce a commission figure — there is nothing behind it.
+
+### TripGuru's own markup lives in Admin, and always did
+
+Admin → Global Pricing Formulas has **both** rates, and had them all along —
+they were simply labelled ambiguously ("B2B Partner Markup" reads as the
+*partner's* markup when it is in fact TripGuru's margin on the price the
+partner is shown). They now read **"Your markup on B2C (%)"** and **"Your
+markup on B2B (%)"**.
+
+Watch the names, which do not match what they hold:
+
+| Stored as | Really is | Reaches `calculateQuote` as |
+|---|---|---|
+| `settings.b2c_markup_percent` | TripGuru's markup on B2C | `markup_percent` |
+| `settings.b2b_markup_percent` | TripGuru's markup on B2B | `b2b_admin_margin_percent` |
+| `bookings/quotes.markup_percent` | on B2B, the **agent's own** markup | `markup_percent` |
+
+So `markup_percent` means TripGuru's margin on a B2C trip and the agent's
+margin on a B2B one. In `App.jsx` the state is `b2cMarkupInput` /
+`b2bMarkupInput` (both TripGuru's, bound to the Admin fields) versus
+`agentMarkupInput` (the agent's own box in the builder).
+
+### Agent accounts are approved before they can trade
+
+A B2B signup creates a **`pending`** account. It cannot quote or book until an
+admin approves it in **Admin -> Users Master**, where pending agents sit in a
+queue at the top of the screen with Approve / Reject beside them.
+
+Enforcement is **server-side**, by `requireApprovedAgent` in
+`middleware/auth.js`, on every route where an agent creates or amends money:
+`POST`/`PATCH` on `/bookings`, and `POST`/`PATCH`/`DELETE`/`:id/convert` on
+`/quotes`. Hiding the buttons would not have been protection.
+
+It reads the status from the **database, never the token**. Tokens last 30
+days, so an agent rejected this morning would still be carrying one minted
+while he was approved. Reads are deliberately left unguarded so the waiting
+screen can still load. Non-agents pass straight through — this is a rule about
+agent accounts, not a general permission check.
+
+**`approval_status` defaults to `'approved'`, not `'pending'`.** Every account
+that already existed when the column arrived is a real, working account;
+defaulting to pending would have locked every current agent out the moment
+Render deployed. Only a fresh B2B signup writes `'pending'`, explicitly. The
+same rule holds in the UI: a missing status reads as approved everywhere.
+
+Only `PATCH /admin/users/:id/approval` may write the status. `PATCH /auth/me`
+deliberately cannot, or the queue would be self-service. A rejection carries a
+reason, shown to the agent; a rejected agent can be approved after all from his
+row, because rejecting the wrong one is a slip.
+
+The **front end has one gate**, at the point where every B2B sub-view renders —
+not a guard per screen, which the next new screen would quietly miss. The agent
+navigation is hidden while waiting, since every item led to the same screen.
+
+### The GST number
+
+Optional at B2B signup, stored on `users.gst_number`, editable by the agent
+through `PATCH /auth/me`, and printed on the **internal copy of the voucher
+only** — a traveller has no use for the agency's GST registration, and the
+client copy carries no trade wording.
 
 ### Saved quotes
 
@@ -414,14 +502,63 @@ An activity is only offerable on a day in its **own city**; compare through
 `activitiesInCity()`, which trims and is null-safe. One whose city is not in
 the Cities master can never be used, so the Admin list flags it.
 
-**Nothing is ever added to a day automatically.** The intake wizard used to
-drop a hardcoded activity (`a-ktm-sightseeing`, `a-pok-boating`,
+**Automatic suggestions are back, driven by Admin.** The intake wizard once
+dropped a *hardcoded* activity (`a-ktm-sightseeing`, `a-pok-boating`,
 `a-chi-safari`) on the second night in a city, so asking for two nights in
 Kathmandu silently added a paid activity nobody chose and the quote came out
-higher than the agent expected. Activities are picked by hand in the day
-cards. Tanmay wants automatic suggestions back **later**; when they return
-they must be driven by the activities master, not hardcoded ids, and be
-visible and removable at the moment they are added.
+higher than the agent expected. That was removed, and has now returned on the
+terms it failed on: driven by **Admin -> City Defaults** rather than hardcoded
+ids, and **announced** — the builder shows a banner naming every day that was
+pre-filled, and each item is removable on its day card. See *City Defaults*
+below.
+
+## City Defaults — what a new day starts as
+
+**Admin -> City Defaults** decides, per city: which hotel to book at each star
+rating, which meal plan to assume, and which activities to include on each
+night of a stay. It is what makes a quote come out ready to send, and it is
+how a hotel TripGuru has a partnership with actually gets used.
+
+Before it existed the answers were spread through the builder and effectively
+arbitrary:
+
+- the hotel was **`cityHotels[0]`** — whichever hotel happened to sit first in
+  the Hotels master for that city and rating, so with several options the
+  choice looked random (this is the "auto picking some hotels" Tanmay reported;
+  it was never literally hardcoded);
+- the meal plan was the literal **`city === 'chitwan' ? 'AP' : 'CP'`**, written
+  out in **nine** separate places, so no other city could ever default to
+  anything but CP.
+
+All of that now goes through **`utils/cityDefaults.js`**, the one module that
+decides. `buildDayDefaults()` returns the hotel, meals and activities *and* a
+plain-language list of what it filled in, which is what the builder's banner
+renders.
+
+**Night plans are keyed by the night's index within the stay**, not by how long
+the stay is: `{"1": [...], "2": [...]}`. A three-night stay takes nights 1, 2
+and 3, so adding a fourth later does not mean re-entering the first three, and
+the arrival day is handled naturally (night 1 light, night 2 the full run).
+
+**Everything is optional, and unconfigured means unchanged.** A city with no
+row, or a row with a field unset, falls back to exactly the old behaviour. This
+is the property the committed test guards hardest — every live quote depends on
+it, because the table starts empty.
+
+A configured default is only honoured if it still resolves: a hotel that was
+deleted or re-rated falls back rather than dangling, and an activity that was
+deleted or moved to another city is dropped rather than silently charged for.
+
+**A new master has to be named in the public-db merge or the portals never see
+it.** The B2C/B2B load in `App.jsx` is a **whitelist** of keys copied out of
+`/public/db`. `city_defaults` was missing from it at first, and the symptom was
+exactly the kind that wastes an hour: Admin saved the defaults correctly, the
+API returned them, and the builder still picked whatever hotel came first.
+
+Automatic activities are added by the **wizard** and by new days in a reshape.
+They are deliberately *not* added when a day is added by hand or moved to
+another city — the operator asked for a day, not for something paid to appear
+on it.
 
 ## The quote builder
 
@@ -492,8 +629,22 @@ leisure while the itinerary under it described a full day of sightseeing.
 
 ## Current state and what's next
 
-As of 2026-08-24, `main` is at PR #36 and everything is merged and deployed;
-no open PRs. Live since the last handoff, in the order it shipped:
+As of 2026-08-24, `main` is at PR #37. **PR #38 is open and not yet merged** —
+Tanmay asked to work through the whole agreed list and merge it in one go, so
+it carries all three items below rather than shipping one at a time:
+
+- There is no commission anywhere; the agent keeps the markup he adds, and the
+  Admin markup fields say whose markup they are.
+- A new agent account is `pending` until an admin approves it, enforced
+  server-side.
+- B2B signup collects an optional GST number.
+- **Admin -> City Defaults**: the hotel, meal plan and per-night sightseeing a
+  new day starts with, replacing an arbitrary "first hotel in the list" and a
+  meal rule hardcoded in nine places.
+- First committed tests: `test/cityDefaults.test.mjs` and
+  `server/test/approval.test.js`.
+
+Live since the last handoff, in the order it shipped:
 
 - Room rates show every bed the party occupies, and warn when a bed has no
   rate set; hotels in a city offer other star ratings when the trip's rating
@@ -532,22 +683,14 @@ flight inventory) — the itinerary says so instead.
 
 ### Agreed next, in Tanmay's words
 
-1. **"Partner Status: Gold Tier (10% Comm.)" is not a real feature.** It is a
-   hardcoded string in two places (the agent dashboard and the agent profile),
-   there is no Silver anywhere, and there is no tier column. Every agent earns
-   10%, from `AGENT_COMMISSION_RATE = 0.1` hardcoded in *both*
-   `server/src/routes/bookings.js` and `server/src/routes/quotes.js`. Either
-   make tiers real — a per-agent rate on `users`, set in Admin, read by both
-   routes, with the label derived from it — or drop the wording. Do not leave
-   a decorative badge implying a commission structure that does not exist.
-2. **A new B2B account must not work until an admin approves it.** Signup
-   currently creates a live agent account that can quote and book immediately.
-   Needs an approval state on `users`, a signed-out "awaiting approval" screen,
-   an Admin queue to approve or reject, and server-side enforcement — an
-   unapproved agent's token must be refused by the booking and quote routes,
-   not merely hidden in the UI.
-3. **B2B signup should collect a GST number.** A field on signup, stored on
-   `users`, shown in the agent profile and on the internal copy of the voucher.
+1. ~~"Partner Status: Gold Tier (10% Comm.)" is not a real feature.~~
+   **Done.** Tanmay's ruling: there is no commission structure at all — the
+   agent simply adds his markup to the cost shown to him. See *There is no
+   commission* above.
+2. ~~A new B2B account must not work until an admin approves it.~~ **Done.**
+   See *Agent accounts are approved before they can trade* above.
+3. ~~B2B signup should collect a GST number.~~ **Done**, and **optional** —
+   Tanmay's call: an agent may register without one and add it later.
 4. **Email, later.** OTP and email verification at signup, and automatic mail
    (booking confirmations, quotes to clients). Nothing exists today: "Forgot
    Password?" only tells the user to contact the administrator. This one is
@@ -608,6 +751,7 @@ node node_modules/esbuild/bin/esbuild test.mjs --bundle --platform=node \
 ```
 
 Suites written this way have covered flight legs, airport-served-by-another-
-city, reverse pricing, per-vehicle activities and the structure merge. They
-live in the session scratchpad, not the repo — **there is still no committed
-test suite, and adding one remains a genuine improvement.**
+city, reverse pricing, per-vehicle activities and the structure merge. Those
+live in the session scratchpad. The one suite that **is** in the repo is
+`server/test/approval.test.js` (`npm test` from `server/`) — follow its shape
+for anything else worth committing.

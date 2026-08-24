@@ -1,7 +1,8 @@
 const express = require('express');
 const client = require('../db');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireApprovedAgent } = require('../middleware/auth');
 const { serializeQuote } = require('../serializers');
+const { agentEarnings } = require('../agentEarnings');
 
 const router = express.Router();
 
@@ -24,7 +25,8 @@ async function run(sql, args = []) {
 }
 
 const VALID_STATUSES = ['Draft', 'Sent', 'Won', 'Lost'];
-const AGENT_COMMISSION_RATE = 0.1;
+// See src/agentEarnings.js -- the agent keeps his own markup; there is no
+// commission rate to hardcode here.
 
 // Every quote belongs to exactly one account, and which column holds that
 // depends on the role. Ownership is derived from the verified JWT only --
@@ -80,7 +82,7 @@ router.get('/:id', requireAuth, async (req, res) => {
 // ---------------------------------------------------------------------------
 // POST /quotes -- save a new quote.
 // ---------------------------------------------------------------------------
-router.post('/', requireAuth, async (req, res) => {
+router.post('/', requireAuth, requireApprovedAgent, async (req, res) => {
   const b = req.body || {};
   const now = new Date().toISOString();
   const id = genId();
@@ -163,7 +165,7 @@ const PATCHABLE = {
   notes: (v) => String(v || ''),
 };
 
-router.patch('/:id', requireAuth, async (req, res) => {
+router.patch('/:id', requireAuth, requireApprovedAgent, async (req, res) => {
   const { column, id: ownerId } = ownerFilter(req.user);
   const existing = await one(
     `SELECT * FROM quotes WHERE id = ? AND ${column} = ?`,
@@ -230,7 +232,7 @@ router.patch('/:id', requireAuth, async (req, res) => {
 // ---------------------------------------------------------------------------
 // DELETE /quotes/:id
 // ---------------------------------------------------------------------------
-router.delete('/:id', requireAuth, async (req, res) => {
+router.delete('/:id', requireAuth, requireApprovedAgent, async (req, res) => {
   const { column, id: ownerId } = ownerFilter(req.user);
   const existing = await one(
     `SELECT id, converted_booking_id FROM quotes WHERE id = ? AND ${column} = ?`,
@@ -255,7 +257,7 @@ router.delete('/:id', requireAuth, async (req, res) => {
 // Idempotent: converting twice returns the existing booking rather than
 // creating a duplicate.
 // ---------------------------------------------------------------------------
-router.post('/:id/convert', requireAuth, async (req, res) => {
+router.post('/:id/convert', requireAuth, requireApprovedAgent, async (req, res) => {
   const { column, id: ownerId } = ownerFilter(req.user);
   const quote = await one(
     `SELECT * FROM quotes WHERE id = ? AND ${column} = ?`,
@@ -324,7 +326,7 @@ router.post('/:id/convert', requireAuth, async (req, res) => {
       itinerarySummary,
       isB2B ? 'B2B' : 'B2C',
       isB2B ? ownerId : null,
-      isB2B ? Math.round(Number(quote.total_price || 0) * AGENT_COMMISSION_RATE) : null,
+      isB2B ? agentEarnings(quote.total_price, quote.markup_percent) : null,
       quote.vehicle_id || '',
       quote.hotel_category || '',
       quote.start_city || '',
