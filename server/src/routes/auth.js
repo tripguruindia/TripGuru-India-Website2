@@ -54,6 +54,9 @@ router.post('/signup', async (req, res) => {
   if (role === 'b2b' && !profileData.agencyName) {
     return res.status(400).json({ error: 'agencyName is required for B2B signup' });
   }
+  if (role === 'b2b' && !String(profileData.gstNumber || '').trim()) {
+    return res.status(400).json({ error: 'gstNumber is required for B2B signup' });
+  }
 
   const normalizedEmail = String(email).toLowerCase().trim();
   const existing = await findUserByEmail(normalizedEmail);
@@ -69,8 +72,8 @@ router.post('/signup', async (req, res) => {
     sql: `INSERT INTO users
       (id, email, password_hash, role, full_name, phone, country_code,
        agency_name, agency_address, agency_phone, agency_email, agency_website,
-       wallet_balance, address, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       gst_number, approval_status, wallet_balance, address, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     args: [
       id,
       normalizedEmail,
@@ -84,7 +87,11 @@ router.post('/signup', async (req, res) => {
       profileData.agencyPhone || null,
       profileData.agencyEmail || null,
       profileData.agencyWebsite || null,
-      role === 'b2b' ? 0 : 0,
+      role === 'b2b' ? String(profileData.gstNumber).trim() : null,
+      // A new agent account cannot trade until an admin approves it. Anything
+      // else -- a traveller account -- is live immediately, as it always was.
+      role === 'b2b' ? 'pending' : 'approved',
+      0,
       profileData.address || null,
       createdAt,
     ],
@@ -110,7 +117,8 @@ router.get('/me', requireAuth, async (req, res) => {
 // Which row is written comes from the verified token, never the body -- the
 // same rule that governs bookings and quotes. Role, email, password and wallet
 // balance are not editable here: changing those is an admin action
-// (PUT /admin/users/:id), not a self-service one.
+// (PUT /admin/users/:id), not a self-service one. Neither is approval_status:
+// an agent must never be able to approve himself out of the pending queue.
 //
 // The logo is a data URL. It is capped because it rides along with every
 // login and /me call, and an uncapped one would make both slow for everybody.
@@ -133,7 +141,8 @@ router.patch('/me', requireAuth, async (req, res) => {
     sql: `UPDATE users SET
             full_name = ?, phone = ?, country_code = ?, address = ?,
             agency_name = ?, agency_address = ?, agency_phone = ?,
-            agency_email = ?, agency_website = ?, agency_logo = ?
+            agency_email = ?, agency_website = ?, agency_logo = ?,
+            gst_number = ?
           WHERE id = ?`,
     args: [
       pick(b.fullName, existing.full_name),
@@ -146,6 +155,7 @@ router.patch('/me', requireAuth, async (req, res) => {
       pick(b.agencyEmail, existing.agency_email),
       pick(b.agencyWebsite, existing.agency_website),
       pick(b.agencyLogo, existing.agency_logo),
+      pick(b.gstNumber, existing.gst_number),
       req.user.id,
     ],
   });

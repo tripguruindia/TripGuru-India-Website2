@@ -142,6 +142,11 @@ function serializeUser(u) {
     agencyEmail: u.agency_email,
     agencyWebsite: u.agency_website,
     agencyLogo: u.agency_logo || '',
+    // Defaulted here as well as in the DB so a row read back before the
+    // migration has run still reports a usable status rather than undefined.
+    approvalStatus: u.approval_status || 'approved',
+    approvalNote: u.approval_note || '',
+    gstNumber: u.gst_number || '',
     walletBalance: u.wallet_balance,
     address: u.address,
     createdAt: u.created_at,

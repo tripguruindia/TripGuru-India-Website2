@@ -37,6 +37,19 @@ const ADDITIVE_COLUMNS = [
   // An agent's own logo, so their branding follows the account rather than
   // living in one browser's localStorage.
   { table: 'users', column: 'agency_logo', ddl: 'ALTER TABLE users ADD COLUMN agency_logo TEXT' },
+  // A B2B account has to be approved by an admin before it can trade. The
+  // default is 'approved', NOT 'pending': every account that already exists
+  // when this column arrives is a real, working account, and defaulting to
+  // pending would lock every current agent out of the portal on deploy.
+  // Only a fresh B2B signup writes 'pending', and it does so explicitly.
+  {
+    table: 'users',
+    column: 'approval_status',
+    ddl: "ALTER TABLE users ADD COLUMN approval_status TEXT NOT NULL DEFAULT 'approved'",
+  },
+  { table: 'users', column: 'approval_note', ddl: 'ALTER TABLE users ADD COLUMN approval_note TEXT' },
+  // GST registration number, collected at B2B signup.
+  { table: 'users', column: 'gst_number', ddl: 'ALTER TABLE users ADD COLUMN gst_number TEXT' },
 ];
 
 async function applyAdditiveColumns() {

@@ -535,6 +535,33 @@ router.put('/users/:id', async (req, res) => {
   res.json(serializeUser(await one('SELECT * FROM users WHERE id = ?', [req.params.id])));
 });
 
+// ---------------------------------------------------------------------------
+// PATCH /admin/users/:id/approval -- approve or reject an agent account.
+//
+// This is the only route that may write approval_status: an agent editing his
+// own profile (PATCH /auth/me) deliberately cannot, or the pending queue would
+// be self-service. The whole admin router already sits behind
+// requireAuth + requireRole('admin').
+// ---------------------------------------------------------------------------
+router.patch('/users/:id/approval', async (req, res) => {
+  const { status, note } = req.body || {};
+  if (!['approved', 'rejected', 'pending'].includes(status)) {
+    return res.status(400).json({ error: "status must be 'approved', 'rejected' or 'pending'" });
+  }
+  const existing = await one('SELECT * FROM users WHERE id = ?', [req.params.id]);
+  if (!existing) return res.status(404).json({ error: 'User not found' });
+  if (existing.role !== 'b2b') {
+    return res.status(400).json({ error: 'Only agent accounts go through approval' });
+  }
+
+  await run('UPDATE users SET approval_status = ?, approval_note = ? WHERE id = ?', [
+    status,
+    note ? String(note).slice(0, 500) : null,
+    req.params.id,
+  ]);
+  res.json(serializeUser(await one('SELECT * FROM users WHERE id = ?', [req.params.id])));
+});
+
 router.post('/users/:id/reset-password', async (req, res) => {
   const { newPassword } = req.body || {};
   if (!newPassword || newPassword.length < 6 || !/[a-zA-Z]/.test(newPassword) || !/[0-9]/.test(newPassword)) {

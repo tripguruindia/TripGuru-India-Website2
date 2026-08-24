@@ -1,6 +1,6 @@
 const express = require('express');
 const client = require('../db');
-const { optionalAuth, requireAuth } = require('../middleware/auth');
+const { optionalAuth, requireAuth, requireApprovedAgent } = require('../middleware/auth');
 const { agentEarnings } = require('../agentEarnings');
 const { serializeBooking } = require('../serializers');
 
@@ -37,7 +37,7 @@ async function run(sql, args = []) {
 // agent_id: 'AGT-9021' for every single B2B booking -- this route is what
 // fixes that).
 // ---------------------------------------------------------------------------
-router.post('/', optionalAuth, async (req, res) => {
+router.post('/', optionalAuth, requireApprovedAgent, async (req, res) => {
   const b = req.body || {};
   if (!b.client_name || !b.email || !b.phone) {
     return res.status(400).json({ error: 'client_name, email, and phone are required' });
@@ -125,7 +125,7 @@ router.post('/', optionalAuth, async (req, res) => {
 // itinerary), but agent_commission is always recomputed here from that total.
 // The type, the owner and the created_at date are immutable.
 // ---------------------------------------------------------------------------
-router.patch('/:id', requireAuth, async (req, res) => {
+router.patch('/:id', requireAuth, requireApprovedAgent, async (req, res) => {
   const b = req.body || {};
   const existing = await one('SELECT * FROM bookings WHERE id = ?', [req.params.id]);
 

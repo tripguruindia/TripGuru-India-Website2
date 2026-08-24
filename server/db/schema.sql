@@ -149,6 +149,16 @@ CREATE TABLE IF NOT EXISTS users (
   -- Data URL of the agency's own logo, shown on the vouchers they send their
   -- clients. Added via ADDITIVE_COLUMNS for databases that predate it.
   agency_logo    TEXT,
+  -- Whether this account may actually trade. A B2B signup creates a 'pending'
+  -- account that an admin has to approve before it can quote or book; every
+  -- other account (B2C, admin, and every account that predates this column)
+  -- is 'approved', which is why the default is not 'pending'. Rejecting an
+  -- agent sets 'rejected' and, optionally, a reason in approval_note.
+  approval_status TEXT NOT NULL DEFAULT 'approved',
+  approval_note   TEXT,
+  -- The agency's GST registration number, collected at B2B signup. Shown in
+  -- the agent's profile and on the internal copy of the voucher only.
+  gst_number     TEXT,
   wallet_balance REAL NOT NULL DEFAULT 0,
   address        TEXT,
   created_at     TEXT NOT NULL
