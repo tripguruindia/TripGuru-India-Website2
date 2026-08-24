@@ -54,6 +54,7 @@ import {
   updateUser,
   deleteUser,
   resetUserPassword,
+  setUserApproval,
   getMyWallet,
   getAgentWallet,
   addWalletTransaction,
@@ -83,7 +84,8 @@ const EMPTY_B2B_PROFILE = {
   agencyAddress: '',
   agencyEmail: '',
   agencyPhone: '',
-  agencyWebsite: ''
+  agencyWebsite: '',
+  gstNumber: ''
 };
 
 const formatCityName = (c) => {
@@ -419,7 +421,8 @@ function App() {
         agencyAddress: user.agencyAddress || '123 Travel Street, Delhi',
         agencyEmail: user.agencyEmail || user.email,
         agencyPhone: user.agencyPhone || user.phone,
-        agencyWebsite: user.agencyWebsite || ''
+        agencyWebsite: user.agencyWebsite || '',
+        gstNumber: user.gstNumber || ''
       });
     } else {
       setView('b2c');
@@ -768,7 +771,8 @@ function App() {
     countryCode: '+91',
     agencyName: '',
     agencyAddress: '',
-    agencyWebsite: ''
+    agencyWebsite: '',
+    gstNumber: ''
   });
 
   // Admin Rate Editor States
@@ -4394,6 +4398,15 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   // An agent session, not merely "the b2b route is open".
   const isB2bAuthenticated = !!currentUser && currentUser.role === 'b2b';
 
+  // A new agent account is created 'pending' and cannot trade until an admin
+  // approves it. Anything other than an explicit 'pending'/'rejected' counts
+  // as approved: an account from before this existed, or a server that has
+  // not sent the field, is a working account and must not be locked out.
+  // This only decides what is SHOWN -- the booking and quote routes enforce
+  // it server-side, so hiding the screen is convenience, not security.
+  const agentApprovalStatus = currentUser?.approvalStatus || 'approved';
+  const isB2bApproved = agentApprovalStatus === 'approved';
+
   // ---------------------------------------------------------------------
   // "My Quotes" -- the saved-quote pipeline, shared by B2B and B2C.
   // ---------------------------------------------------------------------
@@ -4799,6 +4812,59 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       </div>
     </div>
   );
+
+  // Shown in place of the whole agent portal while an account is pending or
+  // after it has been rejected. Deliberately not a dead end: it names the
+  // agency it is waiting on, shows the reason if one was given, and leaves
+  // sign-out available so a different account can be used.
+  const renderB2bAwaitingApproval = () => {
+    const rejected = agentApprovalStatus === 'rejected';
+    return (
+      <div className="max-w-3xl mx-auto py-10">
+        <div className={`rounded-3xl p-8 shadow-lg text-center bg-gradient-to-r ${
+          rejected ? 'from-red-900 to-slate-900' : 'from-amber-700 to-indigo-950'
+        }`}>
+          <span className={`text-xs px-3 py-1 rounded-full uppercase tracking-wider font-semibold text-white ${
+            rejected ? 'bg-red-700' : 'bg-amber-600'
+          }`}>
+            {rejected ? 'Application declined' : 'Awaiting approval'}
+          </span>
+          <h2 className="text-3xl font-extrabold mt-4 font-heading leading-tight text-white">
+            {rejected ? 'This account cannot be used' : 'Your account is being reviewed'}
+          </h2>
+          <p className="mt-4 text-sm leading-relaxed max-w-lg mx-auto text-slate-200">
+            {rejected
+              ? 'TripGuru has declined this partner application. If you believe this is a mistake, please get in touch and we will take another look.'
+              : 'Thanks for registering. A member of the TripGuru team checks every new partner account by hand, so quoting and booking stay switched off until yours is approved.'}
+          </p>
+
+          <div className="mt-6 inline-flex flex-col gap-2 text-left bg-black/25 rounded-2xl px-5 py-4 text-xs text-slate-200">
+            <div>Agency: <strong className="text-white font-semibold">{currentUser?.agencyName || '—'}</strong></div>
+            <div>Registered email: <strong className="text-white font-semibold">{currentUser?.email}</strong></div>
+            {currentUser?.gstNumber ? (
+              <div>GST number: <strong className="text-white font-semibold">{currentUser.gstNumber}</strong></div>
+            ) : null}
+          </div>
+
+          {currentUser?.approvalNote ? (
+            <p className="mt-5 text-xs text-slate-300 max-w-lg mx-auto">
+              <span className="uppercase font-bold tracking-wider text-[10px] block mb-1">Note from TripGuru</span>
+              {currentUser.approvalNote}
+            </p>
+          ) : null}
+
+          <div className="mt-7">
+            <button
+              onClick={handleLogout}
+              className="bg-white/10 hover:bg-white/20 border border-white/25 text-white font-extrabold text-xs uppercase tracking-wider py-3 px-6 rounded-xl transition"
+            >
+              Sign Out
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   const renderB2bDashboard = () => {
     const b2bBookings = ownBookings;
@@ -5412,6 +5478,20 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
               </div>
 
               <div>
+                {/* Shown on the INTERNAL copy of the voucher only -- a
+                    traveller has no use for the agency's GST registration. */}
+                <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1.5 block">GST Number</label>
+                <input
+                  type="text"
+                  value={b2bProfile.gstNumber || ''}
+                  onChange={(e) => setB2bProfile({ ...b2bProfile, gstNumber: e.target.value.toUpperCase() })}
+                  className="w-full px-4 py-2.5 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all font-medium text-slate-800"
+                  placeholder="09ABCDE1234F1Z5"
+                />
+                <span className="text-[10px] text-slate-400 mt-1 block">Optional. Appears on your internal voucher copy only.</span>
+              </div>
+
+              <div>
                 <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-1.5 block">Agency Email (for Voucher Header)</label>
                 <div className="relative">
                   <span className="absolute left-3.5 top-3.5 text-slate-400"><Mail size={16} /></span>
@@ -5537,6 +5617,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                     agencyEmail: b2bProfile.agencyEmail,
                     agencyWebsite: b2bProfile.agencyWebsite,
                     agencyLogo: b2bProfile.agencyLogo || '',
+                    gstNumber: b2bProfile.gstNumber || '',
                   });
                   setCurrentUser((prev) => (prev ? { ...prev, ...user } : prev));
                   setProfileSuccessMessage('Partner branding saved to your account — it follows you to any device.');
@@ -5844,7 +5925,41 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     }
   };
 
+  // Approve or reject an agent. A rejection asks for a reason, because the
+  // agent is shown it on his waiting screen and "no" with no explanation is
+  // not something he can act on.
+  const handleSetUserApproval = async (user, status) => {
+    let note = '';
+    if (status === 'rejected') {
+      const reason = window.prompt(
+        `Reject ${user.agencyName || user.fullName || user.email}?\n\nOptionally give a reason — the agent sees this on their sign-in screen.`,
+        ''
+      );
+      if (reason === null) return; // cancelled
+      note = reason;
+    } else if (!window.confirm(`Approve ${user.agencyName || user.fullName || user.email}? They will be able to quote and book straight away.`)) {
+      return;
+    }
+
+    try {
+      const updated = await setUserApproval(user.id, status, note);
+      setDb((prev) => ({
+        ...prev,
+        users: (prev.users || []).map((u) => (u.id === user.id ? updated : u)),
+      }));
+    } catch (err) {
+      window.alert('Could not update this account: ' + (err.message || 'Unknown error'));
+    }
+  };
+
   const renderUsersMaster = () => {
+    // Treat a missing status as approved: an account made before approval
+    // existed is a working account, and must never appear as though it were
+    // waiting on somebody.
+    const approvalOf = (u) => u.approvalStatus || 'approved';
+    const pendingAgents = (db.users || []).filter(
+      (u) => u.role === 'b2b' && approvalOf(u) === 'pending'
+    );
     const filteredUsers = (db.users || []).filter(u => {
       const query = userSearchQuery.toLowerCase().trim();
       if (!query) return true;
@@ -5874,6 +5989,52 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
             </button>
           </div>
         </div>
+
+        {/* The approval queue. Agents who have signed up and cannot trade yet
+            sit at the top of this screen rather than buried in the table --
+            an account waiting on TripGuru is work to do, not a row to find. */}
+        {pendingAgents.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5 shadow-sm">
+            <h3 className="font-extrabold text-sm text-amber-900 flex items-center gap-2">
+              <ShieldCheck size={16} />
+              {pendingAgents.length} agent account{pendingAgents.length > 1 ? 's' : ''} awaiting your approval
+            </h3>
+            <p className="text-xs text-amber-800/80 mt-1">
+              These accounts cannot quote or book until you approve them.
+            </p>
+            <div className="flex flex-col gap-2.5 mt-4">
+              {pendingAgents.map((user) => (
+                <div key={user.id} className="bg-white border border-amber-200/70 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="text-xs leading-relaxed">
+                    <div className="font-extrabold text-slate-800">{user.agencyName || 'Unnamed agency'}</div>
+                    <div className="text-slate-500">{user.fullName} · {user.email}</div>
+                    <div className="text-slate-500">
+                      {user.countryCode} {user.phone}
+                      {user.gstNumber ? <> · GSTIN <span className="font-semibold text-slate-700">{user.gstNumber}</span></> : ' · no GST number given'}
+                    </div>
+                    {user.agencyAddress && <div className="text-slate-400">{user.agencyAddress}</div>}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleSetUserApproval(user, 'approved')}
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold text-[10px] uppercase tracking-wider py-2 px-4 rounded-lg transition"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSetUserApproval(user, 'rejected')}
+                      className="bg-white hover:bg-red-50 text-red-700 border border-red-200 font-extrabold text-[10px] uppercase tracking-wider py-2 px-4 rounded-lg transition"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Search bar */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -5947,6 +6108,17 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                           Traveler
                         </span>
                       )}
+                      {/* Only an agent goes through approval, and an approved
+                          one needs no pill -- that is the normal state. */}
+                      {user.role === 'b2b' && approvalOf(user) !== 'approved' && (
+                        <span className={`inline-block mt-1 px-2 py-0.5 rounded text-[8px] font-black uppercase tracking-wider ${
+                          approvalOf(user) === 'pending'
+                            ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                            : 'bg-red-100 text-red-700 border border-red-200'
+                        }`}>
+                          {approvalOf(user) === 'pending' ? 'Awaiting approval' : 'Rejected'}
+                        </span>
+                      )}
                     </td>
                     <td className="py-3.5 px-6 text-xs text-slate-600 font-mono">
                       <span className="text-slate-400 font-bold mr-1">{user.countryCode}</span>
@@ -5957,6 +6129,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                         <div>
                           <strong>Agency:</strong> {user.agencyName} <br />
                           <strong>Addr:</strong> {user.agencyAddress} <br />
+                          {user.gstNumber ? <><strong>GSTIN:</strong> {user.gstNumber} <br /></> : null}
                           <strong>Wallet:</strong> ₹{Number(user.walletBalance || 0).toLocaleString()}
                         </div>
                       ) : (
@@ -5973,6 +6146,19 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                         >
                           <Edit3 size={14} />
                         </button>
+                        {/* A rejection must not be a one-way door: rejecting
+                            the wrong agent is a slip, and without this the
+                            only way back would be to rebuild the account. */}
+                        {user.role === 'b2b' && approvalOf(user) === 'rejected' && (
+                          <button
+                            type="button"
+                            onClick={() => handleSetUserApproval(user, 'approved')}
+                            className="bg-transparent text-emerald-600 hover:text-emerald-800 p-2 hover:bg-emerald-50 rounded-xl transition"
+                            title="Approve this agent after all"
+                          >
+                            <ShieldCheck size={14} />
+                          </button>
+                        )}
                         {user.role === 'b2b' && (
                           <button
                             type="button"
@@ -6050,7 +6236,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           ...(authRole === 'b2b' ? {
             agencyName: authForm.agencyName,
             agencyAddress: authForm.agencyAddress,
-            agencyWebsite: authForm.agencyWebsite || ''
+            agencyWebsite: authForm.agencyWebsite || '',
+            gstNumber: authForm.gstNumber || ''
           } : {})
         };
         
@@ -6187,7 +6374,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                     phone: '', 
                     agencyName: '', 
                     agencyAddress: '', 
-                    agencyWebsite: '' 
+                    agencyWebsite: '', 
+                    gstNumber: '' 
                   }));
                 }}
                 className={`flex-1 text-center py-2.5 text-xs font-black uppercase tracking-wider rounded-xl transition duration-200 ${
@@ -6270,6 +6458,17 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                         className="w-full px-4 py-2.5 text-xs bg-slate-900/80 border border-slate-800 rounded-xl outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition text-slate-100"
                         placeholder="City, Country"
                       />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">GST Number (Optional)</label>
+                      <input
+                        type="text"
+                        value={authForm.gstNumber}
+                        onChange={(e) => handleFormChange('gstNumber', e.target.value.toUpperCase())}
+                        className="w-full px-4 py-2.5 text-xs bg-slate-900/80 border border-slate-800 rounded-xl outline-none focus:border-orange-500 focus:ring-4 focus:ring-orange-500/10 transition text-slate-100"
+                        placeholder="09ABCDE1234F1Z5"
+                      />
+                      <span className="text-[9px] text-slate-500">You can add this later from your profile.</span>
                     </div>
                     <div className="flex flex-col gap-1">
                       <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">Agency Website (Optional)</label>
@@ -6355,7 +6554,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                   if (currentRoute === 'b2b') setShowB2bLoginPortal(false);
                   setAuthForm({
                     email: '', password: '', fullName: '', phone: '', countryCode: '+91',
-                    agencyName: '', agencyAddress: '', agencyWebsite: ''
+                    agencyName: '', agencyAddress: '', agencyWebsite: '', gstNumber: ''
                   });
                 }}
                 className="w-full text-center text-xs text-slate-400 hover:text-white border border-slate-800 rounded-xl py-2 hover:bg-slate-900 transition font-bold cursor-pointer"
@@ -6478,7 +6677,10 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           </div>
         )}
 
-        {view === 'b2b' && (
+        {/* An agent waiting on approval reaches the same screen whichever of
+            these he presses, so offering the menu at all only invites him to
+            try them one by one. The gate lower down is what enforces it. */}
+        {view === 'b2b' && !(isB2bAuthenticated && !isB2bApproved) && (
           <div className="px-4 py-2 mt-4 border-t border-slate-800">
             <div className="text-[10px] text-slate-500 font-semibold tracking-wider uppercase mb-2">Agent Navigation</div>
             <ul className="list-none flex flex-col gap-1">
@@ -6879,6 +7081,15 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
               sidebarAcc = Math.round(quoteCalculation.totals.accommodation * (1 + b2cMarkupInput / 100));
               sidebarTrans = Math.round(quoteCalculation.totals.transport * (1 + b2cMarkupInput / 100));
               sidebarAct = subtotalWithMarkupRounded - sidebarAcc - sidebarTrans;
+            }
+
+            // A signed-in agent who has not been approved sees the waiting
+            // screen INSTEAD of the portal -- one gate covering every sub-view,
+            // rather than a guard bolted onto each of them that the next new
+            // screen would quietly miss. The server refuses his writes anyway;
+            // this stops him building a quote he is not allowed to save.
+            if (isB2B && isB2bAuthenticated && !isB2bApproved) {
+              return <div className="fade-in">{renderB2bAwaitingApproval()}</div>;
             }
 
             return (
@@ -8922,6 +9133,12 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                               <div>{whiteLabel.agencyAddress || "Travel Partner Address"}</div>
                               <div className="mt-0.5">Email: <span className="text-slate-700 font-semibold">{whiteLabel.agencyEmail || "booking@agency.com"}</span> | Phone: <span className="text-slate-700 font-semibold">{whiteLabel.agencyPhone || ""}</span></div>
                               {whiteLabel.agencyWebsite && <div className="mt-0.5">Website: <span className="text-slate-700 font-semibold">{whiteLabel.agencyWebsite}</span></div>}
+                              {/* GST registration is a trade detail: it belongs
+                                  on the operator's own record, not on the
+                                  document the traveller is handed. */}
+                              {!isClientCopy && whiteLabel.gstNumber && (
+                                <div className="mt-0.5">GSTIN: <span className="text-slate-700 font-semibold">{whiteLabel.gstNumber}</span></div>
+                              )}
                             </>
                           ) : (
                             <>

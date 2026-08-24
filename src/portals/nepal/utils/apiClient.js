@@ -215,6 +215,15 @@ export async function updateUser(id, payload) {
   return apiFetch(`/admin/users/${encodeURIComponent(id)}`, { method: 'PUT', body: payload });
 }
 
+// Approve or reject an agent account. The only route that may write
+// approval_status -- an agent editing his own profile deliberately cannot.
+export async function setUserApproval(id, status, note) {
+  return apiFetch(`/admin/users/${encodeURIComponent(id)}/approval`, {
+    method: 'PATCH',
+    body: { status, note: note || '' },
+  });
+}
+
 export async function deleteUser(id) {
   return apiFetch(`/admin/users/${encodeURIComponent(id)}`, { method: 'DELETE' });
 }
