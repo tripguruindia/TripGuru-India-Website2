@@ -181,6 +181,18 @@ Each portal is an **independent session in the same browser**: tokens live in
 `nepal_quote_user_<route>`. Do not reintroduce a shared token or user key —
 both have caused cross-portal leaks before.
 
+### Agent commission
+
+A flat **10%**, from `AGENT_COMMISSION_RATE = 0.1` hardcoded in **both**
+`routes/bookings.js` and `routes/quotes.js` — change one and the other will
+disagree. It is computed server-side from the stored total, never taken from
+the client.
+
+There is **no tier system.** "Partner Status: Gold Tier (10% Comm.)" is a
+hardcoded string in the agent dashboard and the agent profile; there is no
+Silver, and no tier column on `users`. Making tiers real means a per-agent rate
+on `users`, set in Admin, read by both routes, with the label derived from it.
+
 ### Saved quotes
 
 `quotes` is a **separate table, not `bookings` with a Draft status** — a quote
@@ -480,12 +492,24 @@ leisure while the itinerary under it described a full day of sightseeing.
 
 ## Current state and what's next
 
-As of 2026-08-23, `main` is at PR #26 and everything is merged and deployed;
-no open PRs. Live since the last handoff: the wallet ledger, airports and
-Road/Flight transfers, airports as route stops, the transfer rate sheet,
-two-way sector pricing, per-vehicle sightseeing activities, editable
-cities/airports/activities, editing a saved trip's cities and nights,
-readable itinerary copy, and a mobile navigation drawer.
+As of 2026-08-24, `main` is at PR #36 and everything is merged and deployed;
+no open PRs. Live since the last handoff, in the order it shipped:
+
+- Room rates show every bed the party occupies, and warn when a bed has no
+  rate set; hotels in a city offer other star ratings when the trip's rating
+  has none; nothing is added to a day automatically any more.
+- GST is a switch and a rate in Admin, and on the agent portal it is charged
+  before the agent's markup.
+- The intake wizard opens empty and refuses a blank submit; a day carrying a
+  whole-vehicle sightseeing activity is headed "<City> Sightseeing".
+- The Hotels and Activities admin sheets work on a phone.
+- The voucher has a client copy and an internal copy; a booked trip can be
+  edited in place (`PATCH /bookings/:id`); the sheet stays white in dark mode.
+- Browser Back walks the portal's screens instead of leaving the site.
+- Direct bookings appear in *Quotes & Bookings* as Won, and the dashboard
+  shows Upcoming Trips rather than the whole history.
+- The client copy carries no trade wording, and an agent's logo lives on their
+  account (`PATCH /auth/me`).
 
 **Outstanding data Tanmay owes** (all Admin work, no code):
 
@@ -497,15 +521,46 @@ readable itinerary copy, and a mobile navigation drawer.
 - Seven cities have no hotels and so cannot host a paid overnight: Bagdogra,
   Bhairahawa, Butwal, Gorakhpur, Lumbini, Mankamna, Raxaul.
 
+**One booking may hold the wrong data.** Before the fix in PR #34, pressing
+*Edit This Booking* and then building a different trip PATCHed the old booking
+instead of creating a new one. The overwritten values are gone from the
+database. If a booking shows the wrong client or price, correct it by hand
+with *Edit This Booking*.
+
 **Known and deliberate:** flight airfare is never priced (the portal has no
 flight inventory) — the itinerary says so instead.
 
-Next, roughly in order: the rest of the mobile pass (27 of 39 tap targets are
-under 40px and 54 text elements under 12px — a deliberate rescale of the
-portal's type and controls, not a bug fix); client list for agents; filters and
-export on booking history; splitting the portals into separate builds
-(awaiting his decision); Open Graph prerendering; and 6.2 MB of PNGs in
-`/public` (largest >1 MB).
+### Agreed next, in Tanmay's words
+
+1. **"Partner Status: Gold Tier (10% Comm.)" is not a real feature.** It is a
+   hardcoded string in two places (the agent dashboard and the agent profile),
+   there is no Silver anywhere, and there is no tier column. Every agent earns
+   10%, from `AGENT_COMMISSION_RATE = 0.1` hardcoded in *both*
+   `server/src/routes/bookings.js` and `server/src/routes/quotes.js`. Either
+   make tiers real — a per-agent rate on `users`, set in Admin, read by both
+   routes, with the label derived from it — or drop the wording. Do not leave
+   a decorative badge implying a commission structure that does not exist.
+2. **A new B2B account must not work until an admin approves it.** Signup
+   currently creates a live agent account that can quote and book immediately.
+   Needs an approval state on `users`, a signed-out "awaiting approval" screen,
+   an Admin queue to approve or reject, and server-side enforcement — an
+   unapproved agent's token must be refused by the booking and quote routes,
+   not merely hidden in the UI.
+3. **B2B signup should collect a GST number.** A field on signup, stored on
+   `users`, shown in the agent profile and on the internal copy of the voucher.
+4. **Email, later.** OTP and email verification at signup, and automatic mail
+   (booking confirmations, quotes to clients). Nothing exists today: "Forgot
+   Password?" only tells the user to contact the administrator. This one is
+   explicitly deferred — it needs a mail provider chosen and credentials in
+   Render env vars first.
+
+Also still open from before: the rest of the mobile pass (27 of 39 tap targets
+under 40px, 54 text elements under 12px — a deliberate rescale of the portal's
+type and controls, not a bug fix); client list for agents; filters and export
+on booking history; splitting the portals into separate builds (awaiting his
+decision); Open Graph prerendering; 6.2 MB of PNGs in `/public` (largest
+>1 MB); and TripGuru's own admin logo, which is still browser-local while the
+agents' logos now live on their accounts.
 
 ## Operating on live data
 
