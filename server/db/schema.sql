@@ -9,7 +9,12 @@
 
 CREATE TABLE IF NOT EXISTS cities (
   id   INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT NOT NULL UNIQUE
+  name TEXT NOT NULL UNIQUE,
+  -- 'nepal' | 'india'. Which side of the border the city is on, which decides
+  -- what kind of vehicle can run the trip: a run that starts AND ends in India
+  -- is an Indian vehicle, one that stays inside Nepal is a Nepali one.
+  -- Defaults to 'nepal' because all but a handful of border towns are.
+  country TEXT NOT NULL DEFAULT 'nepal'
 );
 
 CREATE TABLE IF NOT EXISTS hotels (
@@ -27,7 +32,12 @@ CREATE TABLE IF NOT EXISTS vehicles (
   description            TEXT,
   capacity               INTEGER,
   daily_sightseeing_rate REAL,
-  route_rates            TEXT NOT NULL -- JSON: {routeKey: number}
+  route_rates            TEXT NOT NULL, -- JSON: {routeKey: number}
+  -- 'nepal' | 'india'. An Indian vehicle is hired from a border town for the
+  -- whole trip and is quoted ONLY from vehicle_packages -- it has no sector
+  -- rates at all, so route_rates stays empty for one. A Nepali vehicle is
+  -- picked up inside Nepal and can be priced either way.
+  origin                 TEXT NOT NULL DEFAULT 'nepal'
 );
 
 CREATE TABLE IF NOT EXISTS routes (

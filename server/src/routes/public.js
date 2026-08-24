@@ -33,7 +33,7 @@ async function one(sql, args = []) {
 // ---------------------------------------------------------------------------
 router.get('/db', async (req, res) => {
   const [cities, airports, hotels, vehicles, routes, activities, packages, settings, cityDefaults, vehiclePackages] = await Promise.all([
-    all('SELECT name FROM cities ORDER BY name ASC'),
+    all('SELECT name, country FROM cities ORDER BY name ASC'),
     all('SELECT * FROM airports'),
     all('SELECT * FROM hotels'),
     all('SELECT * FROM vehicles'),
@@ -50,6 +50,12 @@ router.get('/db', async (req, res) => {
 
   res.json({
     cities: cities.map((c) => c.name),
+    // A parallel map rather than turning `cities` into objects: every dropdown
+    // in the portal reads that flat name list, and reshaping it would ripple
+    // through all of them for one extra field.
+    city_countries: Object.fromEntries(
+      cities.map((c) => [c.name, c.country === 'india' ? 'india' : 'nepal'])
+    ),
     airports: airports.map(serializeAirport),
     hotels: hotels.map(serializeHotel),
     vehicles: vehicles.map(serializeVehicle),

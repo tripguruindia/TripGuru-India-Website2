@@ -55,6 +55,12 @@ const ADDITIVE_COLUMNS = [
   // local sightseeing a package includes is the common case -- only genuine
   // extras (an early Sarangkot run, a Pumdikot detour) are marked otherwise.
   // Irrelevant until a package rate exists, so this changes no live price.
+  // Which side of the border a city is on, and where a vehicle is hired from.
+  // Both default to 'nepal': every city and vehicle that already exists is a
+  // Nepali one apart from a handful of border towns, which are marked by hand
+  // in Admin. Defaulting to 'india' would mis-file the entire masters.
+  { table: 'cities', column: 'country', ddl: "ALTER TABLE cities ADD COLUMN country TEXT NOT NULL DEFAULT 'nepal'" },
+  { table: 'vehicles', column: 'origin', ddl: "ALTER TABLE vehicles ADD COLUMN origin TEXT NOT NULL DEFAULT 'nepal'" },
   {
     table: 'activities',
     column: 'covered_by_vehicle_package',

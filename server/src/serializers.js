@@ -32,6 +32,9 @@ function serializeVehicle(v) {
     capacity: v.capacity,
     daily_sightseeing_rate: v.daily_sightseeing_rate,
     route_rates: parseJSON(v.route_rates, {}),
+    // Null on a row written before the column existed. Every vehicle that
+    // already existed is a Nepali one, which is also the column default.
+    origin: v.origin === 'india' ? 'india' : 'nepal',
   };
 }
 
