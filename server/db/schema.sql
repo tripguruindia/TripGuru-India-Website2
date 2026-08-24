@@ -45,6 +45,33 @@ CREATE TABLE IF NOT EXISTS routes (
 --
 -- Both columns are added via ADDITIVE_COLUMNS in migrate.js -- this table
 -- predates them on the live database.
+-- Per-city defaults for a freshly built day: which hotel to put a party in at
+-- each star rating, what meal plan to assume, and which activities to include
+-- on each successive night in that city.
+--
+-- Keyed by city NAME rather than cities.id: every other table (hotels,
+-- activities, days on a saved itinerary) refers to a city by its name, and a
+-- second way of identifying a city is a second thing to keep in step.
+--
+-- night_plans is keyed by the night's INDEX within the stay, not by the length
+-- of the stay: {"1": [...], "2": [...]}. A three-night stay takes nights 1, 2
+-- and 3, so adding a fourth night later does not mean re-entering the first
+-- three. It also handles the arrival day naturally -- night 1 light, night 2
+-- the full sightseeing run.
+--
+-- Everything here is OPTIONAL. A city with no row, or a row with a field
+-- unset, falls back to exactly what the builder did before this table existed,
+-- so nothing changes until it is filled in from Admin.
+CREATE TABLE IF NOT EXISTS city_defaults (
+  city           TEXT PRIMARY KEY,
+  -- JSON {"3-Star": "h-ktm-3", "4-Star": "h-ktm-4"} -- hotel id per rating.
+  default_hotels TEXT,
+  -- 'CP' | 'MAP' | 'AP'. Null means fall back to the old built-in rule.
+  default_meals  TEXT,
+  -- JSON {"1": ["a-id", ...], "2": [...]} keyed by night index within the stay.
+  night_plans    TEXT
+);
+
 CREATE TABLE IF NOT EXISTS activities (
   id          TEXT PRIMARY KEY,
   name        TEXT NOT NULL,

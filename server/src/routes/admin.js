@@ -9,6 +9,7 @@ const {
   serializeRoute,
   serializeAirport,
   serializeActivity,
+  serializeCityDefault,
   serializePackage,
   serializeSettings,
   serializeBooking,
@@ -45,7 +46,7 @@ async function run(sql, args = []) {
 // produced, so the frontend's `db` object needs no restructuring.
 // ---------------------------------------------------------------------------
 router.get('/db', async (req, res) => {
-  const [cities, airports, hotels, vehicles, routes, activities, packages, settings, bookings, leads, users] =
+  const [cities, airports, hotels, vehicles, routes, activities, packages, settings, bookings, leads, users, cityDefaults] =
     await Promise.all([
       all('SELECT name FROM cities ORDER BY name ASC'),
       all('SELECT * FROM airports'),
@@ -58,6 +59,7 @@ router.get('/db', async (req, res) => {
       all('SELECT * FROM bookings ORDER BY created_at DESC'),
       all('SELECT * FROM leads ORDER BY created_at DESC'),
       all('SELECT * FROM users'),
+      all('SELECT * FROM city_defaults'),
     ]);
 
   res.json({
@@ -72,7 +74,48 @@ router.get('/db', async (req, res) => {
     bookings: bookings.map(serializeBooking),
     leads: leads.map(serializeLead),
     users: users.map(serializeUser),
+    city_defaults: cityDefaults.map(serializeCityDefault),
   });
+});
+
+// ---------------------------------------------------------------------------
+// City defaults -- what a freshly built day in this city starts out as.
+// Upsert by city name; DELETE clears the city back to the built-in fallback.
+// ---------------------------------------------------------------------------
+router.get('/city-defaults', async (req, res) => {
+  res.json((await all('SELECT * FROM city_defaults')).map(serializeCityDefault));
+});
+
+router.put('/city-defaults/:city', async (req, res) => {
+  const b = req.body || {};
+  const city = String(req.params.city || '').trim();
+  if (!city) return res.status(400).json({ error: 'city is required' });
+
+  const meals = b.default_meals === undefined || b.default_meals === null ? '' : String(b.default_meals).trim();
+  if (meals && !['CP', 'MAP', 'AP'].includes(meals)) {
+    return res.status(400).json({ error: "default_meals must be 'CP', 'MAP', 'AP', or empty" });
+  }
+
+  await run(
+    `INSERT INTO city_defaults (city, default_hotels, default_meals, night_plans)
+     VALUES (?, ?, ?, ?)
+     ON CONFLICT(city) DO UPDATE SET
+       default_hotels = excluded.default_hotels,
+       default_meals  = excluded.default_meals,
+       night_plans    = excluded.night_plans`,
+    [
+      city,
+      JSON.stringify(b.default_hotels || {}),
+      meals || null,
+      JSON.stringify(b.night_plans || {}),
+    ]
+  );
+  res.json(serializeCityDefault(await one('SELECT * FROM city_defaults WHERE city = ?', [city])));
+});
+
+router.delete('/city-defaults/:city', async (req, res) => {
+  await run('DELETE FROM city_defaults WHERE city = ?', [String(req.params.city || '').trim()]);
+  res.json({ ok: true });
 });
 
 // ---------------------------------------------------------------------------

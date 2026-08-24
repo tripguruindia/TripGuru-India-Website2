@@ -63,6 +63,19 @@ function serializeActivity(a) {
   };
 }
 
+// Per-city builder defaults. Shapes are normalised here so the client never
+// has to guess whether a field is missing, null, or a JSON string.
+function serializeCityDefault(c) {
+  return {
+    city: c.city,
+    default_hotels: parseJSON(c.default_hotels, {}),
+    // Null/'' means "no default set" -- the builder then falls back to the
+    // rule it used before this table existed. It is NOT the same as 'CP'.
+    default_meals: c.default_meals || '',
+    night_plans: parseJSON(c.night_plans, {}),
+  };
+}
+
 function serializePackage(p) {
   return {
     id: p.id,
@@ -218,6 +231,7 @@ module.exports = {
   serializeRoute,
   serializeAirport,
   serializeActivity,
+  serializeCityDefault,
   serializePackage,
   serializeSettings,
   serializeBooking,

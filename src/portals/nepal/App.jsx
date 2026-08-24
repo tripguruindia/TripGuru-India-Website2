@@ -55,10 +55,17 @@ import {
   deleteUser,
   resetUserPassword,
   setUserApproval,
+  saveCityDefaults,
+  deleteCityDefaults,
   getMyWallet,
   getAgentWallet,
   addWalletTransaction,
 } from './utils/apiClient';
+import {
+  buildDayDefaults,
+  defaultHotelId,
+  defaultMealPlan,
+} from './utils/cityDefaults';
 import './App.css';
 import './index.css';
 
@@ -317,6 +324,11 @@ function App() {
           // configured returns [], which must win over stale local fixtures.
           // Only a missing field (older API) falls back to what we had.
           airports: fresh.airports ?? prev.airports ?? [],
+          // This merge is a whitelist, so a new master has to be named here or
+          // the agent and traveller portals never see it -- the builder would
+          // quietly fall back to picking whatever hotel came first while Admin
+          // showed the defaults saved correctly.
+          city_defaults: fresh.city_defaults ?? prev.city_defaults ?? [],
         }));
       })
       .catch((err) => {
@@ -590,6 +602,10 @@ function App() {
   
   const [selectedVehicleId, setSelectedVehicleId] = useState('v-suv');
   const [selectedHotelCategory, setSelectedHotelCategory] = useState('4-Star');
+  // Days that Admin's City Defaults pre-filled on the trip currently being
+  // built, so the builder can name them. Cleared whenever a different trip is
+  // loaded -- a notice about the previous trip's days would be a lie.
+  const [autoFilledNotice, setAutoFilledNotice] = useState([]);
   const [travelDate, setTravelDate] = useState('2026-10-15');
   const [customPackageName, setCustomPackageName] = useState('My Nepal Tour Custom');
   const [customItinerary, setCustomItinerary] = useState([]);
@@ -879,6 +895,9 @@ function App() {
   const [expandedFaqIndex, setExpandedFaqIndex] = useState(null);
 
   const [userSearchQuery, setUserSearchQuery] = useState('');
+  // Which city's defaults are mid-save, and which just saved.
+  const [cityDefaultsSaving, setCityDefaultsSaving] = useState('');
+  const [cityDefaultsSavedMessage, setCityDefaultsSavedMessage] = useState('');
   const [editingUser, setEditingUser] = useState(null);
   const [showAddUserModal, setShowAddUserModal] = useState(false);
 
@@ -1830,11 +1849,12 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     travelers: { adults: 2, cwb: 0, cnb: 0 },
     roomConfig: { single: 0, double: 1, extra_adult: 0, cwb: 0, cnb: 0 },
     itinerary: pkg.days.map(d => {
-      const h = db.hotels.find(htl => sameCity(htl.city, d.city) && htl.category === pkg.default_hotel_category);
+      // The package supplies the days and their activities; the city's
+      // defaults supply the hotel and the meal plan.
       return {
         ...d,
-        hotelId: h ? h.id : '',
-        meals: d.city.toLowerCase() === 'chitwan' ? 'AP' : 'CP',
+        hotelId: defaultHotelId(db.city_defaults, db.hotels, d.city, pkg.default_hotel_category),
+        meals: defaultMealPlan(db.city_defaults, d.city),
         transfer_route: d.transfer_route !== undefined ? d.transfer_route : '',
         activity_ids: [...d.activity_ids]
       };
@@ -1892,9 +1912,9 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
     // Generate custom itinerary based on package defaults
     const generatedItinerary = pkg.days.map(day => {
-      // Find default hotel in city and category
-      const cityHotels = db.hotels.filter(h => sameCity(h.city, day.city) && h.category === pkg.default_hotel_category);
-      const defaultHotel = cityHotels.length > 0 ? cityHotels[0].id : '';
+      // The hotel and meal plan come from Admin -> City Defaults; the package
+      // supplies the days themselves and their activities.
+      const defaultHotel = defaultHotelId(db.city_defaults, db.hotels, day.city, pkg.default_hotel_category);
 
       // Rebuilt field-by-field rather than spread, so the day's transfers and
       // any flight leg have to be carried across explicitly -- dropping them
@@ -1905,7 +1925,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
         title: day.title,
         description: day.description,
         hotelId: defaultHotel,
-        meals: day.city.toLowerCase() === 'chitwan' ? 'AP' : 'CP', // Chitwan defaults to Full Board
+        meals: defaultMealPlan(db.city_defaults, day.city),
         is_sightseeing: day.is_sightseeing || false,
         activity_ids: [...day.activity_ids],
         travel_mode: day.travel_mode || '',
@@ -1915,6 +1935,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     });
 
     setCustomItinerary(generatedItinerary);
+    setAutoFilledNotice([]);
     setAgentMarkupInput(0); // Reset agent custom markup override for new trip
     if (view === 'b2b') {
       setB2bSubView('customize');
@@ -1942,8 +1963,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
     // Generate custom itinerary based on package defaults
     const generatedItinerary = pkg.days.map(day => {
-      const cityHotels = db.hotels.filter(h => sameCity(h.city, day.city) && h.category === pkg.default_hotel_category);
-      const defaultHotel = cityHotels.length > 0 ? cityHotels[0].id : '';
+      const defaultHotel = defaultHotelId(db.city_defaults, db.hotels, day.city, pkg.default_hotel_category);
 
       // See the sibling handler above: transfers and flight legs must be
       // carried explicitly because this rebuilds the day rather than spreading.
@@ -1953,7 +1973,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
         title: day.title,
         description: day.description,
         hotelId: defaultHotel,
-        meals: day.city.toLowerCase() === 'chitwan' ? 'AP' : 'CP',
+        meals: defaultMealPlan(db.city_defaults, day.city),
         is_sightseeing: day.is_sightseeing || false,
         activity_ids: [...day.activity_ids],
         travel_mode: day.travel_mode || '',
@@ -1963,6 +1983,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     });
 
     setCustomItinerary(generatedItinerary);
+    setAutoFilledNotice([]);
     if (view === 'b2b') {
       setB2bSubView('customize');
     } else {
@@ -2077,8 +2098,12 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
         if (idx !== dayIndex) return day;
         let updatedDay = { ...day, [field]: value };
         if (field === 'city') {
-          const cityHotels = db.hotels.filter(h => sameCity(h.city, value) && h.category === selectedHotelCategory);
-          updatedDay.hotelId = cityHotels.length > 0 ? cityHotels[0].id : '';
+          // Moving a day to a different city re-picks that city's default
+          // hotel and meal plan. Its activities are cleared rather than
+          // replaced: an activity is only offerable in its own city, and the
+          // operator is mid-edit, not asking for a new day to be composed.
+          updatedDay.hotelId = defaultHotelId(db.city_defaults, db.hotels, value, selectedHotelCategory);
+          updatedDay.meals = defaultMealPlan(db.city_defaults, value);
           updatedDay.activity_ids = [];
           // Changing the city invalidates every transfer on the day (they were
           // priced for the old city) and the flight leg it belonged to.
@@ -2271,18 +2296,27 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       (pool[key] = pool[key] || []).push(d);
     });
 
-    const makeFreshDay = (city) => {
-      const cityHotels = (db.hotels || []).filter(
-        h => sameCity(h.city, city) && h.category === selectedHotelCategory
-      );
+    // A day that did not exist before the reshape. It gets this city's
+    // configured defaults for the night it lands on; days reused from the old
+    // itinerary keep whatever was already set on them, so reshaping a trip
+    // never overwrites a hotel or an activity someone chose by hand.
+    const makeFreshDay = (city, nightIndex) => {
+      const d = buildDayDefaults({
+        cityDefaults: db.city_defaults,
+        hotels: db.hotels,
+        activities: db.activities,
+        city,
+        category: selectedHotelCategory,
+        nightIndex,
+      });
       return withDayTransfers({
         city,
         title: `Explore ${city}`,
         description: `Custom activities and transfer around ${city}.`,
-        hotelId: cityHotels.length > 0 ? cityHotels[0].id : '',
-        meals: String(city).toLowerCase() === 'chitwan' ? 'AP' : 'CP',
+        hotelId: d.hotelId,
+        meals: d.meals,
         is_sightseeing: false,
-        activity_ids: [],
+        activity_ids: [...d.activityIds],
         travel_mode: '',
         flight_from_city: '',
         flight_to_city: '',
@@ -2294,7 +2328,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       const key = String(block.city).trim().toLowerCase();
       for (let n = 0; n < block.nights; n++) {
         const reused = (pool[key] || []).shift();
-        rebuilt.push(reused ? { ...reused, city: block.city } : makeFreshDay(block.city));
+        rebuilt.push(reused ? { ...reused, city: block.city } : makeFreshDay(block.city, n + 1));
       }
     });
 
@@ -2388,8 +2422,9 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       const newDayNum = prev.length + 1;
       const lastDay = prev[prev.length - 1];
       const defaultCity = lastDay ? lastDay.city : 'Kathmandu';
-      const cityHotels = db.hotels.filter(h => sameCity(h.city, defaultCity) && h.category === selectedHotelCategory);
-      
+      // A day added by hand takes the city's default hotel and meal plan, but
+      // deliberately NOT its night-plan activities: the operator asked for a
+      // day, not for something paid to appear on it.
       return [
         ...prev,
         {
@@ -2397,8 +2432,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           city: defaultCity,
           title: `Explore ${defaultCity}`,
           description: `Custom activities and transfer around ${defaultCity}.`,
-          hotelId: cityHotels.length > 0 ? cityHotels[0].id : '',
-          meals: defaultCity.toLowerCase() === 'chitwan' ? 'AP' : 'CP',
+          hotelId: defaultHotelId(db.city_defaults, db.hotels, defaultCity, selectedHotelCategory),
+          meals: defaultMealPlan(db.city_defaults, defaultCity),
           transfer_route: '',
           is_sightseeing: false,
           activity_ids: []
@@ -2542,6 +2577,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     setCurrentPackageId(draft.packageId ?? null);
     setCustomPackageName(draft.packageName ?? 'My Nepal Tour Custom');
     setCustomItinerary(draft.itinerary || []);
+    setAutoFilledNotice([]);
     if (draft.rooms) setRooms(draft.rooms);
     if (draft.vehicleId) setSelectedVehicleId(draft.vehicleId);
     if (draft.hotelCategory) setSelectedHotelCategory(draft.hotelCategory);
@@ -2648,6 +2684,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     setCurrentPackageId(null);
     setCustomPackageName(quote.package_name || 'Untitled quote');
     setCustomItinerary(quote.itinerary || []);
+    setAutoFilledNotice([]);
     if (quote.rooms && quote.rooms.length) setRooms(quote.rooms);
     if (quote.vehicle_id) setSelectedVehicleId(quote.vehicle_id);
     if (quote.hotel_category) setSelectedHotelCategory(quote.hotel_category);
@@ -2902,6 +2939,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     setLastBookingId(booking.id);
     if (booking.itinerary) {
       setCustomItinerary(booking.itinerary);
+      setAutoFilledNotice([]);
       setSelectedVehicleId(booking.vehicleId);
       setSelectedHotelCategory(booking.hotelCategory);
       setRooms(booking.rooms || [{ adults: booking.adults || 2, children: [] }]);
@@ -2921,20 +2959,21 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       const stdPkg = db.packages.find(p => p.name === booking.package_name);
       if (stdPkg) {
         const defaultItin = stdPkg.days.map(d => {
-          const h = db.hotels.find(htl => sameCity(htl.city, d.city) && htl.category === stdPkg.default_hotel_category);
           return {
             ...d,
-            hotelId: h ? h.id : '',
-            meals: d.city.toLowerCase() === 'chitwan' ? 'AP' : 'CP',
+            hotelId: defaultHotelId(db.city_defaults, db.hotels, d.city, stdPkg.default_hotel_category),
+            meals: defaultMealPlan(db.city_defaults, d.city),
             transfer_route: d.transfer_route !== undefined ? d.transfer_route : '',
             activity_ids: [...d.activity_ids]
           };
         });
         setCustomItinerary(defaultItin);
+        setAutoFilledNotice([]);
         setSelectedVehicleId(stdPkg.default_vehicle_id || 'v-suv');
         setSelectedHotelCategory(stdPkg.default_hotel_category || '4-Star');
       } else {
         setCustomItinerary([]);
+        setAutoFilledNotice([]);
       }
       setRooms([{ adults: booking.adults || 2, children: [] }]);
       setStartCity('Kathmandu');
@@ -4139,6 +4178,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       if (neededRoutes.length) ensureRoutesExist(neededRoutes);
 
       setCustomItinerary(days);
+      setAutoFilledNotice([]);
       setSelectedHotelCategory(wizardStarRating);
       setTravelDate(wizardLeavingOn);
       setStartCity(wizardStartCity);
@@ -4168,6 +4208,10 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     const addTransfers = wizardAddTransfers;
 
     const itinerary = [];
+    // What Admin's City Defaults filled in, so the builder can say so. The
+    // point of automatic suggestions failing last time was that they were
+    // silent; this is what makes them visible.
+    const autoFilled = [];
     let dayCounter = 1;
     let lastCity = null;
 
@@ -4303,16 +4347,34 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           route = '';
         }
 
-        const cityHotels = db.hotels.filter(h => sameCity(h.city, dest.city) && h.category === rating);
-        const defaultHotel = cityHotels.length > 0 ? cityHotels[0].id : '';
-
-        // No activity is ever added automatically. The wizard used to drop a
-        // hardcoded sightseeing activity (Kathmandu, Pokhara, Chitwan) on the
-        // second night in a city, so asking for two nights silently added a
-        // paid activity nobody chose and the quote came out higher than the
-        // agent expected. Activities are picked by hand in the day cards.
-        // Automatic suggestions may come back later, driven by the activities
-        // master rather than hardcoded ids.
+        // What this city's day starts out as, from Admin -> City Defaults:
+        // the hotel to use at this star rating, the meal plan, and any
+        // activities set for THIS night of the stay. `night` is the night's
+        // index within the city, which is exactly what night_plans is keyed by.
+        //
+        // Automatic activities are back, but on the terms the last attempt
+        // failed on: driven by the activities master rather than hardcoded
+        // ids, and announced. The wizard used to drop a hardcoded activity on
+        // the second night in a city, so asking for two nights silently added
+        // something paid and the quote came out higher than the agent
+        // expected. Whatever is added here is named in a banner on the builder
+        // and removable on the day card.
+        const dayDefaults = buildDayDefaults({
+          cityDefaults: db.city_defaults,
+          hotels: db.hotels,
+          activities: db.activities,
+          city: dest.city,
+          category: rating,
+          nightIndex: night,
+        });
+        if (dayDefaults.autoAdded.hotelName || dayDefaults.autoAdded.activityNames.length) {
+          autoFilled.push({
+            day: dayCounter,
+            city: dest.city,
+            hotelName: dayDefaults.autoAdded.hotelName,
+            activityNames: dayDefaults.autoAdded.activityNames,
+          });
+        }
 
         const isTransitionDay = night === 1 && !isFirstCity;
 
@@ -4336,10 +4398,10 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           city: dest.city,
           title: title,
           description: description,
-          hotelId: defaultHotel,
-          meals: dest.city.toLowerCase() === 'chitwan' ? 'AP' : 'CP',
+          hotelId: dayDefaults.hotelId,
+          meals: dayDefaults.meals,
           is_sightseeing: !isTransitionDay,
-          activity_ids: [],
+          activity_ids: [...dayDefaults.activityIds],
           // The wizard always generates road travel; switching a leg to a
           // flight is done later in the builder, where the agent can see the
           // whole trip. Keeping it out of the intake form was deliberate --
@@ -4386,6 +4448,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     setStartCity(wizardStartCity);
     setEndCity(wizardEndCity);
     setCustomItinerary(itinerary);
+    setAutoFilledNotice(autoFilled);
 
     setAgentMarkupInput(0); // Reset agent custom markup override for new trip
     if (view === 'b2b') {
@@ -5952,6 +6015,293 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     }
   };
 
+  // ---------------------------------------------------------------------
+  // Admin -> City Defaults. What a freshly built day in a city starts out as:
+  // which hotel at each star rating, which meal plan, and which activities on
+  // each successive night of the stay.
+  //
+  // Night plans are keyed by the night's INDEX in the stay, not by how long
+  // the stay is, so a three-night stay takes nights 1, 2 and 3 and adding a
+  // fourth later does not mean re-entering the first three.
+  //
+  // Every field is optional. A city left alone behaves exactly as the builder
+  // did before this screen existed.
+  // ---------------------------------------------------------------------
+  const renderCityDefaults = () => {
+    const cities = db.cities || [];
+    const rows = db.city_defaults || [];
+    const rowFor = (city) => rows.find((r) => sameCity(r.city, city)) || null;
+
+    const patchCity = (city, patch) => {
+      setDb((prev) => {
+        const existing = (prev.city_defaults || []).find((r) => sameCity(r.city, city));
+        const merged = {
+          city,
+          default_hotels: {},
+          default_meals: '',
+          night_plans: {},
+          ...(existing || {}),
+          ...patch,
+        };
+        return {
+          ...prev,
+          city_defaults: [
+            ...(prev.city_defaults || []).filter((r) => !sameCity(r.city, city)),
+            merged,
+          ],
+        };
+      });
+    };
+
+    const saveCity = async (city) => {
+      const row = rowFor(city);
+      if (!isApiSession()) {
+        window.alert('Sign in as an admin to save city defaults.');
+        return;
+      }
+      setCityDefaultsSaving(city);
+      try {
+        const saved = await saveCityDefaults(city, {
+          default_hotels: row?.default_hotels || {},
+          default_meals: row?.default_meals || '',
+          night_plans: row?.night_plans || {},
+        });
+        setDb((prev) => ({
+          ...prev,
+          city_defaults: [
+            ...(prev.city_defaults || []).filter((r) => !sameCity(r.city, city)),
+            saved,
+          ],
+        }));
+        setCityDefaultsSavedMessage(city);
+        setTimeout(() => setCityDefaultsSavedMessage(''), 3000);
+      } catch (err) {
+        window.alert('Could not save defaults for ' + city + ': ' + (err.message || 'Unknown error'));
+      } finally {
+        setCityDefaultsSaving('');
+      }
+    };
+
+    const clearCity = async (city) => {
+      if (!window.confirm(`Clear all defaults for ${city}? New days there will go back to picking whatever hotel comes first, with no activities.`)) return;
+      try {
+        if (isApiSession()) await deleteCityDefaults(city);
+        setDb((prev) => ({
+          ...prev,
+          city_defaults: (prev.city_defaults || []).filter((r) => !sameCity(r.city, city)),
+        }));
+      } catch (err) {
+        window.alert('Could not clear defaults: ' + (err.message || 'Unknown error'));
+      }
+    };
+
+    return (
+      <div className="flex flex-col gap-6 text-left">
+        <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
+          <h2 className="text-2xl font-bold font-heading text-[#0f2942]">City Defaults</h2>
+          <p className="text-slate-500 text-sm mt-1 leading-relaxed max-w-3xl">
+            What a new day in each city starts out as. Set the hotel you want used at each star
+            rating, the meal plan, and which activities to include on each night of a stay — so a
+            quote comes out ready to send instead of needing to be filled in by hand.
+          </p>
+          <p className="text-slate-500 text-xs mt-3 leading-relaxed max-w-3xl">
+            Nights are counted <strong>within the stay</strong>. A three-night stay uses nights 1, 2
+            and 3, so you can leave night 1 empty for the arrival day and put the full sightseeing
+            run on night 2. Anything left blank keeps the old behaviour, and anything filled in
+            automatically is shown to the agent and can be removed.
+          </p>
+        </div>
+
+        {cities.length === 0 && (
+          <div className="bg-white p-6 rounded-2xl border border-slate-200/80 text-sm text-slate-500">
+            Add cities in the Cities Editor first.
+          </div>
+        )}
+
+        {cities.map((city) => {
+          const row = rowFor(city);
+          const cityHotels = (db.hotels || []).filter((h) => sameCity(h.city, city));
+          const ratings = [...new Set(cityHotels.map((h) => h.category))].sort();
+          const cityActs = (db.activities || []).filter((a) => a.city && sameCity(a.city, city));
+          const plans = row?.night_plans || {};
+          // One row past the deepest night already configured, so there is
+          // always an empty night to fill in without pressing anything first.
+          const deepest = Object.keys(plans)
+            .map((n) => Number(n))
+            .filter((n) => Number.isFinite(n))
+            .reduce((a, b) => Math.max(a, b), 0);
+          const nightRows = Array.from({ length: Math.max(deepest + 1, 3) }, (_, i) => i + 1);
+          const isConfigured =
+            !!row &&
+            (Object.keys(row.default_hotels || {}).length > 0 ||
+              row.default_meals ||
+              Object.keys(plans).some((k) => (plans[k] || []).length > 0));
+
+          return (
+            <div key={city} className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
+              <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/60 flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5">
+                  <h3 className="font-extrabold text-base text-slate-800 font-heading">{city}</h3>
+                  {isConfigured ? (
+                    <span className="text-[9px] uppercase font-black tracking-wider bg-emerald-100 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded">
+                      Defaults set
+                    </span>
+                  ) : (
+                    <span className="text-[9px] uppercase font-black tracking-wider bg-slate-100 text-slate-500 border border-slate-200 px-2 py-0.5 rounded">
+                      Not set up
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {cityDefaultsSavedMessage === city && (
+                    <span className="text-[11px] font-bold text-emerald-600">Saved</span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => saveCity(city)}
+                    disabled={cityDefaultsSaving === city}
+                    className="bg-orange-650 hover:bg-orange-700 disabled:opacity-60 text-white font-extrabold text-[10px] uppercase tracking-wider py-2 px-4 rounded-lg transition"
+                  >
+                    {cityDefaultsSaving === city ? 'Saving…' : 'Save ' + city}
+                  </button>
+                  {isConfigured && (
+                    <button
+                      type="button"
+                      onClick={() => clearCity(city)}
+                      className="bg-white hover:bg-red-50 text-red-700 border border-red-200 font-extrabold text-[10px] uppercase tracking-wider py-2 px-3 rounded-lg transition"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              <div className="p-6 flex flex-col gap-6">
+                {/* Hotels, one picker per star rating the city actually has. */}
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block mb-2">
+                    Default hotel by star rating
+                  </span>
+                  {ratings.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic">
+                      No hotels in {city} yet — add them in the Hotels Editor.
+                    </p>
+                  ) : (
+                    <div className="flex flex-wrap gap-4">
+                      {ratings.map((rating) => (
+                        <div key={rating} className="min-w-[220px]">
+                          <label className="text-[10px] font-bold text-slate-500 block mb-1">{rating}</label>
+                          <select
+                            value={row?.default_hotels?.[rating] || ''}
+                            onChange={(e) =>
+                              patchCity(city, {
+                                default_hotels: {
+                                  ...(row?.default_hotels || {}),
+                                  [rating]: e.target.value,
+                                },
+                              })
+                            }
+                            className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-semibold text-slate-800"
+                          >
+                            <option value="">First one in the list (no preference)</option>
+                            {cityHotels
+                              .filter((h) => h.category === rating)
+                              .map((h) => (
+                                <option key={h.id} value={h.id}>{h.name}</option>
+                              ))}
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Meal plan. */}
+                <div className="max-w-[260px]">
+                  <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block mb-2">
+                    Default meal plan
+                  </label>
+                  <select
+                    value={row?.default_meals || ''}
+                    onChange={(e) => patchCity(city, { default_meals: e.target.value })}
+                    className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-semibold text-slate-800"
+                  >
+                    <option value="">Use the old rule (Chitwan full board, elsewhere breakfast)</option>
+                    <option value="CP">CP — Breakfast only</option>
+                    <option value="MAP">MAP — Breakfast &amp; dinner</option>
+                    <option value="AP">AP — All meals</option>
+                  </select>
+                </div>
+
+                {/* Night plans. */}
+                <div>
+                  <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block mb-1">
+                    Sightseeing by night of the stay
+                  </span>
+                  <p className="text-[11px] text-slate-400 mb-3">
+                    A 2-night stay uses nights 1 and 2; a 3-night stay uses 1, 2 and 3.
+                  </p>
+                  {cityActs.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic">
+                      No activities in {city} yet — add them in the Activities Editor.
+                    </p>
+                  ) : (
+                    <div className="flex flex-col gap-3">
+                      {nightRows.map((n) => {
+                        const selected = plans[String(n)] || [];
+                        return (
+                          <div key={n} className="border border-slate-150 rounded-xl p-3 bg-slate-50/40">
+                            <span className="text-[11px] font-extrabold text-slate-600 block mb-2">
+                              Night {n}
+                              {n === 1 ? ' (arrival day)' : ''}
+                            </span>
+                            <div className="flex flex-wrap gap-2">
+                              {cityActs.map((a) => {
+                                const on = selected.includes(a.id);
+                                return (
+                                  <button
+                                    key={a.id}
+                                    type="button"
+                                    onClick={() =>
+                                      patchCity(city, {
+                                        night_plans: {
+                                          ...plans,
+                                          [String(n)]: on
+                                            ? selected.filter((id) => id !== a.id)
+                                            : [...selected, a.id],
+                                        },
+                                      })
+                                    }
+                                    className={`text-[11px] font-semibold px-3 py-1.5 rounded-lg border transition ${
+                                      on
+                                        ? 'bg-emerald-600 text-white border-emerald-600'
+                                        : 'bg-white text-slate-600 border-slate-200 hover:border-emerald-400'
+                                    }`}
+                                  >
+                                    {on ? '✓ ' : '+ '}{a.name}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            {selected.length === 0 && (
+                              <span className="text-[10px] text-slate-400 italic mt-2 block">
+                                Nothing added on this night.
+                              </span>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
   const renderUsersMaster = () => {
     // Treat a missing status as approved: an account made before approval
     // existed is a working account, and must never appear as though it were
@@ -6710,7 +7060,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           <div className="px-4 py-2 mt-4 border-t border-slate-800">
             <div className="text-[10px] text-slate-500 font-semibold tracking-wider uppercase mb-2">Admin Sheets (INR)</div>
             <ul className="list-none flex flex-col gap-1">
-              {['dashboard', 'cities', 'hotels', 'activities', 'vehicles', 'packages', 'leads', 'users', 'profile'].map(tab => (
+              {['dashboard', 'cities', 'citydefaults', 'hotels', 'activities', 'vehicles', 'packages', 'leads', 'users', 'profile'].map(tab => (
                 <li key={tab}>
                   <button 
                     onClick={() => setActiveAdminTab(tab)}
@@ -6718,6 +7068,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                   >
                     {tab === 'dashboard' && <TrendingUp size={12} />}
                     {tab === 'cities' && <Compass size={12} />}
+                    {tab === 'citydefaults' && <Check size={12} />}
                     {tab === 'hotels' && <Hotel size={12} />}
                     {tab === 'activities' && <Compass size={12} />}
                     {tab === 'vehicles' && <Car size={12} />}
@@ -6725,7 +7076,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                     {tab === 'leads' && <Users size={12} />}
                     {tab === 'users' && <Users size={12} />}
                     {tab === 'profile' && <User size={12} />}
-                    <span className="capitalize">{tab === 'leads' ? 'B2C Leads' : tab === 'users' ? 'Users Master' : tab === 'profile' ? 'My Profile' : `${tab} ${tab === 'dashboard' ? '' : 'Editor'}`}</span>
+                    <span className="capitalize">{tab === 'leads' ? 'B2C Leads' : tab === 'users' ? 'Users Master' : tab === 'profile' ? 'My Profile' : tab === 'citydefaults' ? 'City Defaults' : `${tab} ${tab === 'dashboard' ? '' : 'Editor'}`}</span>
                   </button>
                 </li>
               ))}
@@ -6971,6 +7322,12 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                       <>
                         <MapPin className="text-blue-600" />
                         <span>Admin Cities Master (INR ₹)</span>
+                      </>
+                    )}
+                    {activeAdminTab === 'citydefaults' && (
+                      <>
+                        <Check className="text-blue-600" />
+                        <span>City Defaults — what a new day starts as</span>
                       </>
                     )}
                     {activeAdminTab === 'hotels' && (
@@ -7833,6 +8190,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
 
                                   startFreshTrip();
                                   setCustomItinerary(resolved);
+                                  setAutoFilledNotice([]);
                                   setStartCity(db.settings.wizard_default_start_city || 'Gorakhpur');
                                   setEndCity(db.settings.wizard_default_end_city || 'Gorakhpur');
                                   setSelectedVehicleId(db.settings.wizard_default_vehicle_id || 'v-suv');
@@ -8288,6 +8646,42 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                 booking — it will not create a new one. To quote a different trip instead, start
                                 from Preset Packages or the Custom Planner.
                               </span>
+                            </div>
+                          )}
+
+                          {/* What Admin's City Defaults filled in, named.
+                              Automatic suggestions were removed once before
+                              because they were silent: a paid activity landed
+                              on the second night in a city and the quote came
+                              out higher than the agent expected, with nothing
+                              on screen to say why. Anything pre-filled is
+                              listed here and removable on its day card. */}
+                          {autoFilledNotice.length > 0 && (
+                            <div className="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-100 p-3 rounded-xl flex items-start gap-2 leading-normal font-medium mb-5">
+                              <Info size={14} className="shrink-0 text-emerald-600 mt-0.5" />
+                              <div className="flex-1">
+                                <span>
+                                  Pre-filled from your saved defaults — change or remove anything below.
+                                </span>
+                                <ul className="mt-1.5 flex flex-col gap-0.5 list-none">
+                                  {autoFilledNotice.map((n) => (
+                                    <li key={n.day} className="text-emerald-900/90">
+                                      <strong>Day {n.day}, {n.city}:</strong>{' '}
+                                      {[
+                                        n.hotelName ? `stay at ${n.hotelName}` : '',
+                                        n.activityNames.length ? n.activityNames.join(', ') : '',
+                                      ].filter(Boolean).join(' · ')}
+                                    </li>
+                                  ))}
+                                </ul>
+                                <button
+                                  type="button"
+                                  onClick={() => setAutoFilledNotice([])}
+                                  className="mt-2 text-[10px] uppercase font-extrabold tracking-wider text-emerald-700 hover:text-emerald-900 underline"
+                                >
+                                  Got it
+                                </button>
+                              </div>
                             </div>
                           )}
 
@@ -10717,11 +11111,10 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                             travelers: { adults: 2, cwb: 0, cnb: 0 },
                             roomConfig: { single: 0, double: 1, extra_adult: 0, cwb: 0, cnb: 0 },
                             itinerary: pkg.days.map(d => {
-                              const h = db.hotels.find(htl => sameCity(htl.city, d.city) && htl.category === pkg.default_hotel_category);
                               return {
                                 ...d,
-                                hotelId: h ? h.id : '',
-                                meals: d.city.toLowerCase() === 'chitwan' ? 'AP' : 'CP',
+                                hotelId: defaultHotelId(db.city_defaults, db.hotels, d.city, pkg.default_hotel_category),
+                                meals: defaultMealPlan(db.city_defaults, d.city),
                                 transfer_route: d.transfer_route !== undefined ? d.transfer_route : '',
                                 activity_ids: [...d.activity_ids]
                               };
@@ -10905,11 +11298,10 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                 travelers: { adults: 2, cwb: 0, cnb: 0 },
                                 roomConfig: { single: 0, double: 1, extra_adult: 0, cwb: 0, cnb: 0 },
                                 itinerary: editingPackage.days.map(d => {
-                                  const h = db.hotels.find(htl => sameCity(htl.city, d.city) && htl.category === editingPackage.default_hotel_category);
                                   return {
                                     ...d,
-                                    hotelId: h ? h.id : '',
-                                    meals: d.city.toLowerCase() === 'chitwan' ? 'AP' : 'CP',
+                                    hotelId: defaultHotelId(db.city_defaults, db.hotels, d.city, editingPackage.default_hotel_category),
+                                    meals: defaultMealPlan(db.city_defaults, d.city),
                                     transfer_route: d.transfer_route !== undefined ? d.transfer_route : '',
                                     activity_ids: [...d.activity_ids]
                                   };
@@ -11303,6 +11695,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
               })()}
 
               {/* TAB 9: Platform Users Master */}
+              {activeAdminTab === 'citydefaults' && renderCityDefaults()}
+
               {activeAdminTab === 'users' && renderUsersMaster()}
 
               {/* TAB 8: Company Profile Settings */}

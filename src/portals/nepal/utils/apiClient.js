@@ -207,6 +207,19 @@ export async function syncAdminDb(oldDb, newDb) {
 // Users -- explicit calls (not generic diffing) because create needs a
 // password and edits never touch the password field (see resetUserPassword).
 // ---------------------------------------------------------------------------
+// Per-city builder defaults (Admin -> City Defaults). Upsert by city name;
+// deleting a city's row returns it to the built-in fallback behaviour.
+export async function saveCityDefaults(city, payload) {
+  return apiFetch(`/admin/city-defaults/${encodeURIComponent(city)}`, {
+    method: 'PUT',
+    body: payload,
+  });
+}
+
+export async function deleteCityDefaults(city) {
+  return apiFetch(`/admin/city-defaults/${encodeURIComponent(city)}`, { method: 'DELETE' });
+}
+
 export async function createUser(payload) {
   return apiFetch('/admin/users', { method: 'POST', body: payload });
 }

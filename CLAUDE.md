@@ -51,12 +51,18 @@ npm run lint         # tsc --noEmit
 (see `.env.example`). **Vite reads env files only at startup** — restart the
 dev server after changing them.
 
-There is **one** committed test suite: `server/test/approval.test.js`, run with
-`npm test` from `server/`. It boots the real Express app against a throwaway
-libSQL file in the temp directory, so it touches nothing live and needs no
-credentials, then tears both down. Everything else is still verified by
-throwaway scripts and browser checks. **More tests are a genuine improvement,
-not scope creep.**
+Two committed test suites:
+
+- **`npm test`** (repo root) — `test/cityDefaults.test.mjs`, the City Defaults
+  resolver. Bundled with esbuild first, because the source uses Vite's
+  extensionless imports.
+- **`npm test`** from **`server/`** — `server/test/approval.test.js`, the agent
+  approval gate. It boots the real Express app against a throwaway libSQL file
+  in the temp directory, so it touches nothing live and needs no credentials,
+  then tears both down.
+
+Everything else is still verified by throwaway scripts and browser checks.
+**More tests are a genuine improvement, not scope creep.**
 
 ## The three portals
 
@@ -496,14 +502,63 @@ An activity is only offerable on a day in its **own city**; compare through
 `activitiesInCity()`, which trims and is null-safe. One whose city is not in
 the Cities master can never be used, so the Admin list flags it.
 
-**Nothing is ever added to a day automatically.** The intake wizard used to
-drop a hardcoded activity (`a-ktm-sightseeing`, `a-pok-boating`,
+**Automatic suggestions are back, driven by Admin.** The intake wizard once
+dropped a *hardcoded* activity (`a-ktm-sightseeing`, `a-pok-boating`,
 `a-chi-safari`) on the second night in a city, so asking for two nights in
 Kathmandu silently added a paid activity nobody chose and the quote came out
-higher than the agent expected. Activities are picked by hand in the day
-cards. Tanmay wants automatic suggestions back **later**; when they return
-they must be driven by the activities master, not hardcoded ids, and be
-visible and removable at the moment they are added.
+higher than the agent expected. That was removed, and has now returned on the
+terms it failed on: driven by **Admin -> City Defaults** rather than hardcoded
+ids, and **announced** — the builder shows a banner naming every day that was
+pre-filled, and each item is removable on its day card. See *City Defaults*
+below.
+
+## City Defaults — what a new day starts as
+
+**Admin -> City Defaults** decides, per city: which hotel to book at each star
+rating, which meal plan to assume, and which activities to include on each
+night of a stay. It is what makes a quote come out ready to send, and it is
+how a hotel TripGuru has a partnership with actually gets used.
+
+Before it existed the answers were spread through the builder and effectively
+arbitrary:
+
+- the hotel was **`cityHotels[0]`** — whichever hotel happened to sit first in
+  the Hotels master for that city and rating, so with several options the
+  choice looked random (this is the "auto picking some hotels" Tanmay reported;
+  it was never literally hardcoded);
+- the meal plan was the literal **`city === 'chitwan' ? 'AP' : 'CP'`**, written
+  out in **nine** separate places, so no other city could ever default to
+  anything but CP.
+
+All of that now goes through **`utils/cityDefaults.js`**, the one module that
+decides. `buildDayDefaults()` returns the hotel, meals and activities *and* a
+plain-language list of what it filled in, which is what the builder's banner
+renders.
+
+**Night plans are keyed by the night's index within the stay**, not by how long
+the stay is: `{"1": [...], "2": [...]}`. A three-night stay takes nights 1, 2
+and 3, so adding a fourth later does not mean re-entering the first three, and
+the arrival day is handled naturally (night 1 light, night 2 the full run).
+
+**Everything is optional, and unconfigured means unchanged.** A city with no
+row, or a row with a field unset, falls back to exactly the old behaviour. This
+is the property the committed test guards hardest — every live quote depends on
+it, because the table starts empty.
+
+A configured default is only honoured if it still resolves: a hotel that was
+deleted or re-rated falls back rather than dangling, and an activity that was
+deleted or moved to another city is dropped rather than silently charged for.
+
+**A new master has to be named in the public-db merge or the portals never see
+it.** The B2C/B2B load in `App.jsx` is a **whitelist** of keys copied out of
+`/public/db`. `city_defaults` was missing from it at first, and the symptom was
+exactly the kind that wastes an hour: Admin saved the defaults correctly, the
+API returned them, and the builder still picked whatever hotel came first.
+
+Automatic activities are added by the **wizard** and by new days in a reshape.
+They are deliberately *not* added when a day is added by hand or moved to
+another city — the operator asked for a day, not for something paid to appear
+on it.
 
 ## The quote builder
 
@@ -583,7 +638,11 @@ it carries all three items below rather than shipping one at a time:
 - A new agent account is `pending` until an admin approves it, enforced
   server-side.
 - B2B signup collects an optional GST number.
-- First committed test suite: `server/test/approval.test.js`.
+- **Admin -> City Defaults**: the hotel, meal plan and per-night sightseeing a
+  new day starts with, replacing an arbitrary "first hotel in the list" and a
+  meal rule hardcoded in nine places.
+- First committed tests: `test/cityDefaults.test.mjs` and
+  `server/test/approval.test.js`.
 
 Live since the last handoff, in the order it shipped:
 
