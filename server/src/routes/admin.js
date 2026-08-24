@@ -10,6 +10,7 @@ const {
   serializeAirport,
   serializeActivity,
   serializeCityDefault,
+  serializeVehiclePackage,
   serializePackage,
   serializeSettings,
   serializeBooking,
@@ -46,7 +47,7 @@ async function run(sql, args = []) {
 // produced, so the frontend's `db` object needs no restructuring.
 // ---------------------------------------------------------------------------
 router.get('/db', async (req, res) => {
-  const [cities, airports, hotels, vehicles, routes, activities, packages, settings, bookings, leads, users, cityDefaults] =
+  const [cities, airports, hotels, vehicles, routes, activities, packages, settings, bookings, leads, users, cityDefaults, vehiclePackages] =
     await Promise.all([
       all('SELECT name FROM cities ORDER BY name ASC'),
       all('SELECT * FROM airports'),
@@ -60,6 +61,7 @@ router.get('/db', async (req, res) => {
       all('SELECT * FROM leads ORDER BY created_at DESC'),
       all('SELECT * FROM users'),
       all('SELECT * FROM city_defaults'),
+      all('SELECT * FROM vehicle_packages'),
     ]);
 
   res.json({
@@ -75,7 +77,69 @@ router.get('/db', async (req, res) => {
     leads: leads.map(serializeLead),
     users: users.map(serializeUser),
     city_defaults: cityDefaults.map(serializeCityDefault),
+    vehicle_packages: vehiclePackages.map(serializeVehiclePackage),
   });
+});
+
+// ---------------------------------------------------------------------------
+// Vehicle packages -- one rate for the vehicle across a whole trip, instead of
+// adding up sector by sector. See the table comment in db/schema.sql.
+// ---------------------------------------------------------------------------
+router.get('/vehicle-packages', async (req, res) => {
+  res.json((await all('SELECT * FROM vehicle_packages')).map(serializeVehiclePackage));
+});
+
+function normaliseCityList(input) {
+  // Stored trimmed, de-duplicated and sorted, so the row is written the same
+  // way however the admin typed it and matching never depends on order.
+  const list = Array.isArray(input) ? input : [];
+  const seen = new Map();
+  for (const c of list) {
+    const name = String(c || '').trim();
+    if (!name) continue;
+    const key = name.toLowerCase();
+    if (!seen.has(key)) seen.set(key, name);
+  }
+  return [...seen.values()].sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
+}
+
+router.post('/vehicle-packages', async (req, res) => {
+  const b = req.body || {};
+  const cities = normaliseCityList(b.cities);
+  const days = Number(b.days);
+  const rate = Number(b.rate);
+
+  if (!b.vehicle_id || !String(b.start_city || '').trim() || !String(b.end_city || '').trim()) {
+    return res.status(400).json({ error: 'vehicle_id, start_city and end_city are required' });
+  }
+  if (cities.length === 0) return res.status(400).json({ error: 'At least one overnight city is required' });
+  if (!Number.isFinite(days) || days < 1) return res.status(400).json({ error: 'days must be 1 or more' });
+  if (!Number.isFinite(rate) || rate < 0) return res.status(400).json({ error: 'rate must be 0 or more' });
+
+  const id = b.id && String(b.id).trim() ? String(b.id).trim() : genId('vpkg');
+  await run(
+    `INSERT INTO vehicle_packages (id, vehicle_id, start_city, end_city, cities, days, rate)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET
+       vehicle_id = excluded.vehicle_id, start_city = excluded.start_city,
+       end_city = excluded.end_city, cities = excluded.cities,
+       days = excluded.days, rate = excluded.rate`,
+    [
+      id,
+      String(b.vehicle_id),
+      String(b.start_city).trim(),
+      String(b.end_city).trim(),
+      JSON.stringify(cities),
+      Math.round(days),
+      rate,
+    ]
+  );
+  res.status(201).json(serializeVehiclePackage(await one('SELECT * FROM vehicle_packages WHERE id = ?', [id])));
+});
+
+router.delete('/vehicle-packages/:id', async (req, res) => {
+  await run('DELETE FROM vehicle_packages WHERE id = ?', [req.params.id]);
+  res.json({ ok: true });
 });
 
 // ---------------------------------------------------------------------------
@@ -316,13 +380,17 @@ router.post('/activities', async (req, res) => {
   if (!b.name) return res.status(400).json({ error: 'name is required' });
   const id = b.id || genId('a');
   await run(
-    `INSERT INTO activities (id, name, city, description, price_adult, price_child, pricing_mode, vehicle_rates)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO activities (id, name, city, description, price_adult, price_child, pricing_mode,
+       vehicle_rates, covered_by_vehicle_package)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       id, b.name, b.city || '', b.description || '',
       b.price_adult ?? 0, b.price_child ?? 0,
       b.pricing_mode === 'per_vehicle' ? 'per_vehicle' : 'per_person',
       JSON.stringify(b.vehicle_rates || {}),
+      // Unspecified means covered: ordinary local sightseeing is what a
+      // package includes, and the extras are the exception.
+      b.covered_by_vehicle_package === undefined ? 1 : (b.covered_by_vehicle_package ? 1 : 0),
     ]
   );
   res.status(201).json(serializeActivity(await one('SELECT * FROM activities WHERE id = ?', [id])));
@@ -334,7 +402,7 @@ router.put('/activities/:id', async (req, res) => {
   if (!existing) return res.status(404).json({ error: 'Activity not found' });
   await run(
     `UPDATE activities SET name = ?, city = ?, description = ?, price_adult = ?, price_child = ?,
-      pricing_mode = ?, vehicle_rates = ? WHERE id = ?`,
+      pricing_mode = ?, vehicle_rates = ?, covered_by_vehicle_package = ? WHERE id = ?`,
     [
       b.name ?? existing.name,
       b.city ?? existing.city,
@@ -347,6 +415,9 @@ router.put('/activities/:id', async (req, res) => {
       b.vehicle_rates === undefined
         ? (existing.vehicle_rates || '{}')
         : JSON.stringify(b.vehicle_rates || {}),
+      b.covered_by_vehicle_package === undefined
+        ? (existing.covered_by_vehicle_package ?? 1)
+        : (b.covered_by_vehicle_package ? 1 : 0),
       req.params.id,
     ]
   );

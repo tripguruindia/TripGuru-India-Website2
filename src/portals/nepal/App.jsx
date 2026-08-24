@@ -57,6 +57,8 @@ import {
   setUserApproval,
   saveCityDefaults,
   deleteCityDefaults,
+  saveVehiclePackage,
+  deleteVehiclePackage,
   getMyWallet,
   getAgentWallet,
   addWalletTransaction,
@@ -66,6 +68,7 @@ import {
   defaultHotelId,
   defaultMealPlan,
 } from './utils/cityDefaults';
+import { describeMissingPackage } from './utils/vehiclePackages';
 import './App.css';
 import './index.css';
 
@@ -329,6 +332,7 @@ function App() {
           // quietly fall back to picking whatever hotel came first while Admin
           // showed the defaults saved correctly.
           city_defaults: fresh.city_defaults ?? prev.city_defaults ?? [],
+          vehicle_packages: fresh.vehicle_packages ?? prev.vehicle_packages ?? [],
         }));
       })
       .catch((err) => {
@@ -825,6 +829,11 @@ function App() {
   const [wizardNationality, setWizardNationality] = useState('');
   const [wizardLeavingOn, setWizardLeavingOn] = useState('');
   const [wizardStarRating, setWizardStarRating] = useState('');
+  // Which vehicle the trip runs on. Until this existed the builder was stuck
+  // on whatever `selectedVehicleId` defaulted to, so nobody could quote a
+  // Coaster for twelve people without going through a preset package -- and a
+  // vehicle package rate keyed to a Hiace could never be matched.
+  const [wizardVehicleId, setWizardVehicleId] = useState('');
   // Not a trip detail but a way of travelling, and on for all but a handful of
   // bookings -- so this one keeps its default rather than becoming a question.
   const [wizardAddTransfers, setWizardAddTransfers] = useState(true);
@@ -837,7 +846,7 @@ function App() {
   const [activityEditState, setActivityEditState] = useState({});
   const [newActivityForm, setNewActivityForm] = useState({
     name: '', city: 'Kathmandu', description: '', price_adult: 2000, price_child: 1200,
-    pricing_mode: 'per_person', vehicle_rates: {}
+    pricing_mode: 'per_person', vehicle_rates: {}, covered_by_vehicle_package: true
   });
   const [showAddActivityModal, setShowAddActivityModal] = useState(false);
   const [newCityName, setNewCityName] = useState('');
@@ -896,6 +905,10 @@ function App() {
 
   const [userSearchQuery, setUserSearchQuery] = useState('');
   // Which city's defaults are mid-save, and which just saved.
+  const [vehiclePackageForm, setVehiclePackageForm] = useState({
+    vehicle_id: '', start_city: '', end_city: '', cities: [], days: '', rate: '',
+  });
+  const [vehiclePackageSaving, setVehiclePackageSaving] = useState(false);
   const [cityDefaultsSaving, setCityDefaultsSaving] = useState('');
   const [cityDefaultsSavedMessage, setCityDefaultsSavedMessage] = useState('');
   const [editingUser, setEditingUser] = useState(null);
@@ -1863,6 +1876,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     hotelsData: db.hotels,
     vehiclesData: db.vehicles,
     activitiesData: db.activities,
+    vehiclePackagesData: db.vehicle_packages || [],
     routesData: db.routes || [],
     airportsData: db.airports || [],
     settings: {
@@ -2474,6 +2488,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     hotelsData: db.hotels,
     vehiclesData: db.vehicles,
     activitiesData: db.activities,
+    vehiclePackagesData: db.vehicle_packages || [],
     routesData: db.routes || [],
     airportsData: db.airports || [],
     settings: {
@@ -2493,7 +2508,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     rooms, customItinerary, selectedVehicleId,
     db.hotels, db.vehicles, db.activities, db.routes, db.airports,
     activeMarkup, activeB2bAdminMargin, taxInput, taxEnabledInput, view, offerDiscountPerPax,
-    startCity, endCity
+    startCity, endCity, db.vehicle_packages
   ]);
 
   // ---------------------------------------------------------------------
@@ -2724,6 +2739,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     }
     if (quote.travel_date) setWizardLeavingOn(quote.travel_date);
     if (quote.hotel_category) setWizardStarRating(quote.hotel_category);
+    if (quote.vehicle_id) setWizardVehicleId(quote.vehicle_id);
     setIsEditingExistingTrip(true);
 
     if (view === 'b2b') setB2bSubView('wizard'); else setB2cSubView('wizard');
@@ -3547,6 +3563,9 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       price_child: isPerVehicle ? 0 : Number(activityEditState.price_child) || 0,
       pricing_mode: isPerVehicle ? 'per_vehicle' : 'per_person',
       vehicle_rates: isPerVehicle ? { ...(activityEditState.vehicle_rates || {}) } : {},
+      // Only meaningful for a per-vehicle activity; a per-head ticket is never
+      // absorbed by a vehicle package. Unset reads as covered.
+      covered_by_vehicle_package: activityEditState.covered_by_vehicle_package !== false,
     };
     const updatedActs = db.activities.map(a => a.id === editingActivityId ? cleaned : a);
     updateDBState({ ...db, activities: updatedActs });
@@ -3575,13 +3594,14 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       price_child: isPerVehicle ? 0 : Number(newActivityForm.price_child),
       pricing_mode: isPerVehicle ? 'per_vehicle' : 'per_person',
       vehicle_rates: isPerVehicle ? { ...(newActivityForm.vehicle_rates || {}) } : {},
+      covered_by_vehicle_package: newActivityForm.covered_by_vehicle_package !== false,
     };
 
     updateDBState({ ...db, activities: [...db.activities, freshAct] });
     setShowAddActivityModal(false);
     setNewActivityForm({
       name: '', city: 'Kathmandu', description: '', price_adult: 2000, price_child: 1200,
-      pricing_mode: 'per_person', vehicle_rates: {}
+      pricing_mode: 'per_person', vehicle_rates: {}, covered_by_vehicle_package: true
     });
   };
 
@@ -4149,6 +4169,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     if (!wizardEndCity) missing.push('end city');
     if (!wizardLeavingOn) missing.push('travel date');
     if (!wizardStarRating) missing.push('star rating');
+    if (!wizardVehicleId) missing.push('vehicle');
     if (!wizardDestinations.some(d => d.city && Number(d.nights) > 0)) {
       missing.push('at least one city with its nights');
     } else if (wizardDestinations.some(d => (d.city && !Number(d.nights)) || (!d.city && d.nights))) {
@@ -4180,6 +4201,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       setCustomItinerary(days);
       setAutoFilledNotice([]);
       setSelectedHotelCategory(wizardStarRating);
+      setSelectedVehicleId(wizardVehicleId);
       setTravelDate(wizardLeavingOn);
       setStartCity(wizardStartCity);
       setEndCity(wizardEndCity);
@@ -4205,6 +4227,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     // row the operator has not finished, not a stop on the trip.
     const cities = wizardDestinations.filter(d => d.city && Number(d.nights) > 0);
     const rating = wizardStarRating;
+    setSelectedVehicleId(wizardVehicleId);
     const addTransfers = wizardAddTransfers;
 
     const itinerary = [];
@@ -6016,6 +6039,258 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
   };
 
   // ---------------------------------------------------------------------
+  // Admin -> Vehicle Packages. One negotiated rate for the vehicle across a
+  // whole trip, instead of adding up sector by sector.
+  //
+  // Matching is exact and order-independent: see utils/vehiclePackages.js.
+  // A combination with no row here prices sector by sector, and the builder
+  // tells the agent which row is missing.
+  // ---------------------------------------------------------------------
+  const renderVehiclePackages = () => {
+    const rows = db.vehicle_packages || [];
+    const cities = db.cities || [];
+    const vehicles = db.vehicles || [];
+    const form = vehiclePackageForm;
+
+    const toggleCity = (city) => {
+      setVehiclePackageForm((f) => ({
+        ...f,
+        cities: f.cities.some((c) => sameCity(c, city))
+          ? f.cities.filter((c) => !sameCity(c, city))
+          : [...f.cities, city],
+      }));
+    };
+
+    const addRow = async () => {
+      if (!form.vehicle_id || !form.start_city || !form.end_city) {
+        window.alert('Choose a vehicle, a starting point and an ending point.');
+        return;
+      }
+      if (form.cities.length === 0) {
+        window.alert('Tick at least one overnight city for this package.');
+        return;
+      }
+      if (!Number(form.days) || Number(form.days) < 1) {
+        window.alert('Enter how many days the vehicle is out.');
+        return;
+      }
+      if (!isApiSession()) {
+        window.alert('Sign in as an admin to save vehicle packages.');
+        return;
+      }
+      setVehiclePackageSaving(true);
+      try {
+        const saved = await saveVehiclePackage({
+          vehicle_id: form.vehicle_id,
+          start_city: form.start_city,
+          end_city: form.end_city,
+          cities: form.cities,
+          days: Number(form.days),
+          rate: Number(form.rate) || 0,
+        });
+        setDb((prev) => ({
+          ...prev,
+          vehicle_packages: [...(prev.vehicle_packages || []).filter((r) => r.id !== saved.id), saved],
+        }));
+        // Keep the vehicle and the two endpoints -- the next row an operator
+        // adds is nearly always the same run at a different length.
+        setVehiclePackageForm((f) => ({ ...f, days: '', rate: '' }));
+      } catch (err) {
+        window.alert('Could not save this package: ' + (err.message || 'Unknown error'));
+      } finally {
+        setVehiclePackageSaving(false);
+      }
+    };
+
+    const removeRow = async (row) => {
+      const label = `${vehicles.find((v) => v.id === row.vehicle_id)?.name || row.vehicle_id}, ${row.start_city} to ${row.end_city}, ${row.days} days`;
+      if (!window.confirm(`Delete this package rate?\n\n${label}\n\nTrips matching it will go back to being priced sector by sector.`)) return;
+      try {
+        if (isApiSession()) await deleteVehiclePackage(row.id);
+        setDb((prev) => ({
+          ...prev,
+          vehicle_packages: (prev.vehicle_packages || []).filter((r) => r.id !== row.id),
+        }));
+      } catch (err) {
+        window.alert('Could not delete: ' + (err.message || 'Unknown error'));
+      }
+    };
+
+    const sorted = [...rows].sort((a, b) =>
+      (a.start_city || '').localeCompare(b.start_city || '') ||
+      (a.vehicle_id || '').localeCompare(b.vehicle_id || '') ||
+      (a.days || 0) - (b.days || 0));
+
+    return (
+      <div className="flex flex-col gap-6 text-left">
+        <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm">
+          <h2 className="text-2xl font-bold font-heading text-[#0f2942]">Vehicle Packages</h2>
+          <p className="text-slate-500 text-sm mt-1 leading-relaxed max-w-3xl">
+            One rate for the vehicle across a whole trip, instead of adding up each leg. This is how
+            a border-town run is actually priced — the vehicle is hired for the trip, and the empty
+            return drive is part of what you are paying for.
+          </p>
+          <p className="text-slate-500 text-xs mt-3 leading-relaxed max-w-3xl">
+            The order of cities does not matter — Kathmandu then Pokhara is the same road as Pokhara
+            then Kathmandu, so enter each circuit once. A trip that matches a row is priced from it
+            and the basic sightseeing is treated as included. Anything with no row is priced leg by
+            leg exactly as before, and the agent is told which row is missing.
+          </p>
+        </div>
+
+        {/* Add a row */}
+        <div className="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm flex flex-col gap-5">
+          <h3 className="font-extrabold text-sm uppercase text-slate-500 tracking-wider">Add a package rate</h3>
+
+          <div className="flex flex-wrap gap-4">
+            <div className="min-w-[200px]">
+              <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block mb-1.5">Vehicle</label>
+              <select
+                value={form.vehicle_id}
+                onChange={(e) => setVehiclePackageForm((f) => ({ ...f, vehicle_id: e.target.value }))}
+                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-semibold text-slate-800"
+              >
+                <option value="">Select vehicle…</option>
+                {vehicles.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+              </select>
+            </div>
+            <div className="min-w-[180px]">
+              <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block mb-1.5">Starts from</label>
+              <select
+                value={form.start_city}
+                onChange={(e) => setVehiclePackageForm((f) => ({ ...f, start_city: e.target.value }))}
+                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-semibold text-slate-800"
+              >
+                <option value="">Select…</option>
+                {cities.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div className="min-w-[180px]">
+              <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block mb-1.5">Ends at</label>
+              <select
+                value={form.end_city}
+                onChange={(e) => setVehiclePackageForm((f) => ({ ...f, end_city: e.target.value }))}
+                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-semibold text-slate-800"
+              >
+                <option value="">Select…</option>
+                {cities.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div className="w-[130px]">
+              <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block mb-1.5">Total days</label>
+              <input
+                type="number"
+                min="1"
+                value={form.days}
+                onChange={(e) => setVehiclePackageForm((f) => ({ ...f, days: e.target.value }))}
+                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-semibold text-slate-800"
+                placeholder="6"
+              />
+            </div>
+            <div className="w-[150px]">
+              <label className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block mb-1.5">Rate (₹)</label>
+              <input
+                type="number"
+                min="0"
+                value={form.rate}
+                onChange={(e) => setVehiclePackageForm((f) => ({ ...f, rate: e.target.value }))}
+                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-semibold text-slate-800"
+                placeholder="48000"
+              />
+            </div>
+          </div>
+
+          <div>
+            <span className="text-[10px] uppercase font-bold text-slate-400 tracking-wider block mb-1">Overnight cities on this circuit</span>
+            <p className="text-[11px] text-slate-400 mb-2.5">
+              Only where they sleep. A place visited for a few hours is charged as its own extra.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {cities.map((c) => {
+                const on = form.cities.some((x) => sameCity(x, c));
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => toggleCity(c)}
+                    className={`text-[11px] font-semibold px-3 py-1.5 rounded-lg border transition ${
+                      on ? 'bg-emerald-600 text-white border-emerald-600'
+                         : 'bg-white text-slate-600 border-slate-200 hover:border-emerald-400'
+                    }`}
+                  >
+                    {on ? '✓ ' : '+ '}{c}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <button
+              type="button"
+              onClick={addRow}
+              disabled={vehiclePackageSaving}
+              className="bg-orange-650 hover:bg-orange-700 disabled:opacity-60 text-white font-extrabold text-xs uppercase tracking-wider py-2.5 px-5 rounded-xl shadow-md transition"
+            >
+              {vehiclePackageSaving ? 'Saving…' : 'Add Package Rate'}
+            </button>
+          </div>
+        </div>
+
+        {/* The sheet */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/60">
+            <h3 className="font-extrabold text-sm text-slate-800">{rows.length} package rate{rows.length === 1 ? '' : 's'}</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[760px] text-left text-xs">
+              <thead>
+                <tr className="bg-slate-100/80 border-b border-slate-200 text-slate-500 font-bold uppercase text-[9px] tracking-wider">
+                  <th className="p-4">Vehicle</th>
+                  <th className="p-4">Route</th>
+                  <th className="p-4">Overnight cities</th>
+                  <th className="p-4 text-center">Days</th>
+                  <th className="p-4 text-right">Rate</th>
+                  <th className="p-4 text-center w-16"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {sorted.length === 0 ? (
+                  <tr>
+                    <td colSpan="6" className="p-8 text-center text-slate-400">
+                      No package rates yet — every trip is priced leg by leg.
+                    </td>
+                  </tr>
+                ) : sorted.map((row) => (
+                  <tr key={row.id} className="hover:bg-slate-50/50 transition">
+                    <td className="p-4 font-bold text-slate-800">
+                      {vehicles.find((v) => v.id === row.vehicle_id)?.name || row.vehicle_id}
+                    </td>
+                    <td className="p-4 text-slate-600">{row.start_city} → {row.end_city}</td>
+                    <td className="p-4 text-slate-600">{(row.cities || []).join(' + ')}</td>
+                    <td className="p-4 text-center font-semibold text-slate-800">{row.days}</td>
+                    <td className="p-4 text-right font-extrabold text-slate-800">₹{Number(row.rate || 0).toLocaleString()}</td>
+                    <td className="p-4 text-center">
+                      <button
+                        type="button"
+                        onClick={() => removeRow(row)}
+                        className="bg-transparent text-red-600 hover:text-red-800 p-2 hover:bg-red-50 rounded-xl transition"
+                        title="Delete this package rate"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // ---------------------------------------------------------------------
   // Admin -> City Defaults. What a freshly built day in a city starts out as:
   // which hotel at each star rating, which meal plan, and which activities on
   // each successive night of the stay.
@@ -7060,7 +7335,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           <div className="px-4 py-2 mt-4 border-t border-slate-800">
             <div className="text-[10px] text-slate-500 font-semibold tracking-wider uppercase mb-2">Admin Sheets (INR)</div>
             <ul className="list-none flex flex-col gap-1">
-              {['dashboard', 'cities', 'citydefaults', 'hotels', 'activities', 'vehicles', 'packages', 'leads', 'users', 'profile'].map(tab => (
+              {['dashboard', 'cities', 'citydefaults', 'hotels', 'activities', 'vehicles', 'vehiclepackages', 'packages', 'leads', 'users', 'profile'].map(tab => (
                 <li key={tab}>
                   <button 
                     onClick={() => setActiveAdminTab(tab)}
@@ -7072,11 +7347,12 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                     {tab === 'hotels' && <Hotel size={12} />}
                     {tab === 'activities' && <Compass size={12} />}
                     {tab === 'vehicles' && <Car size={12} />}
+                    {tab === 'vehiclepackages' && <Car size={12} />}
                     {tab === 'packages' && <Layers size={12} />}
                     {tab === 'leads' && <Users size={12} />}
                     {tab === 'users' && <Users size={12} />}
                     {tab === 'profile' && <User size={12} />}
-                    <span className="capitalize">{tab === 'leads' ? 'B2C Leads' : tab === 'users' ? 'Users Master' : tab === 'profile' ? 'My Profile' : tab === 'citydefaults' ? 'City Defaults' : `${tab} ${tab === 'dashboard' ? '' : 'Editor'}`}</span>
+                    <span className="capitalize">{tab === 'leads' ? 'B2C Leads' : tab === 'users' ? 'Users Master' : tab === 'profile' ? 'My Profile' : tab === 'citydefaults' ? 'City Defaults' : tab === 'vehiclepackages' ? 'Vehicle Packages' : `${tab} ${tab === 'dashboard' ? '' : 'Editor'}`}</span>
                   </button>
                 </li>
               ))}
@@ -7328,6 +7604,12 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                       <>
                         <Check className="text-blue-600" />
                         <span>City Defaults — what a new day starts as</span>
+                      </>
+                    )}
+                    {activeAdminTab === 'vehiclepackages' && (
+                      <>
+                        <Car className="text-blue-600" />
+                        <span>Vehicle Packages — one rate for the whole trip</span>
                       </>
                     )}
                     {activeAdminTab === 'hotels' && (
@@ -8511,6 +8793,26 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                             </div>
 
                             <div>
+                              {/* Capacity is shown because the party size is
+                                  already known here, and putting six people in
+                                  a Sedan is the mistake this prevents. */}
+                              <label className="block text-xs font-bold text-slate-700 mb-1.5">Vehicle *</label>
+                              <select
+                                value={wizardVehicleId}
+                                onChange={(e) => setWizardVehicleId(e.target.value)}
+                                required
+                                className="form-select text-xs py-2 px-3 w-full border border-slate-300 rounded-lg bg-white shadow-sm"
+                              >
+                                <option value="">Select vehicle</option>
+                                {(db.vehicles || []).map((v) => (
+                                  <option key={v.id} value={v.id}>
+                                    {v.name}{v.capacity ? ` — up to ${v.capacity}` : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            </div>
+
+                            <div>
                               <label className="block text-xs font-bold text-slate-700 mb-1.5">Star rating *</label>
                               <select 
                                 value={wizardStarRating}
@@ -8610,6 +8912,11 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                             // the intake page reshapes this trip rather than
                             // rebuilding it.
                             setIsEditingExistingTrip(true);
+                            // Seed the wizard's vehicle from the trip being
+                            // edited, or a trip loaded from a package or a
+                            // saved quote would come back with it blank and
+                            // the operator would have to pick it again.
+                            setWizardVehicleId(selectedVehicleId);
                             if (view === 'b2b') setB2bSubView('wizard'); else setB2cSubView('wizard');
                             if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
                           }}
@@ -8647,6 +8954,53 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                 from Preset Packages or the Custom Planner.
                               </span>
                             </div>
+                          )}
+
+                          {/* The vehicle is on a negotiated whole-trip rate,
+                              or it is not and the operator should know which
+                              row is missing rather than discovering a wrong
+                              price later.
+
+                              Agent portal only. The builder does not exist in
+                              Admin, and on the traveller storefront this block
+                              would show a member of the public how the vehicle
+                              was costed. */}
+                          {view === 'b2b' && selectedVehicleId && customItinerary.length > 0 && (
+                            quoteCalculation.vehiclePackage ? (
+                              <div className="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-100 p-3 rounded-xl flex items-start gap-2 leading-normal font-medium mb-5">
+                                <Check size={14} className="shrink-0 text-emerald-600 mt-0.5" />
+                                <span>
+                                  Vehicle on a package rate:{' '}
+                                  <strong>
+                                    {quoteCalculation.vehiclePackage.start_city} → {quoteCalculation.vehiclePackage.end_city},{' '}
+                                    {(quoteCalculation.vehiclePackage.cities || []).join(' + ')},{' '}
+                                    {quoteCalculation.vehiclePackage.days} days — ₹{Number(quoteCalculation.vehiclePackage.rate || 0).toLocaleString()}
+                                  </strong>.
+                                  The legs and the basic sightseeing are included in that figure.
+                                </span>
+                              </div>
+                            ) : (() => {
+                              const miss = describeMissingPackage({
+                                vehicles: db.vehicles,
+                                vehicleId: selectedVehicleId,
+                                startCity,
+                                endCity,
+                                itinerary: customItinerary,
+                              });
+                              return (
+                                <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-100 p-3 rounded-xl flex items-start gap-2 leading-normal font-medium mb-5">
+                                  <AlertTriangle size={14} className="shrink-0 text-amber-500 mt-0.5" />
+                                  <span>
+                                    No vehicle package rate for{' '}
+                                    <strong>
+                                      {miss.vehicleName} · {miss.startCity || '—'} → {miss.endCity || '—'} ·{' '}
+                                      {miss.cities.join(' + ') || 'no overnight cities'} · {miss.days} days
+                                    </strong>.
+                                    Priced leg by leg instead. Add the rate in Admin → Vehicle Packages.
+                                  </span>
+                                </div>
+                              );
+                            })()
                           )}
 
                           {/* What Admin's City Defaults filled in, named.
@@ -10745,6 +11099,16 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                               {v.name.split(' ')[0]} ₹{Number((act.vehicle_rates || {})[v.id] || 0).toLocaleString()}
                                             </span>
                                           ))}
+                                          {/* Silence is "covered by the package", which is the
+                                              common case; the exceptions are what need saying. */}
+                                          {act.covered_by_vehicle_package === false && (
+                                            <span
+                                              className="text-[9px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-200 rounded px-1.5 py-0.5"
+                                              title="Charged on top even when the trip is on a vehicle package."
+                                            >
+                                              Extra on packages
+                                            </span>
+                                          )}
                                         </div>
                                       </td>
                                     ) : (
@@ -11123,6 +11487,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                             hotelsData: db.hotels,
                             vehiclesData: db.vehicles,
                             activitiesData: db.activities,
+                            vehiclePackagesData: db.vehicle_packages || [],
                             settings: db.settings,
                             startCity: 'Kathmandu',
                             endCity: 'Kathmandu'
@@ -11310,6 +11675,7 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                 hotelsData: db.hotels,
                                 vehiclesData: db.vehicles,
                                 activitiesData: db.activities,
+                            vehiclePackagesData: db.vehicle_packages || [],
                                 settings: db.settings,
                                 startCity: 'Kathmandu',
                                 endCity: 'Kathmandu'
@@ -11697,6 +12063,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
               {/* TAB 9: Platform Users Master */}
               {activeAdminTab === 'citydefaults' && renderCityDefaults()}
 
+              {activeAdminTab === 'vehiclepackages' && renderVehiclePackages()}
+
               {activeAdminTab === 'users' && renderUsersMaster()}
 
               {/* TAB 8: Company Profile Settings */}
@@ -11917,6 +12285,23 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                         </label>
                       ))}
                     </div>
+                    {/* On a vehicle package the vehicle is already hired for
+                        the whole trip, so charging this again would bill the
+                        same vehicle twice on the same day. Ordinary local
+                        sightseeing is covered; a genuine extra run -- an early
+                        Sarangkot start, a Pumdikot detour -- is not. */}
+                    <label className="flex items-start gap-2 mt-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={newActivityForm.covered_by_vehicle_package !== false}
+                        onChange={(e) => setNewActivityForm({ ...newActivityForm, covered_by_vehicle_package: e.target.checked })}
+                        className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span className="text-[10px] text-slate-600 leading-snug">
+                        <strong>Already covered by a vehicle package.</strong> Untick for a genuine
+                        extra run (Sarangkot, Pumdikot) that should still be charged on top.
+                      </span>
+                    </label>
                   </div>
                 )}
 
@@ -12879,6 +13264,23 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                         </label>
                       ))}
                     </div>
+                    {/* On a vehicle package the vehicle is already hired for
+                        the whole trip, so charging this again would bill the
+                        same vehicle twice on the same day. Ordinary local
+                        sightseeing is covered; a genuine extra run -- an early
+                        Sarangkot start, a Pumdikot detour -- is not. */}
+                    <label className="flex items-start gap-2 mt-3 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={activityEditState.covered_by_vehicle_package !== false}
+                        onChange={(e) => setActivityEditState({ ...activityEditState, covered_by_vehicle_package: e.target.checked })}
+                        className="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                      <span className="text-[10px] text-slate-600 leading-snug">
+                        <strong>Already covered by a vehicle package.</strong> Untick for a genuine
+                        extra run (Sarangkot, Pumdikot) that should still be charged on top.
+                      </span>
+                    </label>
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-3">

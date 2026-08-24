@@ -60,6 +60,27 @@ function serializeActivity(a) {
     // instead of price_adult/price_child per head -- see schema.sql.
     pricing_mode: a.pricing_mode || 'per_person',
     vehicle_rates: parseJSON(a.vehicle_rates, {}),
+    // Null on a row written before the column existed. Those are all ordinary
+    // local sightseeing, which a package does cover -- so a missing value
+    // reads as covered, matching the column default.
+    covered_by_vehicle_package:
+      a.covered_by_vehicle_package === null || a.covered_by_vehicle_package === undefined
+        ? true
+        : !!a.covered_by_vehicle_package,
+  };
+}
+
+// A whole-trip vehicle rate. `cities` is the set of overnight cities; the
+// client matches on it without caring about order.
+function serializeVehiclePackage(v) {
+  return {
+    id: v.id,
+    vehicle_id: v.vehicle_id,
+    start_city: v.start_city,
+    end_city: v.end_city,
+    cities: parseJSON(v.cities, []),
+    days: Number(v.days) || 0,
+    rate: Number(v.rate) || 0,
   };
 }
 
@@ -232,6 +253,7 @@ module.exports = {
   serializeAirport,
   serializeActivity,
   serializeCityDefault,
+  serializeVehiclePackage,
   serializePackage,
   serializeSettings,
   serializeBooking,

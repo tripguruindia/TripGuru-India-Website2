@@ -207,6 +207,15 @@ export async function syncAdminDb(oldDb, newDb) {
 // Users -- explicit calls (not generic diffing) because create needs a
 // password and edits never touch the password field (see resetUserPassword).
 // ---------------------------------------------------------------------------
+// Whole-trip vehicle rates (Admin -> Vehicle Packages).
+export async function saveVehiclePackage(payload) {
+  return apiFetch('/admin/vehicle-packages', { method: 'POST', body: payload });
+}
+
+export async function deleteVehiclePackage(id) {
+  return apiFetch(`/admin/vehicle-packages/${encodeURIComponent(id)}`, { method: 'DELETE' });
+}
+
 // Per-city builder defaults (Admin -> City Defaults). Upsert by city name;
 // deleting a city's row returns it to the built-in fallback behaviour.
 export async function saveCityDefaults(city, payload) {

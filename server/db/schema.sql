@@ -72,6 +72,33 @@ CREATE TABLE IF NOT EXISTS city_defaults (
   night_plans    TEXT
 );
 
+-- A whole-trip rate for the vehicle, instead of adding up sector by sector.
+--
+-- How Nepal actually works: a party leaves an Indian border town (Gorakhpur,
+-- Raxaul) in an Indian vehicle, tours Nepal, and the same vehicle brings them
+-- back to a border town -- so the vehicle is hired for the trip, not for each
+-- leg, and the empty return run is part of what is being paid for. The other
+-- case is a Nepali vehicle picked up inside Nepal. Both are quoted as a
+-- package: "Hiace, Gorakhpur to Gorakhpur, Kathmandu + Pokhara, 6 days".
+--
+-- `cities` is the set of OVERNIGHT cities, stored as a JSON array. Matching is
+-- order-independent -- Kathmandu then Pokhara is the same road as Pokhara then
+-- Kathmandu -- so one row covers a circuit however the agent enters it.
+-- Somewhere visited for a few hours without an overnight is NOT part of the
+-- key; it is charged as its own extra, like any other detour.
+--
+-- No row for a combination means the trip prices sector by sector exactly as
+-- it always did, and the builder says so rather than failing quietly.
+CREATE TABLE IF NOT EXISTS vehicle_packages (
+  id         TEXT PRIMARY KEY,
+  vehicle_id TEXT NOT NULL,
+  start_city TEXT NOT NULL,
+  end_city   TEXT NOT NULL,
+  cities     TEXT NOT NULL, -- JSON array of overnight city names
+  days       INTEGER NOT NULL,
+  rate       REAL NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS activities (
   id          TEXT PRIMARY KEY,
   name        TEXT NOT NULL,
@@ -80,7 +107,11 @@ CREATE TABLE IF NOT EXISTS activities (
   price_adult  REAL,
   price_child  REAL,
   pricing_mode TEXT NOT NULL DEFAULT 'per_person', -- 'per_person' | 'per_vehicle'
-  vehicle_rates TEXT -- JSON: {vehicleId: number}, used when per_vehicle
+  vehicle_rates TEXT, -- JSON: {vehicleId: number}, used when per_vehicle
+  -- Already paid for when the trip is on a whole-trip vehicle package? The
+  -- basic local sightseeing a package covers is 1; a genuine extra run such
+  -- as Sarangkot at sunrise is 0 and still charges on top.
+  covered_by_vehicle_package INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS packages (

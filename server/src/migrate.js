@@ -50,6 +50,16 @@ const ADDITIVE_COLUMNS = [
   { table: 'users', column: 'approval_note', ddl: 'ALTER TABLE users ADD COLUMN approval_note TEXT' },
   // GST registration number, collected at B2B signup.
   { table: 'users', column: 'gst_number', ddl: 'ALTER TABLE users ADD COLUMN gst_number TEXT' },
+  // Whether a vehicle-billed activity is already paid for when the trip is on
+  // a whole-trip vehicle package. Defaults to 1 (covered), because the basic
+  // local sightseeing a package includes is the common case -- only genuine
+  // extras (an early Sarangkot run, a Pumdikot detour) are marked otherwise.
+  // Irrelevant until a package rate exists, so this changes no live price.
+  {
+    table: 'activities',
+    column: 'covered_by_vehicle_package',
+    ddl: 'ALTER TABLE activities ADD COLUMN covered_by_vehicle_package INTEGER NOT NULL DEFAULT 1',
+  },
 ];
 
 async function applyAdditiveColumns() {

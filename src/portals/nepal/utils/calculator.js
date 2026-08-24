@@ -9,6 +9,7 @@ import {
   findRoute,
   TRAVEL_MODE_FLIGHT,
 } from './transfers';
+import { findVehiclePackage } from './vehiclePackages';
 
 /**
  * Converts a rooms array into flat travelers and roomConfig objects
@@ -277,6 +278,9 @@ export function calculateQuote({
   routesData = [],
   airportsData = [],
   settings,
+  // Whole-trip vehicle rates. When one matches this exact run, it replaces
+  // every sector charge and the basic sightseeing the package covers.
+  vehiclePackagesData = [],
   startCity = 'Kathmandu',
   endCity = 'Kathmandu'
 }) {
@@ -342,6 +346,18 @@ export function calculateQuote({
   // Find vehicle details
   const vehicle = vehiclesData.find(v => v.id === vehicleId);
 
+  // Is this whole run on a negotiated package rate? Resolved once, before the
+  // day loop, because it changes how EVERY day is priced: the sectors stop
+  // being charged and the sightseeing the package covers becomes free.
+  const vehiclePackage = findVehiclePackage({
+    vehiclePackages: vehiclePackagesData,
+    vehicleId,
+    startCity,
+    endCity,
+    itinerary,
+  });
+  const onVehiclePackage = !!vehiclePackage;
+
   let accommodationCost = 0;
   let accommodationCostAdult = 0;
   let accommodationCostChild = 0;
@@ -398,7 +414,10 @@ export function calculateQuote({
     // an airport drop at the origin AND a pickup at the destination), so this
     // sums every one rather than pricing a single route.
     const dayTransfers = getDayTransfers(day);
-    if (vehicle) {
+    // On a package the vehicle is hired for the trip, so the individual legs
+    // are not charged -- the one package figure is added after this loop. The
+    // transfers still describe the day on the itinerary; only the money moves.
+    if (vehicle && !onVehiclePackage) {
       dayTransfers.forEach((route) => {
         if (route === "local_sightseeing") {
           dayTransportCost += (vehicle.daily_sightseeing_rate || 0) * adminMarginFactor;
@@ -425,7 +444,15 @@ export function calculateQuote({
         // people ride in it or twelve. Charging it per head would multiply a
         // single car's day by the party size.
         if (act.pricing_mode === 'per_vehicle') {
-          const perVehicle = (act.vehicle_rates || {})[vehicleId];
+          // A vehicle-billed activity is the vehicle being at the party's
+          // disposal. On a package that is already bought and paid for, so
+          // charging it again would bill the same vehicle twice on the same
+          // day. Genuine extras -- an early Sarangkot run, a Pumdikot detour
+          // -- are marked not covered and still charge on top.
+          const coveredByPackage =
+            act.covered_by_vehicle_package === undefined ? true : !!act.covered_by_vehicle_package;
+          const absorbed = onVehiclePackage && coveredByPackage;
+          const perVehicle = absorbed ? 0 : (act.vehicle_rates || {})[vehicleId];
           const actCost = (Number(perVehicle) || 0) * adminMarginFactor;
 
           // Attributed to the adult column purely so the adult/child split
@@ -438,6 +465,9 @@ export function calculateQuote({
             cost: actCost,
             pricingMode: 'per_vehicle',
             perVehicle: actCost,
+            // Shown on the day card so an absorbed item reads as included
+            // rather than as a mysterious zero.
+            includedInVehiclePackage: absorbed,
           });
           return;
         }
@@ -613,6 +643,14 @@ export function calculateQuote({
     });
   });
 
+  // The package figure, added once for the whole trip rather than per day.
+  // It carries the same admin margin as every other cost so the B2B split
+  // stays consistent with sector pricing.
+  const vehiclePackageCost = onVehiclePackage
+    ? (Number(vehiclePackage.rate) || 0) * adminMarginFactor
+    : 0;
+  transportCost += vehiclePackageCost;
+
   const transportCostAdult = totalPax > 0 ? (transportCost * adults) / totalPax : 0;
   const transportCostChild = transportCost - transportCostAdult;
 
@@ -657,6 +695,7 @@ export function calculateQuote({
       accommodation: accommodationCost,
       meals: 0, // Baked in!
       transport: transportCost,
+      vehiclePackage: Math.round(vehiclePackageCost),
       activities: activityCost,
       subtotal,
       markup,
@@ -682,6 +721,11 @@ export function calculateQuote({
       childTotal: totalChild
     },
     dayWiseBreakdown: dayWiseDetails,
-    roomValidation
+    roomValidation,
+    // Which package rate was used, if any. The builder shows this as one
+    // vehicle line, and shows a note naming the missing combination when it
+    // is null -- so a gap in the rate sheet surfaces on a real quote rather
+    // than silently reverting to sector pricing.
+    vehiclePackage: vehiclePackage || null,
   };
 }
