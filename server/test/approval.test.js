@@ -100,9 +100,13 @@ async function waitForServer(attempts = 40) {
     server.stderr.on('data', (d) => process.stderr.write(d));
     await waitForServer();
 
-    console.log('\nB2B signup demands a GST number');
+    console.log('\nThe GST number is optional at signup');
     let r = await api('POST', '/auth/signup', { email: 'nogst@test.local', password: 'abc123', role: 'b2b', agencyName: 'No GST Ltd' });
-    ok(r.status === 400 && /gstNumber/i.test(r.data?.error || ''), 'signup without a GST number is refused', JSON.stringify(r));
+    ok(r.status === 201, 'an agent may register without one', JSON.stringify(r));
+    ok(r.data?.user?.gstNumber === '', 'and it comes back empty rather than missing', JSON.stringify(r.data?.user?.gstNumber));
+    const noGstToken = r.data?.token;
+    r = await api('PATCH', '/auth/me', { gstNumber: '27AAAAA0000A1Z5' }, noGstToken);
+    ok(r.data?.user?.gstNumber === '27AAAAA0000A1Z5', 'he can add it later from his profile');
 
     console.log('\nA new agent account starts pending, and keeps its GST number');
     r = await api('POST', '/auth/signup', {
@@ -136,8 +140,8 @@ async function waitForServer(attempts = 40) {
     const adminToken = r.data?.token;
     r = await api('GET', '/admin/users', null, adminToken);
     const pending = (r.data || []).filter((u) => u.approvalStatus === 'pending');
-    ok(pending.length === 1, 'the admin sees exactly one agent waiting');
-    const agentId = pending[0]?.id;
+    ok(pending.length === 2, 'the admin sees both agents waiting');
+    const agentId = pending.find((u) => u.email === 'agent@test.local')?.id;
     r = await api('PATCH', `/admin/users/${agentId}/approval`, { status: 'approved' }, adminToken);
     ok(r.status === 200 && r.data?.approvalStatus === 'approved', 'the approval is saved');
 

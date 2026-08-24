@@ -54,9 +54,6 @@ router.post('/signup', async (req, res) => {
   if (role === 'b2b' && !profileData.agencyName) {
     return res.status(400).json({ error: 'agencyName is required for B2B signup' });
   }
-  if (role === 'b2b' && !String(profileData.gstNumber || '').trim()) {
-    return res.status(400).json({ error: 'gstNumber is required for B2B signup' });
-  }
 
   const normalizedEmail = String(email).toLowerCase().trim();
   const existing = await findUserByEmail(normalizedEmail);
@@ -87,7 +84,9 @@ router.post('/signup', async (req, res) => {
       profileData.agencyPhone || null,
       profileData.agencyEmail || null,
       profileData.agencyWebsite || null,
-      role === 'b2b' ? String(profileData.gstNumber).trim() : null,
+      // Optional -- an agent may register without one and add it later
+      // from his profile.
+      role === 'b2b' ? String(profileData.gstNumber || '').trim() || null : null,
       // A new agent account cannot trade until an admin approves it. Anything
       // else -- a traveller account -- is live immediately, as it always was.
       role === 'b2b' ? 'pending' : 'approved',

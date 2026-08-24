@@ -156,8 +156,10 @@ CREATE TABLE IF NOT EXISTS users (
   -- agent sets 'rejected' and, optionally, a reason in approval_note.
   approval_status TEXT NOT NULL DEFAULT 'approved',
   approval_note   TEXT,
-  -- The agency's GST registration number, collected at B2B signup. Shown in
-  -- the agent's profile and on the internal copy of the voucher only.
+  -- The agency's GST registration number, collected at B2B signup but
+  -- OPTIONAL -- an agent may register without one and add it later from his
+  -- profile. Shown in the agent's profile and on the internal copy of the
+  -- voucher only.
   gst_number     TEXT,
   wallet_balance REAL NOT NULL DEFAULT 0,
   address        TEXT,
