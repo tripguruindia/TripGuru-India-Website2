@@ -8503,12 +8503,34 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                     return { ...d, hotelId: h ? h.id : '' };
                                   });
 
+                                  const tplStart = db.settings.wizard_default_start_city || 'Gorakhpur';
+                                  const tplEnd = db.settings.wizard_default_end_city || 'Gorakhpur';
+
+                                  // This template used to force `v-suv`, which put a
+                                  // NEPALI vehicle on a Gorakhpur-to-Gorakhpur run --
+                                  // the one trip that can only be done by an Indian
+                                  // one. The saved default is honoured only when the
+                                  // fleet allows it; otherwise the first vehicle that
+                                  // can actually do this run is used, and if none can,
+                                  // it is left unset so the operator is asked rather
+                                  // than quoted a vehicle that will never turn up.
+                                  const tplAllowed = vehiclesForTrip(db.vehicles, db.city_countries, tplStart, tplEnd);
+                                  const tplSaved = db.settings.wizard_default_vehicle_id;
+                                  const tplVehicle = tplAllowed.some((v) => v.id === tplSaved)
+                                    ? tplSaved
+                                    : (tplAllowed[0]?.id || '');
+
                                   startFreshTrip();
                                   setCustomItinerary(resolved);
                                   setAutoFilledNotice([]);
-                                  setStartCity(db.settings.wizard_default_start_city || 'Gorakhpur');
-                                  setEndCity(db.settings.wizard_default_end_city || 'Gorakhpur');
-                                  setSelectedVehicleId(db.settings.wizard_default_vehicle_id || 'v-suv');
+                                  setStartCity(tplStart);
+                                  setEndCity(tplEnd);
+                                  setSelectedVehicleId(tplVehicle);
+                                  // Keep the intake page in step, so pressing Edit Trip
+                                  // shows the vehicle the builder is actually using.
+                                  setWizardVehicleId(tplVehicle);
+                                  setWizardStartCity(tplStart);
+                                  setWizardEndCity(tplEnd);
                                   setSelectedHotelCategory(rating);
                                   setCustomPackageName("Custom Itinerary (Default Template)");
                                   setAgentMarkupInput(0);
@@ -8847,6 +8869,20 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                   </option>
                                 ))}
                               </select>
+                              {/* Filtering to a fleet that has no vehicles in it leaves
+                                  an empty box with nothing to explain why. Say which
+                                  fleet is missing rather than showing the wrong one. */}
+                              {wizardStartCity && wizardEndCity
+                                && vehiclesForTrip(db.vehicles, db.city_countries, wizardStartCity, wizardEndCity).length === 0 && (
+                                <span className="block text-[10px] text-amber-700 mt-1 leading-snug">
+                                  No{' '}
+                                  {countryOfCity(db.city_countries, wizardStartCity) === 'india'
+                                    && countryOfCity(db.city_countries, wizardEndCity) === 'india'
+                                    ? 'Indian' : 'Nepali'}{' '}
+                                  vehicles have been added yet. Add them in Admin → Vehicles Editor and
+                                  set <strong>Hired from</strong> accordingly.
+                                </span>
+                              )}
                             </div>
 
                             <div>
@@ -9038,7 +9074,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                       {miss.startCity || '—'} → {miss.endCity || '—'} ·{' '}
                                       {miss.cities.join(' + ') || 'no overnight cities'} · {miss.days} days
                                     </strong>, so the vehicle is currently costing ₹0. Add the rate in
-                                    Admin → Vehicle Packages before sending this quote.
+                                    Admin → Vehicle Packages before sending this quote, or press{' '}
+                                    <strong>Edit Trip</strong> above to change the vehicle.
                                   </span>
                                 </div>
                               );
@@ -9059,7 +9096,8 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                       {miss.vehicleName} · {miss.startCity || '—'} → {miss.endCity || '—'} ·{' '}
                                       {miss.cities.join(' + ') || 'no overnight cities'} · {miss.days} days
                                     </strong>.
-                                    Priced leg by leg instead. Add the rate in Admin → Vehicle Packages.
+                                    Priced leg by leg instead. Add the rate in Admin → Vehicle Packages,
+                                    or press <strong>Edit Trip</strong> above to change the vehicle.
                                   </span>
                                 </div>
                               );

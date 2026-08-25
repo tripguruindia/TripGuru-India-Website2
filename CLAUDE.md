@@ -589,7 +589,18 @@ Which fleet a trip may use follows from its two endpoints, via
 
 Before both endpoints are chosen nothing is filtered, so the dropdown is never
 mysteriously empty. Changing an endpoint clears a vehicle that is no longer
-offered — leaving it selected would quote a vehicle that has no rate.
+offered — leaving it selected would quote a vehicle that has no rate. When the
+required fleet exists but is *empty*, the field says which fleet is missing
+rather than showing a blank box or offering the wrong one.
+
+**Every path that sets a vehicle must go through `vehiclesForTrip()`.** The
+*Customize Recommended Itinerary* template did not: it forced
+`wizard_default_vehicle_id || 'v-suv'`, which put a **Nepali** vehicle on a
+Gorakhpur-to-Gorakhpur run — the one trip only an Indian vehicle can do — and
+the builder's header is read-only, so there was no way to change it without
+going back through *Edit Trip*. The template now honours the saved default only
+when the run allows it, falls back to the first vehicle that can do the run, and
+leaves it unset when none can.
 
 Still to do: **a trip can only have one vehicle**, so "Indian vehicle to
 Kathmandu, then a Nepali vehicle onward" cannot be quoted as two vehicles.
