@@ -8869,20 +8869,42 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                   </option>
                                 ))}
                               </select>
-                              {/* Filtering to a fleet that has no vehicles in it leaves
-                                  an empty box with nothing to explain why. Say which
-                                  fleet is missing rather than showing the wrong one. */}
-                              {wizardStartCity && wizardEndCity
-                                && vehiclesForTrip(db.vehicles, db.city_countries, wizardStartCity, wizardEndCity).length === 0 && (
-                                <span className="block text-[10px] text-amber-700 mt-1 leading-snug">
-                                  No{' '}
-                                  {countryOfCity(db.city_countries, wizardStartCity) === 'india'
-                                    && countryOfCity(db.city_countries, wizardEndCity) === 'india'
-                                    ? 'Indian' : 'Nepali'}{' '}
-                                  vehicles have been added yet. Add them in Admin → Vehicles Editor and
-                                  set <strong>Hired from</strong> accordingly.
-                                </span>
-                              )}
+                              {/* Why this list is what it is. The filter is invisible
+                                  otherwise: an operator who marked a border town wrongly
+                                  sees a plausible-looking list of the WRONG fleet and has
+                                  no way to tell. Naming the rule, and the two cities it
+                                  read, turns that into something checkable. */}
+                              {wizardStartCity && wizardEndCity && (() => {
+                                const startCountry = countryOfCity(db.city_countries, wizardStartCity);
+                                const endCountry = countryOfCity(db.city_countries, wizardEndCity);
+                                const allowed = vehiclesForTrip(db.vehicles, db.city_countries, wizardStartCity, wizardEndCity);
+                                const label = (c) => (c === 'india' ? 'India' : 'Nepal');
+
+                                if (allowed.length === 0) {
+                                  return (
+                                    <span className="block text-[10px] text-amber-700 mt-1 leading-snug">
+                                      No {startCountry === 'india' ? 'Indian' : 'Nepali'} vehicles have been
+                                      added yet. Add them in Admin → Vehicles Editor and set{' '}
+                                      <strong>Hired from</strong> accordingly.
+                                    </span>
+                                  );
+                                }
+                                if (startCountry !== endCountry) {
+                                  return (
+                                    <span className="block text-[10px] text-slate-500 mt-1 leading-snug">
+                                      {wizardStartCity} ({label(startCountry)}) → {wizardEndCity} ({label(endCountry)}) crosses
+                                      the border, so both fleets are offered.
+                                    </span>
+                                  );
+                                }
+                                return (
+                                  <span className="block text-[10px] text-slate-500 mt-1 leading-snug">
+                                    Showing <strong>{startCountry === 'india' ? 'Indian' : 'Nepali'}</strong> vehicles —{' '}
+                                    {wizardStartCity} and {wizardEndCity} are both marked{' '}
+                                    <strong>{label(startCountry)}</strong> in Admin → Cities.
+                                  </span>
+                                );
+                              })()}
                             </div>
 
                             <div>
