@@ -70,6 +70,26 @@ ok(nepalRun.length===2 && nepalRun.every(v=>!isIndianVehicle(v)),'a run inside N
 ok(vehiclesForTrip(vehicles, cityCountries, 'Gorakhpur', 'Kathmandu').length===4,'a one-way crossing offers both fleets');
 ok(vehiclesForTrip(vehicles, cityCountries, '', '').length===4,'before the endpoints are chosen, nothing is hidden');
 
+console.log('\nA saved default vehicle must still obey the fleet rules');
+// The "Customize Recommended Itinerary" template used to force v-suv, which put
+// a Nepali vehicle on a Gorakhpur-to-Gorakhpur run -- the one trip only an
+// Indian vehicle can do. The template now picks from what the run allows.
+const pickForTemplate = (savedId, start, end) => {
+  const allowed = vehiclesForTrip(vehicles, cityCountries, start, end);
+  return allowed.some((v) => v.id === savedId) ? savedId : (allowed[0]?.id || '');
+};
+ok(pickForTemplate('v-np-hiace', 'Gorakhpur', 'Gorakhpur') === 'v-in-tt',
+  'a Nepali default on an India-to-India run falls to an Indian vehicle',
+  pickForTemplate('v-np-hiace', 'Gorakhpur', 'Gorakhpur'));
+ok(pickForTemplate('v-in-ertiga', 'Gorakhpur', 'Gorakhpur') === 'v-in-ertiga',
+  'a default that IS allowed is kept');
+ok(pickForTemplate('v-in-tt', 'Kathmandu', 'Pokhara') === 'v-np-hiace',
+  'an Indian default on a Nepal-only run falls to a Nepali vehicle');
+ok(pickForTemplate('v-np-hiace', 'Gorakhpur', 'Kathmandu') === 'v-np-hiace',
+  'on a one-way crossing either fleet is fine, so the default stands');
+ok(pickForTemplate('v-np-hiace', 'Gorakhpur', 'Gorakhpur') !== 'v-np-hiace',
+  'and a Nepali vehicle is never left selected for an Indian run');
+
 console.log('\nAn Indian vehicle is priced ONLY from a package');
 const noPkg = quote('v-in-tt', []);
 ok(Math.round(noPkg.totals.transport)===0,'with no package it charges nothing rather than guessing',
