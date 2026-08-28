@@ -7343,11 +7343,14 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
             <div className="text-[10px] text-slate-500 font-semibold tracking-wider uppercase mb-2">Agent Navigation</div>
             <ul className="list-none flex flex-col gap-1">
               {[
+                // Ordered by what an agent opens the portal to do: see where he
+                // stands, then build a trip (from scratch, or from a package),
+                // then the records and the account.
                 { tab: 'dashboard', label: 'Agent Dashboard', icon: <TrendingUp size={12} /> },
+                { tab: 'wizard', label: 'Custom Planner', icon: <Compass size={12} /> },
+                { tab: 'packages', label: 'Preset Packages', icon: <Layers size={12} /> },
                 { tab: 'quotes', label: 'Quotes & Bookings', icon: <FileText size={12} /> },
                 { tab: 'wallet', label: 'My Wallet', icon: <Wallet size={12} /> },
-                { tab: 'packages', label: 'Preset Packages', icon: <Layers size={12} /> },
-                { tab: 'wizard', label: 'Custom Planner', icon: <Compass size={12} /> },
                 { tab: 'profile', label: 'My Profile', icon: <User size={12} /> }
               ].map(item => (
                 <li key={item.tab}>
@@ -8487,59 +8490,21 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                               <button 
                                 type="button"
                                 onClick={() => {
-                                  const defaultItin = db.settings.wizard_default_days || [
-                                    { day: 1, city: 'Kathmandu', title: 'Kathmandu Arrival', description: 'Arrive in Kathmandu. Airport transfer to hotel.', hotelId: 'h-ktm-4', meals: 'CP', transfer_route: 'ktm_airport_transfer', is_sightseeing: false, activity_ids: [] },
-                                    { day: 2, city: 'Kathmandu', title: 'Kathmandu Sightseeing', description: 'Explore historic Kathmandu heritage, ancient temples, and local markets.', hotelId: 'h-ktm-4', meals: 'CP', transfer_route: 'local_sightseeing', is_sightseeing: true, activity_ids: ['a-ktm-sightseeing'] },
-                                    { day: 3, city: 'Pokhara', title: 'Drive to Pokhara', description: 'Scenic drive to Pokhara lakeside. Enjoy evening walking around lake.', hotelId: 'h-pok-4', meals: 'CP', transfer_route: 'ktm_to_pokhara', is_sightseeing: false, activity_ids: [] },
-                                    { day: 4, city: 'Pokhara', title: 'Pokhara Sightseeing', description: 'Sunrise tour from Sarangkot, boating in Phewa Lake, and local stupa tour.', hotelId: 'h-pok-4', meals: 'CP', transfer_route: 'local_sightseeing', is_sightseeing: true, activity_ids: ['a-pok-boating'] },
-                                    { day: 5, city: 'Kathmandu', title: 'Drive to Kathmandu & Depart', description: 'Scenic return drive to Kathmandu. Direct transfer to airport for final flight.', hotelId: '', meals: 'None', transfer_route: 'pokhara_to_ktm', is_sightseeing: false, activity_ids: [] }
-                                  ];
-                                  
-                                  const rating = db.settings.wizard_default_hotel_category || '4-Star';
-                                  const resolved = defaultItin.map(d => {
-                                    if (d.hotelId && d.hotelId !== 'no_stay') return d;
-                                    if (d.hotelId === 'no_stay') return d;
-                                    const h = db.hotels.find(htl => sameCity(htl.city, d.city) && htl.category === rating);
-                                    return { ...d, hotelId: h ? h.id : '' };
-                                  });
-
-                                  const tplStart = db.settings.wizard_default_start_city || 'Gorakhpur';
-                                  const tplEnd = db.settings.wizard_default_end_city || 'Gorakhpur';
-
-                                  // This template used to force `v-suv`, which put a
-                                  // NEPALI vehicle on a Gorakhpur-to-Gorakhpur run --
-                                  // the one trip that can only be done by an Indian
-                                  // one. The saved default is honoured only when the
-                                  // fleet allows it; otherwise the first vehicle that
-                                  // can actually do this run is used, and if none can,
-                                  // it is left unset so the operator is asked rather
-                                  // than quoted a vehicle that will never turn up.
-                                  const tplAllowed = vehiclesForTrip(db.vehicles, db.city_countries, tplStart, tplEnd);
-                                  const tplSaved = db.settings.wizard_default_vehicle_id;
-                                  const tplVehicle = tplAllowed.some((v) => v.id === tplSaved)
-                                    ? tplSaved
-                                    : (tplAllowed[0]?.id || '');
-
-                                  startFreshTrip();
-                                  setCustomItinerary(resolved);
-                                  setAutoFilledNotice([]);
-                                  setStartCity(tplStart);
-                                  setEndCity(tplEnd);
-                                  setSelectedVehicleId(tplVehicle);
-                                  // Keep the intake page in step, so pressing Edit Trip
-                                  // shows the vehicle the builder is actually using.
-                                  setWizardVehicleId(tplVehicle);
-                                  setWizardStartCity(tplStart);
-                                  setWizardEndCity(tplEnd);
-                                  setSelectedHotelCategory(rating);
-                                  setCustomPackageName("Custom Itinerary (Default Template)");
-                                  setAgentMarkupInput(0);
-                                  
+                                  // Straight to the packages list. This used to load a
+                                  // hardcoded five-day Kathmandu/Pokhara itinerary that
+                                  // had nothing to do with the packages actually on
+                                  // sale -- so "recommended" meant one fixed trip
+                                  // written into the code rather than whatever is in
+                                  // the Packages master. Sending the operator to the
+                                  // real list means the recommendation is the business's
+                                  // own, and every package there is already
+                                  // customisable once loaded.
                                   if (view === 'b2b') {
-                                    setB2bSubView('customize');
+                                    setB2bSubView('packages');
                                   } else {
-                                    setB2cSubView('customize');
+                                    setB2cSubView('packages');
                                   }
+                                  if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
                                 }}
                                 className="w-full sm:w-auto bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold py-2 px-3.5 rounded-xl text-xs transition border border-indigo-200 flex items-center justify-center gap-1.5 shadow-sm cursor-pointer select-none"
                               >
