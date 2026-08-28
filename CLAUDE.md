@@ -20,9 +20,16 @@ symptoms accurately in plain language — that is his strength, use it.
   him.
 - **Open a pull request as soon as a piece of work is finished** — he asked for
   this directly, so do not wait to be told each time. He merges it himself on
-  GitHub; a branch pushed without a PR is work he cannot see or ship. Once a PR
-  is merged it cannot take new commits: restart the branch from `main` and open
-  a fresh PR for the next change.
+  GitHub; a branch pushed without a PR is work he cannot see or ship.
+- **Open the PR in the same breath as the push.** A merged PR cannot take new
+  commits, and he merges fast. Pushing a follow-up onto a branch whose PR has
+  already been merged leaves the work stranded with nothing pointing at it —
+  this happened twice, and both times it looked to him like the change had
+  shipped when it had not. Before pushing to a branch, check whether its PR is
+  still open; if it is merged, restart from `main` (`git checkout -B <branch>
+  origin/main`) and open a fresh PR.
+- Sometimes he says **"we will do the merge together"** — then keep stacking
+  commits onto the one open PR rather than opening more.
 
 ## What this repo is
 
@@ -758,22 +765,41 @@ leisure while the itinerary under it described a full day of sightseeing.
 
 ## Current state and what's next
 
-As of 2026-08-24, `main` is at PR #37. **PR #38 is open and not yet merged** —
-Tanmay asked to work through the whole agreed list and merge it in one go, so
-it carries all three items below rather than shipping one at a time:
+As of 2026-08-25, `main` is at **PR #42**. **PR #43 is open and not yet
+merged** — Tanmay asked to keep adding to it and merge everything in one go. It
+carries:
 
-- There is no commission anywhere; the agent keeps the markup he adds, and the
-  Admin markup fields say whose markup they are.
+- *Customize Recommended Itinerary* opens **Preset Packages** instead of
+  loading a hardcoded five-day trip; the agent menu is reordered (Dashboard,
+  Custom Planner, Preset Packages, Quotes & Bookings, Wallet, Profile).
+- The day card reads as a **document** — bold heading, plain text, the calendar
+  date — with no field labels, no boxes and no "written automatically" note.
+- The trip gets a **generated name** ("Lakes & Legends of Nepal 4N/5D") instead
+  of "<cities> Custom Itinerary".
+- The City Defaults **pre-filled banner is removed** at Tanmay's request.
+- The portals **refetch master data when an agent starts a quote**, so a rate
+  entered in Admin applies to the next quote without a page reload.
+
+Merged and live since the last handoff, in the order it shipped:
+
+- No commission anywhere: the agent keeps the markup he adds, and the Admin
+  markup fields say whose markup they are (#38).
 - A new agent account is `pending` until an admin approves it, enforced
-  server-side.
-- B2B signup collects an optional GST number.
+  server-side; B2B signup takes an optional GST number (#38).
 - **Admin -> City Defaults**: the hotel, meal plan and per-night sightseeing a
-  new day starts with, replacing an arbitrary "first hotel in the list" and a
-  meal rule hardcoded in nine places.
-- First committed tests: `test/cityDefaults.test.mjs` and
-  `server/test/approval.test.js`.
+  new day starts with (#38).
+- **Admin -> Vehicle Packages**: one negotiated rate for the whole trip
+  instead of a sum of sectors, and the basic sightseeing it covers is no
+  longer charged twice (#39).
+- **Indian and Nepali vehicles are separate fleets** (#40): a run that starts
+  and ends in India offers only Indian vehicles, which are priced *only* from
+  a package and warn in red when none matches. The intake wizard gained the
+  **Vehicle** field the builder never had.
+- The *Customize Recommended Itinerary* template obeys the fleet rules (#41),
+  and the Vehicle field says **why** the list contains what it does (#42).
+- Five committed test suites where there were none.
 
-Live since the last handoff, in the order it shipped:
+Live from before that handoff:
 
 - Room rates show every bed the party occupies, and warn when a bed has no
   rate set; hotels in a city offer other star ratings when the trip's rating
@@ -800,6 +826,14 @@ Live since the last handoff, in the order it shipped:
   broken inline editor.
 - Seven cities have no hotels and so cannot host a paid overnight: Bagdogra,
   Bhairahawa, Butwal, Gorakhpur, Lumbini, Mankamna, Raxaul.
+- **The Indian fleet has to be created in Admin -> Vehicles** (Sedan, Ertiga,
+  Innova Crysta, Tempo Traveller 12/17/20/26, Urbania 14), each with
+  *Hired from = India*. The seed carries them, but `npm run seed` does not run
+  on deploy, so a live database has only the four Nepali ones until they are
+  entered by hand.
+- **The border towns must be marked India in Admin -> Cities** (Gorakhpur,
+  Raxaul, Bagdogra). Until they are, a Gorakhpur run reads as Nepal->Nepal and
+  offers the Nepali fleet — which is exactly the confusion it caused once.
 
 **One booking may hold the wrong data.** Before the fix in PR #34, pressing
 *Edit This Booking* and then building a different trip PATCHed the old booking
@@ -834,6 +868,16 @@ flight inventory) — the itinerary says so instead.
    Password?" only tells the user to contact the administrator. This one is
    explicitly deferred — it needs a mail provider chosen and credentials in
    Render env vars first.
+
+6. **A trip can only use one vehicle.** "Indian vehicle to Kathmandu, then a
+   Nepali vehicle onward" cannot be quoted as two. Tanmay's call was to do
+   vehicle packages first and come back to this — it is now the next real
+   vehicle job.
+7. **The Admin "Default Wizard Itinerary Template" editor has no consumer.**
+   Nothing reads `settings.wizard_default_days` since the button that loaded
+   it was pointed at Preset Packages (#43). The screen was already half-broken
+   — its values were written to the browser and ignored by the server. Ask
+   Tanmay before deleting it; removing an Admin page is his call.
 
 Also still open from before: the rest of the mobile pass (27 of 39 tap targets
 under 40px, 54 text elements under 12px — a deliberate rescale of the portal's
