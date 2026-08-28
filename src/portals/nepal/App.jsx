@@ -71,6 +71,7 @@ import {
 } from './utils/cityDefaults';
 import { describeMissingPackage } from './utils/vehiclePackages';
 import { vehiclesForTrip, isIndianVehicle, countryOfCity } from './utils/vehicleOrigin';
+import { generateTripName } from './utils/tripNames';
 import './App.css';
 import './index.css';
 
@@ -152,6 +153,20 @@ const routeLabelFromKey = (key, airportsData = []) => {
 // Lives at module scope on purpose. It used to be declared partway down the
 // component body, which put every earlier use of it in the temporal dead zone
 // and crashed the whole portal to a blank page on first render.
+// The calendar date of the nth day of a trip, as a client would read it.
+// Module scope, like sameCity: a helper declared inside the component body
+// puts every earlier use in the temporal dead zone and blanks the portal.
+const dayDateLabel = (startDate, dayNumber) => {
+  if (!startDate) return '';
+  const start = new Date(startDate);
+  if (Number.isNaN(start.getTime())) return '';
+  const d = new Date(start);
+  d.setDate(d.getDate() + (Number(dayNumber) || 1) - 1);
+  return d.toLocaleDateString('en-IN', {
+    weekday: 'short', day: '2-digit', month: 'short', year: 'numeric',
+  });
+};
+
 const sameCity = (a, b) =>
   String(a || '').trim().toLowerCase() === String(b || '').trim().toLowerCase();
 
@@ -310,6 +325,15 @@ function App() {
   // gates pricing visibility). Only overwrites those specific `db` keys;
   // bookings/users/leads are untouched here (bookings are fetched
   // separately once logged in, see the my-bookings effect below).
+  // True while the agent is on a screen where a quote is built. Master data is
+  // otherwise fetched only when the portal is first opened, so an agent with
+  // the tab left open kept quoting from whatever he loaded hours ago. That is
+  // exactly how a vehicle package rate entered in Admin fails to apply to the
+  // very next quote: the builder never saw it. Refetch when he starts one.
+  const onQuoteBuildingScreen =
+    (currentRoute === 'b2b' ? b2bSubView : b2cSubView) === 'wizard' ||
+    (currentRoute === 'b2b' ? b2bSubView : b2cSubView) === 'packages';
+
   useEffect(() => {
     if (currentRoute !== 'b2c' && currentRoute !== 'b2b') return;
     let cancelled = false;
@@ -344,7 +368,9 @@ function App() {
         console.error('Failed to load live master data from the server', err);
       });
     return () => { cancelled = true; };
-  }, [currentRoute]);
+    // onQuoteBuildingScreen is in here on purpose: crossing onto a quote screen
+    // is the moment stale rates start costing money.
+  }, [currentRoute, onQuoteBuildingScreen]);
 
   // B2C/B2B "My Bookings": once logged in via the real API, fetch the
   // caller's own bookings (scoped server-side by agent_id/user_id).
@@ -609,10 +635,6 @@ function App() {
   
   const [selectedVehicleId, setSelectedVehicleId] = useState('v-suv');
   const [selectedHotelCategory, setSelectedHotelCategory] = useState('4-Star');
-  // Days that Admin's City Defaults pre-filled on the trip currently being
-  // built, so the builder can name them. Cleared whenever a different trip is
-  // loaded -- a notice about the previous trip's days would be a lie.
-  const [autoFilledNotice, setAutoFilledNotice] = useState([]);
   const [travelDate, setTravelDate] = useState('2026-10-15');
   const [customPackageName, setCustomPackageName] = useState('My Nepal Tour Custom');
   const [customItinerary, setCustomItinerary] = useState([]);
@@ -1952,7 +1974,6 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     });
 
     setCustomItinerary(generatedItinerary);
-    setAutoFilledNotice([]);
     setAgentMarkupInput(0); // Reset agent custom markup override for new trip
     if (view === 'b2b') {
       setB2bSubView('customize');
@@ -2000,7 +2021,6 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     });
 
     setCustomItinerary(generatedItinerary);
-    setAutoFilledNotice([]);
     if (view === 'b2b') {
       setB2bSubView('customize');
     } else {
@@ -2595,7 +2615,6 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     setCurrentPackageId(draft.packageId ?? null);
     setCustomPackageName(draft.packageName ?? 'My Nepal Tour Custom');
     setCustomItinerary(draft.itinerary || []);
-    setAutoFilledNotice([]);
     if (draft.rooms) setRooms(draft.rooms);
     if (draft.vehicleId) setSelectedVehicleId(draft.vehicleId);
     if (draft.hotelCategory) setSelectedHotelCategory(draft.hotelCategory);
@@ -2702,7 +2721,6 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     setCurrentPackageId(null);
     setCustomPackageName(quote.package_name || 'Untitled quote');
     setCustomItinerary(quote.itinerary || []);
-    setAutoFilledNotice([]);
     if (quote.rooms && quote.rooms.length) setRooms(quote.rooms);
     if (quote.vehicle_id) setSelectedVehicleId(quote.vehicle_id);
     if (quote.hotel_category) setSelectedHotelCategory(quote.hotel_category);
@@ -2958,7 +2976,6 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     setLastBookingId(booking.id);
     if (booking.itinerary) {
       setCustomItinerary(booking.itinerary);
-      setAutoFilledNotice([]);
       setSelectedVehicleId(booking.vehicleId);
       setSelectedHotelCategory(booking.hotelCategory);
       setRooms(booking.rooms || [{ adults: booking.adults || 2, children: [] }]);
@@ -2987,12 +3004,10 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           };
         });
         setCustomItinerary(defaultItin);
-        setAutoFilledNotice([]);
         setSelectedVehicleId(stdPkg.default_vehicle_id || 'v-suv');
         setSelectedHotelCategory(stdPkg.default_hotel_category || '4-Star');
       } else {
         setCustomItinerary([]);
-        setAutoFilledNotice([]);
       }
       setRooms([{ adults: booking.adults || 2, children: [] }]);
       setStartCity('Kathmandu');
@@ -4222,13 +4237,15 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
       if (neededRoutes.length) ensureRoutesExist(neededRoutes);
 
       setCustomItinerary(days);
-      setAutoFilledNotice([]);
       setSelectedHotelCategory(wizardStarRating);
       setSelectedVehicleId(wizardVehicleId);
       setTravelDate(wizardLeavingOn);
       setStartCity(wizardStartCity);
       setEndCity(wizardEndCity);
-      setCustomPackageName(`${formatCityList(blocks.map(b => b.city))} Custom Itinerary`);
+      // A product name, not a label. "Kathmandu & Pokhara Custom Itinerary"
+      // described the trip accurately and sold nothing; the field stays
+      // editable, so this is only a starting point.
+      setCustomPackageName(generateTripName(days));
       if (view === 'b2b') setB2bSubView('customize'); else setB2cSubView('customize');
       if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
       return;
@@ -4254,10 +4271,6 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     const addTransfers = wizardAddTransfers;
 
     const itinerary = [];
-    // What Admin's City Defaults filled in, so the builder can say so. The
-    // point of automatic suggestions failing last time was that they were
-    // silent; this is what makes them visible.
-    const autoFilled = [];
     let dayCounter = 1;
     let lastCity = null;
 
@@ -4413,14 +4426,6 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
           category: rating,
           nightIndex: night,
         });
-        if (dayDefaults.autoAdded.hotelName || dayDefaults.autoAdded.activityNames.length) {
-          autoFilled.push({
-            day: dayCounter,
-            city: dest.city,
-            hotelName: dayDefaults.autoAdded.hotelName,
-            activityNames: dayDefaults.autoAdded.activityNames,
-          });
-        }
 
         const isTransitionDay = night === 1 && !isFirstCity;
 
@@ -4488,13 +4493,12 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
     // "Kathmandu & Pokhara & Jomsom & Pokhara & Kathmandu Custom Itinerary" --
     // each city repeated as often as it is visited, and too long for the
     // field. Name it by the places visited, once each, in order.
-    setCustomPackageName(`${formatCityList(cities.map(c => c.city))} Custom Itinerary`);
+    setCustomPackageName(generateTripName(itinerary));
     setSelectedHotelCategory(rating);
     setTravelDate(wizardLeavingOn);
     setStartCity(wizardStartCity);
     setEndCity(wizardEndCity);
     setCustomItinerary(itinerary);
-    setAutoFilledNotice(autoFilled);
 
     setAgentMarkupInput(0); // Reset agent custom markup override for new trip
     if (view === 'b2b') {
@@ -7343,11 +7347,14 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
             <div className="text-[10px] text-slate-500 font-semibold tracking-wider uppercase mb-2">Agent Navigation</div>
             <ul className="list-none flex flex-col gap-1">
               {[
+                // Ordered by what an agent opens the portal to do: see where he
+                // stands, then build a trip (from scratch, or from a package),
+                // then the records and the account.
                 { tab: 'dashboard', label: 'Agent Dashboard', icon: <TrendingUp size={12} /> },
+                { tab: 'wizard', label: 'Custom Planner', icon: <Compass size={12} /> },
+                { tab: 'packages', label: 'Preset Packages', icon: <Layers size={12} /> },
                 { tab: 'quotes', label: 'Quotes & Bookings', icon: <FileText size={12} /> },
                 { tab: 'wallet', label: 'My Wallet', icon: <Wallet size={12} /> },
-                { tab: 'packages', label: 'Preset Packages', icon: <Layers size={12} /> },
-                { tab: 'wizard', label: 'Custom Planner', icon: <Compass size={12} /> },
                 { tab: 'profile', label: 'My Profile', icon: <User size={12} /> }
               ].map(item => (
                 <li key={item.tab}>
@@ -8487,59 +8494,21 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                               <button 
                                 type="button"
                                 onClick={() => {
-                                  const defaultItin = db.settings.wizard_default_days || [
-                                    { day: 1, city: 'Kathmandu', title: 'Kathmandu Arrival', description: 'Arrive in Kathmandu. Airport transfer to hotel.', hotelId: 'h-ktm-4', meals: 'CP', transfer_route: 'ktm_airport_transfer', is_sightseeing: false, activity_ids: [] },
-                                    { day: 2, city: 'Kathmandu', title: 'Kathmandu Sightseeing', description: 'Explore historic Kathmandu heritage, ancient temples, and local markets.', hotelId: 'h-ktm-4', meals: 'CP', transfer_route: 'local_sightseeing', is_sightseeing: true, activity_ids: ['a-ktm-sightseeing'] },
-                                    { day: 3, city: 'Pokhara', title: 'Drive to Pokhara', description: 'Scenic drive to Pokhara lakeside. Enjoy evening walking around lake.', hotelId: 'h-pok-4', meals: 'CP', transfer_route: 'ktm_to_pokhara', is_sightseeing: false, activity_ids: [] },
-                                    { day: 4, city: 'Pokhara', title: 'Pokhara Sightseeing', description: 'Sunrise tour from Sarangkot, boating in Phewa Lake, and local stupa tour.', hotelId: 'h-pok-4', meals: 'CP', transfer_route: 'local_sightseeing', is_sightseeing: true, activity_ids: ['a-pok-boating'] },
-                                    { day: 5, city: 'Kathmandu', title: 'Drive to Kathmandu & Depart', description: 'Scenic return drive to Kathmandu. Direct transfer to airport for final flight.', hotelId: '', meals: 'None', transfer_route: 'pokhara_to_ktm', is_sightseeing: false, activity_ids: [] }
-                                  ];
-                                  
-                                  const rating = db.settings.wizard_default_hotel_category || '4-Star';
-                                  const resolved = defaultItin.map(d => {
-                                    if (d.hotelId && d.hotelId !== 'no_stay') return d;
-                                    if (d.hotelId === 'no_stay') return d;
-                                    const h = db.hotels.find(htl => sameCity(htl.city, d.city) && htl.category === rating);
-                                    return { ...d, hotelId: h ? h.id : '' };
-                                  });
-
-                                  const tplStart = db.settings.wizard_default_start_city || 'Gorakhpur';
-                                  const tplEnd = db.settings.wizard_default_end_city || 'Gorakhpur';
-
-                                  // This template used to force `v-suv`, which put a
-                                  // NEPALI vehicle on a Gorakhpur-to-Gorakhpur run --
-                                  // the one trip that can only be done by an Indian
-                                  // one. The saved default is honoured only when the
-                                  // fleet allows it; otherwise the first vehicle that
-                                  // can actually do this run is used, and if none can,
-                                  // it is left unset so the operator is asked rather
-                                  // than quoted a vehicle that will never turn up.
-                                  const tplAllowed = vehiclesForTrip(db.vehicles, db.city_countries, tplStart, tplEnd);
-                                  const tplSaved = db.settings.wizard_default_vehicle_id;
-                                  const tplVehicle = tplAllowed.some((v) => v.id === tplSaved)
-                                    ? tplSaved
-                                    : (tplAllowed[0]?.id || '');
-
-                                  startFreshTrip();
-                                  setCustomItinerary(resolved);
-                                  setAutoFilledNotice([]);
-                                  setStartCity(tplStart);
-                                  setEndCity(tplEnd);
-                                  setSelectedVehicleId(tplVehicle);
-                                  // Keep the intake page in step, so pressing Edit Trip
-                                  // shows the vehicle the builder is actually using.
-                                  setWizardVehicleId(tplVehicle);
-                                  setWizardStartCity(tplStart);
-                                  setWizardEndCity(tplEnd);
-                                  setSelectedHotelCategory(rating);
-                                  setCustomPackageName("Custom Itinerary (Default Template)");
-                                  setAgentMarkupInput(0);
-                                  
+                                  // Straight to the packages list. This used to load a
+                                  // hardcoded five-day Kathmandu/Pokhara itinerary that
+                                  // had nothing to do with the packages actually on
+                                  // sale -- so "recommended" meant one fixed trip
+                                  // written into the code rather than whatever is in
+                                  // the Packages master. Sending the operator to the
+                                  // real list means the recommendation is the business's
+                                  // own, and every package there is already
+                                  // customisable once loaded.
                                   if (view === 'b2b') {
-                                    setB2bSubView('customize');
+                                    setB2bSubView('packages');
                                   } else {
-                                    setB2cSubView('customize');
+                                    setB2cSubView('packages');
                                   }
+                                  if (typeof window !== 'undefined') window.scrollTo({ top: 0 });
                                 }}
                                 className="w-full sm:w-auto bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-extrabold py-2 px-3.5 rounded-xl text-xs transition border border-indigo-200 flex items-center justify-center gap-1.5 shadow-sm cursor-pointer select-none"
                               >
@@ -9126,41 +9095,16 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                             })()
                           )}
 
-                          {/* What Admin's City Defaults filled in, named.
-                              Automatic suggestions were removed once before
-                              because they were silent: a paid activity landed
-                              on the second night in a city and the quote came
-                              out higher than the agent expected, with nothing
-                              on screen to say why. Anything pre-filled is
-                              listed here and removable on its day card. */}
-                          {autoFilledNotice.length > 0 && (
-                            <div className="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-100 p-3 rounded-xl flex items-start gap-2 leading-normal font-medium mb-5">
-                              <Info size={14} className="shrink-0 text-emerald-600 mt-0.5" />
-                              <div className="flex-1">
-                                <span>
-                                  Pre-filled from your saved defaults — change or remove anything below.
-                                </span>
-                                <ul className="mt-1.5 flex flex-col gap-0.5 list-none">
-                                  {autoFilledNotice.map((n) => (
-                                    <li key={n.day} className="text-emerald-900/90">
-                                      <strong>Day {n.day}, {n.city}:</strong>{' '}
-                                      {[
-                                        n.hotelName ? `stay at ${n.hotelName}` : '',
-                                        n.activityNames.length ? n.activityNames.join(', ') : '',
-                                      ].filter(Boolean).join(' · ')}
-                                    </li>
-                                  ))}
-                                </ul>
-                                <button
-                                  type="button"
-                                  onClick={() => setAutoFilledNotice([])}
-                                  className="mt-2 text-[10px] uppercase font-extrabold tracking-wider text-emerald-700 hover:text-emerald-900 underline"
-                                >
-                                  Got it
-                                </button>
-                              </div>
-                            </div>
-                          )}
+                          {/* Admin's City Defaults still pre-fill a new day's hotel,
+                              meal plan and sightseeing -- but the banner that listed
+                              them is gone at Tanmay's request: it read as clutter on
+                              every quote. Each pre-filled item is still shown on its
+                              own day card and can be removed there.
+
+                              The risk this leaves is the one the banner existed for:
+                              a paid activity can now arrive on a day without being
+                              announced. If quotes start coming out higher than
+                              expected, this is the first place to look. */}
 
                           {/* Timeline */}
                           <div className="itinerary-timeline">
@@ -9214,10 +9158,23 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                       <span className="bg-[#0f2942] text-white font-extrabold px-3 py-1 rounded-lg text-xs">
                                         Day {day.day}
                                       </span>
-                                      <div className="flex items-center gap-2">
+                                      <div className="flex items-center gap-2 flex-wrap">
                                         <span className="font-extrabold text-slate-800 text-sm py-0.5">
                                           {day.city}
                                         </span>
+                                        {/* The actual calendar date for this day, counted
+                                            from the trip's start. An itinerary a client
+                                            reads is a set of dates, not day numbers --
+                                            "Day 3" alone tells them nothing about when to
+                                            book leave. Hidden until a date is set. */}
+                                        {dayDateLabel(travelDate, day.day) && (
+                                          <>
+                                            <span className="text-slate-300" aria-hidden="true">·</span>
+                                            <span className="text-xs font-semibold text-slate-500">
+                                              {dayDateLabel(travelDate, day.day)}
+                                            </span>
+                                          </>
+                                        )}
                                       </div>
                                     </div>
                                   </div>
@@ -9226,28 +9183,26 @@ ${hasNoStayTransfer ? '⚠️ *REMARK:* Transfer cost may change at the time of 
                                   <div className="day-body p-5 flex flex-col gap-5">
                                     
                                     {/* Top: Details & Description */}
-                                    <div className="bg-slate-50/70 border border-slate-200/80 p-4 rounded-xl flex flex-col gap-3 shadow-inner">
-                                      <div>
-                                        <label className="text-[10px] font-extrabold text-indigo-650 uppercase tracking-wider block mb-1">Tour Day Heading</label>
-                                        <div className="text-xs font-black text-slate-800 leading-snug font-heading bg-white py-2 px-3 border border-slate-200/60 rounded-lg select-all">
-                                          {/* Read straight from the pricing engine's own output
-                                              rather than recomputing here -- this preview and the
-                                              exported itinerary must never word a day differently
-                                              (flight days especially, which narrate drop, flight
-                                              and pickup as one story). */}
-                                          {quoteCalculation.dayWiseBreakdown?.[idx]?.title || ''}
-                                        </div>
-                                      </div>
-
-                                      <div>
-                                        <label className="text-[10px] font-extrabold text-indigo-650 uppercase tracking-wider block mb-1">Tour Day Itinerary</label>
-                                        <div className="text-[11px] text-slate-600 leading-relaxed bg-white py-2.5 px-3 border border-slate-200/60 rounded-lg min-h-[75px] select-all whitespace-pre-line">
-                                          {/* Same source as the heading above: the engine's own
-                                              generated copy, so preview and export always agree. */}
-                                          {quoteCalculation.dayWiseBreakdown?.[idx]?.description || ''}
-                                        </div>
-                                        <span className="text-[9px] text-slate-450 mt-1.5 block italic leading-normal">★ The heading and itinerary above are written automatically from the selected hotel, transfers, and activities. Edit core descriptions in Admin panel.</span>
-                                      </div>
+                                    {/* The day, read as a document rather than as two
+                                        labelled form fields. Both were already read-only
+                                        -- the engine writes them -- so "Tour Day Heading"
+                                        and "Tour Day Itinerary" were labelling boxes that
+                                        nobody could type in, on a page an agent shows to
+                                        a client. The note explaining where the words come
+                                        from went with them: it answered a question only
+                                        an operator asks, in front of the traveller. */}
+                                    <div className="flex flex-col gap-2">
+                                      <h4 className="text-sm font-extrabold text-slate-850 leading-snug font-heading select-all">
+                                        {/* Read straight from the pricing engine's own output
+                                            rather than recomputing here -- this preview and the
+                                            exported itinerary must never word a day differently
+                                            (flight days especially, which narrate drop, flight
+                                            and pickup as one story). */}
+                                        {quoteCalculation.dayWiseBreakdown?.[idx]?.title || ''}
+                                      </h4>
+                                      <p className="text-xs text-slate-600 leading-relaxed select-all whitespace-pre-line">
+                                        {quoteCalculation.dayWiseBreakdown?.[idx]?.description || ''}
+                                      </p>
                                     </div>
 
                                     {/* Middle: Hotel & Meals */}
