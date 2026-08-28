@@ -649,10 +649,36 @@ it.** The B2C/B2B load in `App.jsx` is a **whitelist** of keys copied out of
 exactly the kind that wastes an hour: Admin saved the defaults correctly, the
 API returned them, and the builder still picked whatever hotel came first.
 
+**The banner announcing them is gone**, at Tanmay's request — it read as
+clutter on every quote. The defaults still apply, and each pre-filled item is
+still shown on its own day card and removable there. The risk this restores is
+the one the banner existed for: a paid activity can arrive on a day without
+being announced. If quotes start coming out higher than expected, look here
+first.
+
 Automatic activities are added by the **wizard** and by new days in a reshape.
 They are deliberately *not* added when a day is added by hand or moved to
 another city — the operator asked for a day, not for something paid to appear
 on it.
+
+## The day card reads as a document
+
+A day shows a **bold heading, the itinerary text, and the date** — no "Tour Day
+Heading" / "Tour Day Itinerary" labels, no boxes, and no footnote explaining
+where the words came from. Both fields were always read-only (the engine writes
+them in `calculator.js`), so those labels named boxes nobody could type into,
+on a page an agent shows a client.
+
+`dayDateLabel()` at module scope turns the trip's start date and a day number
+into "Fri, 16 Oct, 2026". Module scope for the same reason as `sameCity`.
+
+**The trip's name is generated, not described.** `utils/tripNames.js` produces
+"Lakes & Legends of Nepal 4N/5D" instead of "Kathmandu & Pokhara Custom
+Itinerary". The title is chosen by what the trip contains — a Chitwan leg reads
+as wildlife, Lumbini as pilgrimage — and the choice is a **stable hash** of the
+cities and length, never random: an agent repricing a quote must not watch its
+title change underneath him. The field stays editable, and a name saved with a
+quote is never overwritten.
 
 ## The quote builder
 
@@ -785,7 +811,16 @@ flight inventory) — the itinerary says so instead.
    See *Agent accounts are approved before they can trade* above.
 3. ~~B2B signup should collect a GST number.~~ **Done**, and **optional** —
    Tanmay's call: an agent may register without one and add it later.
-4. **Email, later.** OTP and email verification at signup, and automatic mail
+4. **Copy written by an AI agent in the portal.** Tanmay raised this for day
+   headings and descriptions, and it is the right tool for the job: the current
+   copy is assembled from templates, so every "Leisure Day in Pokhara" reads
+   identically and a generated trip name can only be picked from a fixed list.
+   An LLM would give real variety and let an operator ask for a different tone.
+   It needs a provider chosen, an API key in Render's env vars, and a decision
+   on cost per quote — and it must write into an editable field rather than
+   straight onto the document, so a bad sentence is never sent unseen. Worth
+   doing after email.
+5. **Email, later.** OTP and email verification at signup, and automatic mail
    (booking confirmations, quotes to clients). Nothing exists today: "Forgot
    Password?" only tells the user to contact the administrator. This one is
    explicitly deferred — it needs a mail provider chosen and credentials in
