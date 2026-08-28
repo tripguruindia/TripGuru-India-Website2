@@ -643,6 +643,15 @@ A configured default is only honoured if it still resolves: a hotel that was
 deleted or re-rated falls back rather than dangling, and an activity that was
 deleted or moved to another city is dropped rather than silently charged for.
 
+**The portals only fetch master data when the portal is opened.** The B2C/B2B
+load effect keyed on `currentRoute` alone, so an agent who left the tab open
+kept quoting from whatever he loaded hours ago. That is how a vehicle package
+rate entered in Admin can fail to apply to the very next quote: the builder
+never saw the row, and the "no package rate" warning names a combination that
+is sitting in Admin looking correct. It now also refetches when he crosses onto
+a quote-building screen (`wizard` or `packages`), which is the moment stale
+rates start costing money.
+
 **A new master has to be named in the public-db merge or the portals never see
 it.** The B2C/B2B load in `App.jsx` is a **whitelist** of keys copied out of
 `/public/db`. `city_defaults` was missing from it at first, and the symptom was

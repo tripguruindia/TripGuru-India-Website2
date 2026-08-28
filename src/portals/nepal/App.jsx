@@ -325,6 +325,15 @@ function App() {
   // gates pricing visibility). Only overwrites those specific `db` keys;
   // bookings/users/leads are untouched here (bookings are fetched
   // separately once logged in, see the my-bookings effect below).
+  // True while the agent is on a screen where a quote is built. Master data is
+  // otherwise fetched only when the portal is first opened, so an agent with
+  // the tab left open kept quoting from whatever he loaded hours ago. That is
+  // exactly how a vehicle package rate entered in Admin fails to apply to the
+  // very next quote: the builder never saw it. Refetch when he starts one.
+  const onQuoteBuildingScreen =
+    (currentRoute === 'b2b' ? b2bSubView : b2cSubView) === 'wizard' ||
+    (currentRoute === 'b2b' ? b2bSubView : b2cSubView) === 'packages';
+
   useEffect(() => {
     if (currentRoute !== 'b2c' && currentRoute !== 'b2b') return;
     let cancelled = false;
@@ -359,7 +368,9 @@ function App() {
         console.error('Failed to load live master data from the server', err);
       });
     return () => { cancelled = true; };
-  }, [currentRoute]);
+    // onQuoteBuildingScreen is in here on purpose: crossing onto a quote screen
+    // is the moment stale rates start costing money.
+  }, [currentRoute, onQuoteBuildingScreen]);
 
   // B2C/B2B "My Bookings": once logged in via the real API, fetch the
   // caller's own bookings (scoped server-side by agent_id/user_id).
