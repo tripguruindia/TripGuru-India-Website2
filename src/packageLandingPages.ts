@@ -65,7 +65,7 @@ export const packageLandingPages: PackageLandingPageConfig[] = [
     name: 'Phuket + Krabi 5N/6D',
     title: 'Phuket & Krabi Tour Package | 5 Nights 6 Days | TripGuru India',
     description:
-      'Phuket 3N + Krabi 2N with 4-star hotels, daily breakfast, Phi Phi Island speedboat tour, Krabi 4 Island tour, Phuket city tour and private airport transfers. Plan it with TripGuru on WhatsApp.',
+      'Phuket 3N + Krabi 2N with 4-star hotels, daily breakfast, Phi Phi Island speedboat tour, Krabi 4 Island tour, Phuket city tour and private airport transfers. From ₹24,999 per person.',
     keywords:
       'phuket krabi tour package, phuket krabi 5 nights 6 days, thailand tour package from india, phi phi island tour, krabi 4 island tour, TripGuru India',
     eyebrow: 'Thailand · 5 Nights / 6 Days',
@@ -80,7 +80,7 @@ export const packageLandingPages: PackageLandingPageConfig[] = [
       { city: 'Phuket', nights: 3 },
       { city: 'Krabi', nights: 2 },
     ],
-    priceFrom: null,
+    priceFrom: 24999,
     priceNote: 'per person on twin sharing · flights extra',
     quickFacts: [
       { label: 'Hotels', value: '4-star, near the beach' },
@@ -248,7 +248,7 @@ export const packageLandingPages: PackageLandingPageConfig[] = [
     name: 'Bali 6N/7D',
     title: 'Bali Tour Package | 6 Nights 7 Days with Private Pool Villa | TripGuru India',
     description:
-      'Kuta 4N + Ubud 2N in a private pool villa. Nusa Penida with Indian lunch, water sports, Uluwatu, Tanah Lot, Ubud and the Bali swing, all with private transfers. From ₹74,999 per person.',
+      'Kuta 4N + Ubud 2N in a private pool villa. Nusa Penida with Indian lunch, water sports, Uluwatu, Tanah Lot, Ubud and the Bali swing, all with private transfers and return flights from Delhi. From ₹74,999 per person.',
     keywords:
       'bali tour package, bali 6 nights 7 days, bali honeymoon package, bali private pool villa package, nusa penida tour, bali package from india, TripGuru India',
     eyebrow: 'Bali · 6 Nights / 7 Days',
@@ -264,12 +264,12 @@ export const packageLandingPages: PackageLandingPageConfig[] = [
       { city: 'Ubud', nights: 2 },
     ],
     priceFrom: 74999,
-    priceNote: 'per person on twin sharing',
+    priceNote: 'per person on twin sharing · return flights from Delhi included',
     quickFacts: [
       { label: 'Stay', value: '4-star hotel + private pool villa' },
       { label: 'Meals', value: 'Breakfast daily + Indian lunch' },
       { label: 'Transfers', value: 'Private car with driver' },
-      { label: 'Visa', value: 'On arrival for Indians' },
+      { label: 'Flights', value: 'Return from Delhi, included' },
     ],
     gallery: [
       {
@@ -365,6 +365,7 @@ export const packageLandingPages: PackageLandingPageConfig[] = [
       },
     ],
     inclusions: [
+      'Return flights from Delhi to Bali',
       '4 nights in a 4-star hotel in Kuta',
       '2 nights in a one-bedroom private pool villa in Ubud',
       'Daily breakfast',
@@ -392,7 +393,7 @@ export const packageLandingPages: PackageLandingPageConfig[] = [
       },
       {
         title: 'Prices move with dates',
-        text: 'The price shown is a starting price. Peak dates, long weekends and the year-end cost more; we confirm the exact figure for your dates on WhatsApp.',
+        text: 'The price shown is a starting price with flights from Delhi. Airfares change daily, and peak dates, long weekends and the year-end cost more; we confirm the exact figure for your dates on WhatsApp.',
       },
       {
         title: 'Island tours depend on the sea',
@@ -404,6 +405,11 @@ export const packageLandingPages: PackageLandingPageConfig[] = [
         question: 'Can I change the hotels or the number of nights?',
         answer:
           'Yes. This is our most-booked plan, not a fixed group tour. Tell us your dates and budget on WhatsApp and we will adjust hotels, nights and activities around them.',
+      },
+      {
+        question: 'Are flights included?',
+        answer:
+          'Yes — return flights from Delhi to Bali are part of the price. Flying from another city? Tell us on WhatsApp and we will quote from there, or price the package without flights if you have already booked them.',
       },
       {
         question: 'Is this a good honeymoon plan?',
