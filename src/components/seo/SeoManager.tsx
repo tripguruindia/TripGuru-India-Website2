@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { cityLandingPageMap } from '../../cityLandingPages';
+import { packageLandingPageMap } from '../../packageLandingPages';
 import { CONTACT_INFO, DESTINATIONS, LOGO_URL } from '../../constants';
 
 const BASE_URL = 'https://www.tripguruindia.com';
@@ -180,6 +181,55 @@ function getSeoConfig(pathname: string): SeoConfig {
               },
             },
           ],
+        },
+      ],
+    };
+  }
+
+  const packagePage = packageLandingPageMap[normalizedPath];
+
+  if (packagePage) {
+    return {
+      title: packagePage.title,
+      description: packagePage.description,
+      keywords: packagePage.keywords,
+      canonical: `${BASE_URL}${packagePage.path}`,
+      ogImage: packagePage.ogImage,
+      structuredData: [
+        {
+          '@context': 'https://schema.org',
+          '@type': 'TouristTrip',
+          name: packagePage.name,
+          description: packagePage.description,
+          image: packagePage.ogImage,
+          url: `${BASE_URL}${packagePage.path}`,
+          provider: getDefaultStructuredData(),
+          itinerary: {
+            '@type': 'ItemList',
+            itemListElement: packagePage.days.map((day) => ({
+              '@type': 'ListItem',
+              position: day.day,
+              name: day.title,
+              description: day.description,
+            })),
+          },
+          ...(packagePage.priceFrom !== null && {
+            offers: {
+              '@type': 'Offer',
+              price: packagePage.priceFrom,
+              priceCurrency: 'INR',
+              url: `${BASE_URL}${packagePage.path}`,
+            },
+          }),
+        },
+        {
+          '@context': 'https://schema.org',
+          '@type': 'FAQPage',
+          mainEntity: packagePage.faqs.map((faq) => ({
+            '@type': 'Question',
+            name: faq.question,
+            acceptedAnswer: { '@type': 'Answer', text: faq.answer },
+          })),
         },
       ],
     };
