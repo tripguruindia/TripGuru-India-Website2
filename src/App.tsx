@@ -20,8 +20,10 @@ import { Reviews } from './components/sections/Reviews';
 import { TravelAgencyCityPage } from './components/pages/TravelAgencyCityPage';
 import { PrivacyPolicyPage } from './components/pages/PrivacyPolicyPage';
 import { ThankYouPage } from './components/pages/ThankYouPage';
+import { PackageLandingPage } from './components/pages/PackageLandingPage';
 import { SeoManager } from './components/seo/SeoManager';
 import { cityLandingPageMap, cityLandingPages } from './cityLandingPages';
+import { packageLandingPageMap, packageLandingPages } from './packageLandingPages';
 import { DESTINATIONS } from './constants';
 import { Destination } from './types';
 // Lazy-loaded so the ~9.5k-line Nepal portal ships as its own chunk. It was
@@ -208,6 +210,10 @@ function AppContent() {
 
   const cityLandingPage =
     cityLandingPageMap[normalizedPath as keyof typeof cityLandingPageMap];
+  // Ad landing pages: the visitor came from a WhatsApp chat, so the generic
+  // floating button, sticky bar and promo popup are replaced by the page's own
+  // single WhatsApp call to action.
+  const packageLandingPage = packageLandingPageMap[normalizedPath];
 
   return (
     <div className="min-h-screen font-sans selection:bg-gold selection:text-bg overflow-x-hidden">
@@ -217,6 +223,11 @@ function AppContent() {
       <Routes>
         <Route path="/destinations/:slug" element={<DestinationDeepLink onOpenDetail={openDetail} />} />
         {cityLandingPages.map((page) => (
+          <React.Fragment key={page.path}>
+            <Route path={page.path} element={null} />
+          </React.Fragment>
+        ))}
+        {packageLandingPages.map((page) => (
           <React.Fragment key={page.path}>
             <Route path={page.path} element={null} />
           </React.Fragment>
@@ -237,7 +248,9 @@ function AppContent() {
           transition={{ duration: 0.6 }}
         >
           <Navbar onOpenConcierge={handleOpenConcierge} />
-          {cityLandingPage ? (
+          {packageLandingPage ? (
+            <PackageLandingPage config={packageLandingPage} />
+          ) : cityLandingPage ? (
             <TravelAgencyCityPage config={cityLandingPage} onOpenConcierge={handleOpenConcierge} />
           ) : isPrivacyPolicyRoute ? (
             <PrivacyPolicyPage />
@@ -256,9 +269,9 @@ function AppContent() {
             </main>
           )}
           <Footer />
-          <FloatingWhatsApp />
-          <MobileStickyCTA onOpenConcierge={() => handleOpenConcierge()} />
-          {!cityLandingPage && <PromotionPopup />}
+          {!packageLandingPage && <FloatingWhatsApp />}
+          {!packageLandingPage && <MobileStickyCTA onOpenConcierge={() => handleOpenConcierge()} />}
+          {!cityLandingPage && !packageLandingPage && <PromotionPopup />}
           
           <DestinationDetailModal
             isOpen={isDetailModalOpen}
