@@ -1,0 +1,91 @@
+name: Blog agent
+
+# Writes, fact-checks and publishes one blog article. Runs Monday, Wednesday
+# and Friday at 09:00 IST (03:30 UTC). It can also be started by hand from the
+# Actions tab -> Blog agent -> Run workflow, optionally with a topic of your own.
+#
+# Needs one repository secret: ANTHROPIC_API_KEY.
+
+on:
+  schedule:
+    - cron: '30 3 * * 1,3,5'
+  workflow_dispatch:
+    inputs:
+      topic:
+        description: 'Optional — write about this instead of the next topic in the list (in English)'
+        required: false
+        default: ''
+
+concurrency:
+  group: blog-agent
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  write-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+
+      - name: Write and fact-check an article
+        id: agent
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          BLOG_TOPIC: ${{ github.event.inputs.topic }}
+        run: node scripts/blog/agent.mjs
+
+      # The site must still build with the new article before it goes live.
+      - name: Build the site
+        if: steps.agent.outputs.published == 'true'
+        run: npm run build
+
+      - name: Publish
+        env:
+          PUBLISHED: ${{ steps.agent.outputs.published }}
+          TITLE: ${{ steps.agent.outputs.title }}
+        run: |
+          git config user.name "TripGuru Blog Agent"
+          git config user.email "blog-agent@users.noreply.github.com"
+          git add content/blog
+          if git diff --cached --quiet; then
+            echo "Nothing to commit."
+            exit 0
+          fi
+          if [ "$PUBLISHED" = "true" ]; then
+            git commit -m "Blog: $TITLE"
+          else
+            git commit -m "Blog agent: update topic list"
+          fi
+          git pull --rebase origin main
+          git push origin HEAD:main
+
+      # Vercel deploys main on its own. Wait until the article is live, then
+      # tell Bing (which ChatGPT search uses) and other IndexNow engines about
+      # it straight away instead of waiting for them to crawl the sitemap.
+      - name: Notify search engines
+        if: steps.agent.outputs.published == 'true'
+        env:
+          URL: ${{ steps.agent.outputs.url }}
+        run: |
+          for i in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -w '%{http_code}' "$URL")
+            if [ "$code" = "200" ]; then echo "Live: $URL"; break; fi
+            sleep 15
+          done
+          KEY=b81c9cdc6d64c416ab35d3106e584f25
+          curl -s -X POST https://api.indexnow.org/indexnow \
+            -H 'Content-Type: application/json; charset=utf-8' \
+            -d "{\"host\":\"www.tripguruindia.com\",\"key\":\"$KEY\",\"keyLocation\":\"https://www.tripguruindia.com/$KEY.txt\",\"urlList\":[\"$URL\",\"https://www.tripguruindia.com/blog\",\"https://www.tripguruindia.com/sitemap.xml\"]}" \
+            -w '\nIndexNow: HTTP %{http_code}\n' || true

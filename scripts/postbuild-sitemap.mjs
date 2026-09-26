@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { buildSync } from 'esbuild';
+import { renderBlog } from './blog/render.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -25,7 +26,9 @@ function extractAllMatches(content, regex) {
   return matches;
 }
 
-function buildSitemapXml(routes) {
+// `lastmod` maps a route to the date it really changed. Blog posts carry their
+// own; every other page falls back to the build date.
+function buildSitemapXml(routes, lastmod = {}) {
   const today = new Date().toISOString().slice(0, 10);
   const uniqueRoutes = [...new Set(routes)];
   const lines = [
@@ -41,12 +44,16 @@ function buildSitemapXml(routes) {
         ? '0.9'
         : route === '/privacy-policy'
           ? '0.3'
-          : '0.8';
+          : route.startsWith('/blog/category/')
+            ? '0.5'
+            : route.startsWith('/blog/')
+              ? '0.7'
+              : '0.8';
     lines.push(
       '  <url>',
       `    <loc>${loc}</loc>`,
-      `    <lastmod>${today}</lastmod>`,
-      '    <changefreq>weekly</changefreq>',
+      `    <lastmod>${lastmod[route] || today}</lastmod>`,
+      `    <changefreq>${route.startsWith('/blog/') ? 'monthly' : 'weekly'}</changefreq>`,
       `    <priority>${priority}</priority>`,
       '  </url>'
     );
@@ -119,6 +126,11 @@ async function main() {
   const cityPaths = extractAllMatches(cityPagesText, /path:\s*'([^']+)'/g);
   const packagePages = await loadPackagePages();
 
+  // The blog is plain HTML written straight into dist (see blog/render.mjs).
+  // Without a dist this only collects its routes for the sitemap.
+  const blog = await renderBlog(fs.existsSync(distDir) ? distDir : null);
+  const lastmod = Object.fromEntries(blog.routes.filter((r) => r.lastmod).map((r) => [r.path, r.lastmod]));
+
   const routes = [
     '/',
     '/offers',
@@ -129,9 +141,10 @@ async function main() {
     ...cityPaths,
     ...packagePages.map((page) => page.path),
     ...destinationSlugs.map((slug) => `/destinations/${slug}`),
+    ...blog.routes.map((r) => r.path),
   ];
 
-  const xml = buildSitemapXml(routes);
+  const xml = buildSitemapXml(routes, lastmod);
   fs.writeFileSync(publicSitemapPath, xml, 'utf8');
 
   if (fs.existsSync(distDir)) {
@@ -140,6 +153,7 @@ async function main() {
     const template = fs.readFileSync(path.join(distDir, 'index.html'), 'utf8');
     packagePages.forEach((page) => writePackagePage(template, page));
     console.log(`Link-preview pages written for ${packagePages.length} packages.`);
+    console.log(`Blog written: ${blog.count} posts.`);
   }
 
   console.log(`Sitemap generated with ${new Set(routes).size} routes.`);

@@ -58,14 +58,15 @@ npm run lint         # tsc --noEmit
 (see `.env.example`). **Vite reads env files only at startup** — restart the
 dev server after changing them.
 
-Two committed test suites:
+Committed test suites:
 
 - **`npm test`** (repo root) — `test/cityDefaults.test.mjs` (the City Defaults
   resolver), `test/vehiclePackages.test.mjs` (package matching, and that a
   package never charges the vehicle twice) and `test/vehicleOrigin.test.mjs`
   (which fleet a trip may use, and that an Indian vehicle is never priced by
   sector). Bundled with esbuild first, because the source uses Vite's
-  extensionless imports.
+  extensionless imports. Also `test/blogPipeline.test.mjs` — the blog agent's
+  rule checks and the rendered article page; plain Node, no bundling.
 - **`npm test`** from **`server/`** — `server/test/approval.test.js`, the agent
   approval gate. It boots the real Express app against a throwaway libSQL file
   in the temp directory, so it touches nothing live and needs no credentials,
@@ -431,6 +432,60 @@ and the per-adult/per-child split can never drift apart.
 **Bookings and quotes do not store the tax rate.** A saved quote reprices
 against whatever GST is set when it is reopened — pre-existing behaviour, now
 also true of the on/off switch.
+
+## The blog — written and published by AI, with no human review
+
+`/blog` is written by an AI agent three times a week (Mon/Wed/Fri 09:00 IST,
+`.github/workflows/blog-agent.yml`) and **published straight to `main`**.
+Tanmay chose this explicitly ("main nahi dekhunga, direct post karo") on the
+condition that a second agent double-checks every article. Do not quietly
+turn it into a PR-review flow; do not weaken the checking either.
+
+```
+content/blog/guidelines.md   editorial + hard rules both agents read (edit freely)
+content/blog/topics.json     topic queue; agent marks published/rejected, refills itself
+content/blog/posts/*.md      the articles (YAML frontmatter + Markdown)
+scripts/blog/agent.mjs       Writer -> rule checks -> Checker -> publish
+scripts/blog/pipeline.mjs    the no-AI parts: topic choice, rule checks (tested)
+scripts/blog/render.mjs      posts -> static HTML, RSS, llms.txt
+```
+
+**The blog is static HTML, not React routes, on purpose.** ChatGPT, Perplexity
+and Bing's AI crawlers mostly do not run JavaScript; an SPA page is an empty
+`<div id="root">` to them. `postbuild-sitemap.mjs` calls `renderBlog()` to
+write `dist/blog/**/index.html`, which Vercel serves before the SPA rewrite
+(the same trick as the package landing pages). So the site links to it with a
+plain `<a href="/blog">` / `reloadDocument`, never a router `<Link>`. Locally,
+`vite preview` needs the trailing slash (`/blog/`); Vercel does not.
+
+The pipeline, and why each step exists:
+
+1. **Research** with Claude's server-side `web_search` / `web_fetch`.
+2. **Draft** as structured JSON (`ARTICLE_SCHEMA`) from the research only.
+3. **Rule checks** (`validateArticle`): internal links must be real pages from
+   the site's own data, slug unused, length, sources https and *actually
+   opening* (404 / dead domain fails; 403 is let through as bot-blocking).
+4. **Checker** — a separate call that re-verifies every claim on the web
+   itself, then returns publish / revise / reject. Critical issues go back to
+   the Writer and are re-checked (max 2 rounds); minor ones are applied
+   without a re-check.
+5. A draft that still fails is **not published**; its topic is marked
+   `rejected` with the reason. A rejection is a normal, successful run. Only a
+   technical failure (API key, credits) fails the workflow and emails GitHub.
+
+Model `claude-opus-5` (override with the `BLOG_MODEL` env var), adaptive
+thinking, server-side `fallbacks: "default"`. Each run prints its cost to the
+Actions run summary. After publishing, the workflow waits for Vercel and pings
+IndexNow (Bing, which ChatGPT search uses); the key file is
+`public/b81c9cdc6d64c416ab35d3106e584f25.txt` and must stay.
+
+Dates are **IST** throughout (`todayIST()` in `lib.mjs`). The build runs on
+UTC; comparing against UTC hid a fresh post until 05:30 IST. A post dated in
+the future is held back until its day, which also gives a way to schedule one.
+
+To fix a published article: edit its `.md` and bump `updated:`. To stop a
+topic: set its status to `rejected`. To pause the agent: disable the workflow
+in GitHub -> Actions.
 
 ## Deployment
 

@@ -52,12 +52,15 @@ export const Footer: React.FC = () => {
               { label: 'Destinations', to: '/destinations' },
               { label: 'Offers', to: '/offers' },
               { label: 'Services', to: '/services' },
+              { label: 'Blog', to: '/blog', external: true },
               { label: 'Contact', to: '/contact' },
               { label: 'Privacy Policy', to: '/privacy-policy' },
             ].map((item) => (
               <li key={item.label}>
                 <Link
                   to={item.to}
+                  // The blog is static HTML outside the app, so load it as a page.
+                  reloadDocument={'external' in item}
                   className="text-text-secondary hover:text-gold text-[13px] uppercase tracking-widest transition-colors inline-block"
                 >
                   {item.label}

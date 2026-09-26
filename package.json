@@ -8,7 +8,8 @@
     "build": "vite build && node scripts/postbuild-sitemap.mjs",
     "preview": "vite preview",
     "lint": "tsc --noEmit",
-    "test": "esbuild test/cityDefaults.test.mjs --bundle --platform=node --format=esm --outfile=node_modules/.cache/cityDefaults.test.mjs --log-level=error && node node_modules/.cache/cityDefaults.test.mjs && esbuild test/vehiclePackages.test.mjs --bundle --platform=node --format=esm --outfile=node_modules/.cache/vehiclePackages.test.mjs --log-level=error && node node_modules/.cache/vehiclePackages.test.mjs && esbuild test/vehicleOrigin.test.mjs --bundle --platform=node --format=esm --outfile=node_modules/.cache/vehicleOrigin.test.mjs --log-level=error && node node_modules/.cache/vehicleOrigin.test.mjs && esbuild test/tripNames.test.mjs --bundle --platform=node --format=esm --outfile=node_modules/.cache/tripNames.test.mjs --log-level=error && node node_modules/.cache/tripNames.test.mjs"
+    "test": "esbuild test/cityDefaults.test.mjs --bundle --platform=node --format=esm --outfile=node_modules/.cache/cityDefaults.test.mjs --log-level=error && node node_modules/.cache/cityDefaults.test.mjs && esbuild test/vehiclePackages.test.mjs --bundle --platform=node --format=esm --outfile=node_modules/.cache/vehiclePackages.test.mjs --log-level=error && node node_modules/.cache/vehiclePackages.test.mjs && esbuild test/vehicleOrigin.test.mjs --bundle --platform=node --format=esm --outfile=node_modules/.cache/vehicleOrigin.test.mjs --log-level=error && node node_modules/.cache/vehicleOrigin.test.mjs && esbuild test/tripNames.test.mjs --bundle --platform=node --format=esm --outfile=node_modules/.cache/tripNames.test.mjs --log-level=error && node node_modules/.cache/tripNames.test.mjs && node test/blogPipeline.test.mjs",
+    "blog:agent": "node scripts/blog/agent.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.1.14",
@@ -22,9 +23,12 @@
     "vite": "^6.4.2"
   },
   "devDependencies": {
+    "@anthropic-ai/sdk": "^0.128.0",
     "@types/node": "^25.5.0",
+    "marked": "^18.0.14",
     "tailwindcss": "^4.1.14",
-    "typescript": "~5.8.2"
+    "typescript": "~5.8.2",
+    "yaml": "^2.9.1"
   },
   "engines": {
     "node": "20.x"

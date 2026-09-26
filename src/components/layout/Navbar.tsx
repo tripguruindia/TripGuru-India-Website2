@@ -64,6 +64,8 @@ export const Navbar = ({ onOpenConcierge }: NavbarProps) => {
             <Link to="/destinations" className={`transition-colors text-xs font-semibold tracking-[0.14em] uppercase ${isScrolled ? 'text-text-primary hover:text-gold' : 'text-white/92 hover:text-white drop-shadow-[0_1px_8px_rgba(0,0,0,0.45)]'}`}>Destinations</Link>
             <Link to="/offers" className={`transition-colors text-xs font-semibold tracking-[0.14em] uppercase ${isScrolled ? 'text-text-primary hover:text-gold' : 'text-white/92 hover:text-white drop-shadow-[0_1px_8px_rgba(0,0,0,0.45)]'}`}>Offers</Link>
             <Link to="/reviews" className={`transition-colors text-xs font-semibold tracking-[0.14em] uppercase ${isScrolled ? 'text-text-primary hover:text-gold' : 'text-white/92 hover:text-white drop-shadow-[0_1px_8px_rgba(0,0,0,0.45)]'}`}>Reviews</Link>
+            {/* A plain link, not <Link>: the blog is static HTML outside the app. */}
+            <a href="/blog" className={`transition-colors text-xs font-semibold tracking-[0.14em] uppercase ${isScrolled ? 'text-text-primary hover:text-gold' : 'text-white/92 hover:text-white drop-shadow-[0_1px_8px_rgba(0,0,0,0.45)]'}`}>Blog</a>
             <Link to="/services" className={`transition-colors text-xs font-semibold tracking-[0.14em] uppercase ${isScrolled ? 'text-text-primary hover:text-gold' : 'text-white/92 hover:text-white drop-shadow-[0_1px_8px_rgba(0,0,0,0.45)]'}`}>Services</Link>
             <Link to="/contact" className={`transition-colors text-xs font-semibold tracking-[0.14em] uppercase ${isScrolled ? 'text-text-primary hover:text-gold' : 'text-white/92 hover:text-white drop-shadow-[0_1px_8px_rgba(0,0,0,0.45)]'}`}>Contact</Link>
             <button 
@@ -97,6 +99,7 @@ export const Navbar = ({ onOpenConcierge }: NavbarProps) => {
               <Link to="/destinations" onClick={() => setIsMobileMenuOpen(false)} className="text-text-secondary text-[11px] font-normal tracking-[0.14em] uppercase">Destinations</Link>
               <Link to="/offers" onClick={() => setIsMobileMenuOpen(false)} className="text-text-secondary text-[11px] font-normal tracking-[0.14em] uppercase">Offers</Link>
               <Link to="/reviews" onClick={() => setIsMobileMenuOpen(false)} className="text-text-secondary text-[11px] font-normal tracking-[0.14em] uppercase">Reviews</Link>
+              <a href="/blog" className="text-text-secondary text-[11px] font-normal tracking-[0.14em] uppercase">Blog</a>
               <Link to="/services" onClick={() => setIsMobileMenuOpen(false)} className="text-text-secondary text-[11px] font-normal tracking-[0.14em] uppercase">Services</Link>
               <Link to="/contact" onClick={() => setIsMobileMenuOpen(false)} className="text-text-secondary text-[11px] font-normal tracking-[0.14em] uppercase">Contact</Link>
               <button 
