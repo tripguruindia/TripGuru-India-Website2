@@ -4,7 +4,9 @@ name: Blog agent
 # and Friday at 09:00 IST (03:30 UTC). It can also be started by hand from the
 # Actions tab -> Blog agent -> Run workflow, optionally with a topic of your own.
 #
-# Needs one repository secret: ANTHROPIC_API_KEY.
+# Needs one repository secret: CLAUDE_CODE_OAUTH_TOKEN, made on a computer
+# signed in to Tanmay's Claude plan with `claude setup-token`. Articles then
+# count against that plan's usage instead of being billed per token.
 
 on:
   schedule:
@@ -26,7 +28,7 @@ permissions:
 jobs:
   write-and-publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
         with:
@@ -42,7 +44,9 @@ jobs:
       - name: Write and fact-check an article
         id: agent
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          # Only the plan token. An ANTHROPIC_API_KEY here would take priority
+          # and be billed per token.
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           BLOG_TOPIC: ${{ github.event.inputs.topic }}
         run: node scripts/blog/agent.mjs
 
