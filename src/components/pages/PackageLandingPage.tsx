@@ -143,7 +143,7 @@ export const PackageLandingPage = ({ config }: PackageLandingPageProps) => {
               <WhatsAppButton
                 config={config}
                 placement="hero"
-                label="Get price on WhatsApp"
+                label="Book on WhatsApp"
                 className="px-7 py-4 text-[11px]"
               />
             </div>
@@ -330,17 +330,17 @@ export const PackageLandingPage = ({ config }: PackageLandingPageProps) => {
           <div className="rounded-[32px] border border-gold-border/20 bg-gradient-to-br from-surface via-bg to-surface/80 px-6 py-10 md:px-12 md:py-14 text-center shadow-2xl">
             <span className="text-gold uppercase tracking-[0.24em] text-[10px] font-semibold">Plan with TripGuru</span>
             <h2 className="mt-4 font-display text-[clamp(30px,5vw,54px)] text-text-primary leading-[1] tracking-tight font-light">
-              Send us your dates. We will do the rest.
+              Ready to book? Send us your dates.
             </h2>
             <p className="mt-5 max-w-xl mx-auto text-text-secondary font-light leading-relaxed">
-              Tell us when you want to travel and how many of you are going. You get the exact price and hotel options
-              on WhatsApp, usually within the hour.
+              Everything about the trip is on this page. When you are ready, send us your travel dates and the number
+              of travellers — we confirm availability and the final price, and hold your booking with a deposit.
             </p>
             <div className="mt-8">
               <WhatsAppButton
                 config={config}
                 placement="footer-cta"
-                label="Chat on WhatsApp"
+                label="Book on WhatsApp"
                 className="px-8 py-4 text-[11px]"
               />
             </div>
@@ -359,7 +359,7 @@ export const PackageLandingPage = ({ config }: PackageLandingPageProps) => {
           <WhatsAppButton
             config={config}
             placement="sticky-bar"
-            label="WhatsApp"
+            label="Book now"
             className="shrink-0 h-12 px-6 text-[11px]"
           />
         </div>

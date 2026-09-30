@@ -236,11 +236,11 @@ export const packageLandingPages: PackageLandingPageConfig[] = [
       {
         question: 'How do I book?',
         answer:
-          'Message us on WhatsApp with your travel dates and number of travellers. We confirm availability and the final price, and you pay a deposit to our company account to hold the booking.',
+          'Tap Book on WhatsApp and send us your travel dates, number of travellers and departure city. We confirm availability and the final price for those dates, and a deposit to our company account holds the booking.',
       },
     ],
     whatsappMessage:
-      'Hi TripGuru, I saw the Phuket + Krabi 5N/6D package on your website. Please share the best price.\n\nTravel dates: \nTravellers: ',
+      'Hi TripGuru, I want to book the Phuket + Krabi 5N/6D package (from ₹24,999 per person) that I saw on your website. Please confirm availability for my dates.\n\nTravel dates: \nTravellers: \nDeparture city: ',
   },
   {
     slug: 'bali',
@@ -424,11 +424,11 @@ export const packageLandingPages: PackageLandingPageConfig[] = [
       {
         question: 'How do I book?',
         answer:
-          'Message us on WhatsApp with your travel dates and number of travellers. We confirm availability and the final price, and you pay a deposit to our company account to hold the booking.',
+          'Tap Book on WhatsApp and send us your travel dates, number of travellers and departure city. We confirm availability and the final price for those dates, and a deposit to our company account holds the booking.',
       },
     ],
     whatsappMessage:
-      'Hi TripGuru, I saw the Bali 6N/7D package on your website. Please share the best price.\n\nTravel dates: \nTravellers: ',
+      'Hi TripGuru, I want to book the Bali 6N/7D package (from ₹74,999 per person with flights) that I saw on your website. Please confirm availability for my dates.\n\nTravel dates: \nTravellers: \nDeparture city: ',
   },
 ];
 
