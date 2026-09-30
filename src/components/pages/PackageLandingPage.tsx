@@ -11,6 +11,27 @@ interface PackageLandingPageProps {
 
 const formatPrice = (amount: number) => `₹${amount.toLocaleString('en-IN')}`;
 
+// A fixed package is sold as printed, so the page asks for the booking. A
+// customised one is repriced per enquiry, so it asks the visitor for a quote.
+const ctaCopy = (fixedPackage: boolean) =>
+  fixedPackage
+    ? {
+        hero: 'Book on WhatsApp',
+        closingTitle: 'Ready to book? Send us your dates.',
+        closingText:
+          'Everything about the trip is on this page. When you are ready, send us your travel dates and the number of travellers — we confirm availability and the final price, and hold your booking with a deposit.',
+        closingButton: 'Book on WhatsApp',
+        stickyButton: 'Book now',
+      }
+    : {
+        hero: 'Get price on WhatsApp',
+        closingTitle: 'Send us your dates. We will do the rest.',
+        closingText:
+          'Tell us when you want to travel and how many of you are going. You get the exact price and hotel options on WhatsApp, usually within the hour.',
+        closingButton: 'Chat on WhatsApp',
+        stickyButton: 'WhatsApp',
+      };
+
 // Visitors arrive from a WhatsApp chat, so the only call to action is the way
 // back into it — with the package named, so the team knows what was seen.
 const WhatsAppButton = ({
@@ -93,6 +114,7 @@ const SectionHeading = ({ eyebrow, children }: { eyebrow: string; children: Reac
 
 export const PackageLandingPage = ({ config }: PackageLandingPageProps) => {
   const [titleBefore, titleAfter] = config.heroTitle.split(config.heroHighlight);
+  const cta = ctaCopy(config.fixedPackage);
 
   return (
     <main className="bg-gradient-to-b from-bg via-surface/20 to-bg pb-28">
@@ -143,7 +165,7 @@ export const PackageLandingPage = ({ config }: PackageLandingPageProps) => {
               <WhatsAppButton
                 config={config}
                 placement="hero"
-                label="Book on WhatsApp"
+                label={cta.hero}
                 className="px-7 py-4 text-[11px]"
               />
             </div>
@@ -330,17 +352,14 @@ export const PackageLandingPage = ({ config }: PackageLandingPageProps) => {
           <div className="rounded-[32px] border border-gold-border/20 bg-gradient-to-br from-surface via-bg to-surface/80 px-6 py-10 md:px-12 md:py-14 text-center shadow-2xl">
             <span className="text-gold uppercase tracking-[0.24em] text-[10px] font-semibold">Plan with TripGuru</span>
             <h2 className="mt-4 font-display text-[clamp(30px,5vw,54px)] text-text-primary leading-[1] tracking-tight font-light">
-              Ready to book? Send us your dates.
+              {cta.closingTitle}
             </h2>
-            <p className="mt-5 max-w-xl mx-auto text-text-secondary font-light leading-relaxed">
-              Everything about the trip is on this page. When you are ready, send us your travel dates and the number
-              of travellers — we confirm availability and the final price, and hold your booking with a deposit.
-            </p>
+            <p className="mt-5 max-w-xl mx-auto text-text-secondary font-light leading-relaxed">{cta.closingText}</p>
             <div className="mt-8">
               <WhatsAppButton
                 config={config}
                 placement="footer-cta"
-                label="Book on WhatsApp"
+                label={cta.closingButton}
                 className="px-8 py-4 text-[11px]"
               />
             </div>
@@ -359,7 +378,7 @@ export const PackageLandingPage = ({ config }: PackageLandingPageProps) => {
           <WhatsAppButton
             config={config}
             placement="sticky-bar"
-            label="Book now"
+            label={cta.stickyButton}
             className="shrink-0 h-12 px-6 text-[11px]"
           />
         </div>
