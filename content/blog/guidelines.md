@@ -21,6 +21,25 @@ citizens on pilgrimage, friends' groups. Many are from UP, Bihar and Delhi NCR.
 They think in rupees, travel on Indian passports (or Voter ID/Aadhaar-type
 documents for Nepal), and often go by train or road.
 
+## What we write about — mostly exploring
+
+The blog should make people want to go. **About three articles in four are
+about exploring a place**: what to see and do, where to walk, what to eat,
+which viewpoint is worth the early start, a day trip most visitors miss, how a
+trip unfolds day by day, what the place feels like in each season.
+
+**About one in four is purely practical** — visas, documents, currency, costs.
+Those matter for search and for trust, but they are not the heart of the blog.
+
+Even a practical article should say what the traveller gets to experience at
+the end of it, and an exploring article still carries the practical essentials
+(how to get there, how many days, best time, rough cost) in its key facts.
+
+Describe places concretely enough that the reader can picture them — the
+lake at dawn with the Annapurna range reflected in it, the smell of the
+spice market, the sound of the aarti — using real detail from the research,
+not adjectives. Specific beats superlative.
+
 ## Voice
 
 - Plain, warm, practical English. Write like an experienced travel agent

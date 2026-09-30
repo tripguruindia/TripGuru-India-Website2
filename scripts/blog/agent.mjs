@@ -137,7 +137,7 @@ async function proposeTopics({ topicsFile, posts }) {
   const notes = await researchCall({
     step: 'topic research',
     system: `You plan content for TripGuru, a Gorakhpur (India) travel agency. Today's date is ${todayIST()}.`,
-    prompt: `Find 12 blog topics that Indian travellers are actively searching for right now, 4 in each category: nepal (Nepal travel from India), international (holidays abroad from India), india (domestic trips). Favour questions with clear search demand and upcoming seasons (the next 2-4 months). Do not repeat or closely overlap anything already covered:\n${covered.join('\n')}`,
+    prompt: `Find 12 blog topics that Indian travellers are actively searching for right now, 4 in each category: nepal (Nepal travel from India), international (holidays abroad from India), india (domestic trips). At least 3 of the 4 in each category must be about exploring a place — things to do, places to see, food, culture, day trips, scenic routes, itineraries, lesser-known spots; at most 1 may be purely practical (visas, documents, currency, costs). Favour topics with clear search demand and upcoming seasons (the next 2-4 months). Do not repeat or closely overlap anything already covered:\n${covered.join('\n')}`,
   });
   const { topics } = await jsonCall({
     step: 'topic list',

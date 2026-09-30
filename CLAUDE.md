@@ -498,6 +498,11 @@ Dates are **IST** throughout (`todayIST()` in `lib.mjs`). The build runs on
 UTC; comparing against UTC hid a fresh post until 05:30 IST. A post dated in
 the future is held back until its day, which also gives a way to schedule one.
 
+**The mix is mostly exploring** — Tanmay asked for articles about places to see
+and things to do, not a stream of visa and cost guides. `guidelines.md` sets
+roughly three exploring articles to one practical one, `topics.json` is ordered
+that way, and the topic-refill prompt in `agent.mjs` asks for the same ratio.
+
 To fix a published article: edit its `.md` and bump `updated:`. To stop a
 topic: set its status to `rejected`. To pause the agent: disable the workflow
 in GitHub -> Actions.
