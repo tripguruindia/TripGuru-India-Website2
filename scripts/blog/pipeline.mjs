@@ -107,6 +107,23 @@ export function pickTopic(topics, posts, { skipIds = [] } = {}) {
   return open.find((t) => t.category !== lastCategory) || open[0];
 }
 
+/**
+ * A topic that failed the checks goes to the back of the queue for another
+ * try, and is only given up on after `maxAttempts` failures. The first live
+ * run lost the most important topic of all (Gorakhpur to Nepal by road) to
+ * one wrong date — a problem with that draft, not with the topic.
+ */
+export function recordFailure(topicsFile, id, reason, { date, maxAttempts = 2 } = {}) {
+  const index = topicsFile.topics.findIndex((t) => t.id === id);
+  if (index === -1) return null;
+  const [entry] = topicsFile.topics.splice(index, 1);
+  entry.attempts = (entry.attempts || 0) + 1;
+  entry.lastFailure = { date, reason: reason.slice(0, 500) };
+  entry.status = entry.attempts >= maxAttempts ? 'rejected' : 'todo';
+  topicsFile.topics.push(entry);
+  return entry;
+}
+
 function internalPath(href) {
   if (href.startsWith(BASE_URL)) return href.slice(BASE_URL.length) || '/';
   if (href.startsWith('/')) return href;

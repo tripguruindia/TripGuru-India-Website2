@@ -11,7 +11,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { pickTopic, validateArticle, toPost } from '../scripts/blog/pipeline.mjs';
+import { pickTopic, recordFailure, validateArticle, toPost } from '../scripts/blog/pipeline.mjs';
 import { renderBlog } from '../scripts/blog/render.mjs';
 
 let passed = 0;
@@ -109,6 +109,21 @@ console.log('\nChoosing the next topic');
   ok(pickTopic(topics, [{ category: 'nepal' }]).id === 'c', 'skips a second Nepal article in a row when another category is waiting');
   ok(pickTopic(topics, [{ category: 'india' }]).id === 'b', 'otherwise takes the first unused topic');
   ok(pickTopic(topics, [], { skipIds: ['b', 'c'] }) === null, 'published and rejected topics are never repeated');
+}
+
+console.log('\nA failed topic is retried once, not lost');
+{
+  const file = { topics: [
+    { id: 'road', category: 'nepal', status: 'todo' },
+    { id: 'visa', category: 'international', status: 'todo' },
+  ] };
+  const first = recordFailure(file, 'road', 'wrong date', { date: '2026-10-01' });
+  ok(first.status === 'todo' && first.attempts === 1, 'after one failure it is still open');
+  ok(file.topics.at(-1).id === 'road', 'and goes to the back of the queue, so the next run tries something else');
+  ok(pickTopic(file.topics, []).id === 'visa', 'the next run picks a different topic');
+  const second = recordFailure(file, 'road', 'wrong again', { date: '2026-10-03' });
+  ok(second.status === 'rejected' && second.lastFailure.reason === 'wrong again', 'after a second failure it is given up, with the reason kept');
+  ok(recordFailure(file, 'no-such-topic', 'x') === null, 'a custom topic (not in the list) is simply ignored');
 }
 
 console.log('\nThe rendered page');

@@ -2,12 +2,121 @@
   "_readme": "The Writer takes the first topic below whose status is 'todo', rotating categories. Add a topic by copying a line: id (short, unique), category (nepal | international | india), keyword (what people type into Google), angle (what the article should cover). The agent sets status to 'published' or 'rejected' itself. When every topic is used, it researches and adds new ones on its own.",
   "topics": [
     {
+      "id": "pokhara-things-to-do",
+      "category": "nepal",
+      "keyword": "things to do in pokhara",
+      "angle": "Phewa lake, Sarangkot sunrise, paragliding, World Peace Pagoda, caves; costs and how many days.",
+      "status": "todo"
+    },
+    {
+      "id": "bali-things-to-do",
+      "category": "international",
+      "keyword": "things to do in bali",
+      "angle": "Ubud rice terraces and temples, Uluwatu cliffs and the kecak dance, Nusa Penida day trip, beaches by mood, food to try, how to split nights between areas.",
+      "status": "todo"
+    },
+    {
+      "id": "kerala-itinerary-7-days",
+      "category": "india",
+      "keyword": "kerala itinerary 7 days",
+      "angle": "Kochi-Munnar-Thekkady-Alleppey day-by-day, houseboat tips, best season, how to reach from north India.",
+      "status": "todo"
+    },
+    {
+      "id": "kathmandu-places-to-visit",
+      "category": "nepal",
+      "keyword": "places to visit in kathmandu",
+      "angle": "The three Durbar Squares (Kathmandu, Patan, Bhaktapur), Pashupatinath, Boudhanath, Swayambhunath, Thamel and Asan bazaar, what each feels like, how to fit them into 2-3 days.",
+      "status": "todo"
+    },
+    {
+      "id": "phuket-vs-krabi",
+      "category": "international",
+      "keyword": "phuket vs krabi",
+      "angle": "Which to choose or how to split nights, beaches, island tours, nightlife, families vs couples.",
+      "status": "todo"
+    },
+    {
+      "id": "meghalaya-trip",
+      "category": "india",
+      "keyword": "meghalaya trip plan",
+      "angle": "Shillong, Cherrapunji, Dawki, living root bridges; best months; 5-6 day route from Guwahati.",
+      "status": "todo"
+    },
+    {
       "id": "gorakhpur-to-nepal-by-road",
       "category": "nepal",
       "keyword": "gorakhpur to nepal by road",
       "angle": "Gorakhpur to Kathmandu and Pokhara via the Sunauli border: route, distance, drive time, border formalities, ID documents, car vs bus, costs.",
-      "status": "rejected",
-      "reason": "Still had critical problems after 2 rounds of corrections: The specific closure dates (25–27 September, implying a two-day closure) contradict the cited source reporting, which shows the Narayangadh–Muglin landslide occurred and was cleared on the same day (27 September, ~7:55am–12:15pm). No source confirms a closure beginning 25 September on this section. This is a concrete, checkable factual date error presented as fact."
+      "status": "todo",
+      "attempts": 1,
+      "lastFailure": {
+        "date": "2026-10-01",
+        "reason": "Still had critical problems after 2 rounds of corrections: The specific closure dates (25–27 September, implying a two-day closure) contradict the cited source reporting, which shows the Narayangadh–Muglin landslide occurred and was cleared on the same day (27 September, ~7:55am–12:15pm). No source confirms a closure beginning 25 September on this section. This is a concrete, checkable factual date error presented as fact."
+      }
+    },
+    {
+      "id": "vietnam-trip-from-india",
+      "category": "international",
+      "keyword": "vietnam trip from india",
+      "angle": "E-visa for Indians, north vs south, 7-10 day route, budget, direct flights from India.",
+      "status": "todo"
+    },
+    {
+      "id": "rajasthan-itinerary",
+      "category": "india",
+      "keyword": "rajasthan itinerary 7 days",
+      "angle": "Jaipur-Jodhpur-Udaipur or Jaisalmer routes, desert camps, best months, train vs car.",
+      "status": "todo"
+    },
+    {
+      "id": "chitwan-safari-guide",
+      "category": "nepal",
+      "keyword": "chitwan national park safari",
+      "angle": "Jeep vs canoe vs walking safari, where to stay, season, how to combine with Kathmandu and Pokhara.",
+      "status": "todo"
+    },
+    {
+      "id": "dubai-things-to-do",
+      "category": "international",
+      "keyword": "things to do in dubai with family",
+      "angle": "Old Dubai creek and souks, desert safari, Burj Khalifa, Dubai Frame, Miracle Garden and theme parks, what suits kids vs couples, how to plan 4-5 days.",
+      "status": "todo"
+    },
+    {
+      "id": "varanasi-ayodhya-prayagraj",
+      "category": "india",
+      "keyword": "varanasi ayodhya prayagraj tour",
+      "angle": "Spiritual circuit itinerary, distances, darshan tips, best time, from Gorakhpur and Delhi.",
+      "status": "todo"
+    },
+    {
+      "id": "bandipur-nepal",
+      "category": "nepal",
+      "keyword": "bandipur nepal",
+      "angle": "The preserved Newar hill town between Kathmandu and Pokhara: old bazaar, Tundikhel viewpoint, Siddha cave, sunrise over the Himalaya, how to add a night on the road trip.",
+      "status": "todo"
+    },
+    {
+      "id": "sri-lanka-itinerary",
+      "category": "international",
+      "keyword": "sri lanka itinerary 6 days",
+      "angle": "ETA for Indians, Colombo-Kandy-Nuwara Eliya-Bentota route, Ramayana sites, budget.",
+      "status": "todo"
+    },
+    {
+      "id": "andaman-trip-guide",
+      "category": "india",
+      "keyword": "andaman trip plan",
+      "angle": "Port Blair-Havelock-Neil, ferries, permits, best time, scuba basics, budget.",
+      "status": "todo"
+    },
+    {
+      "id": "kathmandu-pokhara-itinerary",
+      "category": "nepal",
+      "keyword": "kathmandu pokhara itinerary",
+      "angle": "5, 6 and 7 day versions with day-by-day plans, road vs flight between the cities, what to skip.",
+      "status": "todo"
     },
     {
       "id": "thailand-visa-for-indians",
@@ -17,10 +126,94 @@
       "status": "todo"
     },
     {
+      "id": "ladakh-first-timers",
+      "category": "india",
+      "keyword": "ladakh trip for first timers",
+      "angle": "Acclimatisation, permits, best months, fly vs drive, Nubra and Pangong plan, what to pack.",
+      "status": "todo"
+    },
+    {
+      "id": "nepali-food-to-try",
+      "category": "nepal",
+      "keyword": "nepali food to try",
+      "angle": "Momo, dal bhat, Newari khaja set, thakali thali, sel roti, juju dhau in Bhaktapur; where to try them in Kathmandu and Pokhara; vegetarian options for Indian travellers.",
+      "status": "todo"
+    },
+    {
+      "id": "singapore-malaysia-trip-plan",
+      "category": "international",
+      "keyword": "singapore malaysia tour from india",
+      "angle": "7-8 day combined itinerary, visa rules for Indians for both, moving between them, budget.",
+      "status": "todo"
+    },
+    {
+      "id": "uttarakhand-offbeat-places",
+      "category": "india",
+      "keyword": "offbeat places in uttarakhand",
+      "angle": "Quiet hill stations and villages beyond Mussoorie and Nainital — Chopta, Munsiyari, Kanatal, Binsar, Lansdowne; what each offers, best season, how to reach from Delhi.",
+      "status": "todo"
+    },
+    {
+      "id": "lumbini-visit-guide",
+      "category": "nepal",
+      "keyword": "lumbini visit from india",
+      "angle": "Getting there from Gorakhpur via Sunauli, what to see, how long to spend, combining with Pokhara.",
+      "status": "todo"
+    },
+    {
+      "id": "bhutan-from-india",
+      "category": "international",
+      "keyword": "bhutan trip from india",
+      "angle": "Entry permit for Indians, Sustainable Development Fee, by road via Phuentsholing vs flying to Paro, itinerary.",
+      "status": "todo"
+    },
+    {
+      "id": "goa-north-vs-south",
+      "category": "india",
+      "keyword": "north goa vs south goa",
+      "angle": "Which side suits families, couples and groups; beaches, stays, nightlife, prices; best months.",
+      "status": "todo"
+    },
+    {
+      "id": "pashupatinath-muktinath-yatra",
+      "category": "nepal",
+      "keyword": "pashupatinath muktinath yatra",
+      "angle": "Pilgrimage plan: Pashupatinath darshan, getting to Muktinath by road or via Jomsom flight, altitude, best months, senior-citizen tips.",
+      "status": "todo"
+    },
+    {
+      "id": "maldives-on-budget",
+      "category": "international",
+      "keyword": "maldives trip from india on budget",
+      "angle": "Local-island guesthouses vs resorts, transfers, visa on arrival, real costs, best months.",
+      "status": "todo"
+    },
+    {
       "id": "char-dham-yatra-guide",
       "category": "india",
       "keyword": "char dham yatra guide",
       "angle": "Route order, registration, best months, by road vs helicopter, how many days, senior-citizen tips.",
+      "status": "todo"
+    },
+    {
+      "id": "best-time-to-visit-nepal",
+      "category": "nepal",
+      "keyword": "best time to visit nepal",
+      "angle": "Month-by-month for sightseeing, trekking, Chitwan and pilgrimage; monsoon realities; festivals like Dashain and Tihar.",
+      "status": "todo"
+    },
+    {
+      "id": "japan-visa-for-indians",
+      "category": "international",
+      "keyword": "japan visa for indians",
+      "angle": "E-visa process, documents, cherry blossom and autumn seasons, 7-day Tokyo-Kyoto-Osaka plan, budget.",
+      "status": "todo"
+    },
+    {
+      "id": "shimla-manali-trip",
+      "category": "india",
+      "keyword": "shimla manali trip plan",
+      "angle": "Itinerary from Delhi, by road vs Volvo, Rohtang/Atal Tunnel permits, snow months, family tips.",
       "status": "todo"
     },
     {
@@ -59,97 +252,6 @@
       "status": "todo"
     },
     {
-      "id": "kerala-itinerary-7-days",
-      "category": "india",
-      "keyword": "kerala itinerary 7 days",
-      "angle": "Kochi-Munnar-Thekkady-Alleppey day-by-day, houseboat tips, best season, how to reach from north India.",
-      "status": "todo"
-    },
-    {
-      "id": "pashupatinath-muktinath-yatra",
-      "category": "nepal",
-      "keyword": "pashupatinath muktinath yatra",
-      "angle": "Pilgrimage plan: Pashupatinath darshan, getting to Muktinath by road or via Jomsom flight, altitude, best months, senior-citizen tips.",
-      "status": "todo"
-    },
-    {
-      "id": "singapore-malaysia-trip-plan",
-      "category": "international",
-      "keyword": "singapore malaysia tour from india",
-      "angle": "7-8 day combined itinerary, visa rules for Indians for both, moving between them, budget.",
-      "status": "todo"
-    },
-    {
-      "id": "goa-north-vs-south",
-      "category": "india",
-      "keyword": "north goa vs south goa",
-      "angle": "Which side suits families, couples and groups; beaches, stays, nightlife, prices; best months.",
-      "status": "todo"
-    },
-    {
-      "id": "kathmandu-pokhara-itinerary",
-      "category": "nepal",
-      "keyword": "kathmandu pokhara itinerary",
-      "angle": "5, 6 and 7 day versions with day-by-day plans, road vs flight between the cities, what to skip.",
-      "status": "todo"
-    },
-    {
-      "id": "vietnam-trip-from-india",
-      "category": "international",
-      "keyword": "vietnam trip from india",
-      "angle": "E-visa for Indians, north vs south, 7-10 day route, budget, direct flights from India.",
-      "status": "todo"
-    },
-    {
-      "id": "shimla-manali-trip",
-      "category": "india",
-      "keyword": "shimla manali trip plan",
-      "angle": "Itinerary from Delhi, by road vs Volvo, Rohtang/Atal Tunnel permits, snow months, family tips.",
-      "status": "todo"
-    },
-    {
-      "id": "best-time-to-visit-nepal",
-      "category": "nepal",
-      "keyword": "best time to visit nepal",
-      "angle": "Month-by-month for sightseeing, trekking, Chitwan and pilgrimage; monsoon realities; festivals like Dashain and Tihar.",
-      "status": "todo"
-    },
-    {
-      "id": "maldives-on-budget",
-      "category": "international",
-      "keyword": "maldives trip from india on budget",
-      "angle": "Local-island guesthouses vs resorts, transfers, visa on arrival, real costs, best months.",
-      "status": "todo"
-    },
-    {
-      "id": "varanasi-ayodhya-prayagraj",
-      "category": "india",
-      "keyword": "varanasi ayodhya prayagraj tour",
-      "angle": "Spiritual circuit itinerary, distances, darshan tips, best time, from Gorakhpur and Delhi.",
-      "status": "todo"
-    },
-    {
-      "id": "chitwan-safari-guide",
-      "category": "nepal",
-      "keyword": "chitwan national park safari",
-      "angle": "Jeep vs canoe vs walking safari, where to stay, season, how to combine with Kathmandu and Pokhara.",
-      "status": "todo"
-    },
-    {
-      "id": "sri-lanka-itinerary",
-      "category": "international",
-      "keyword": "sri lanka itinerary 6 days",
-      "angle": "ETA for Indians, Colombo-Kandy-Nuwara Eliya-Bentota route, Ramayana sites, budget.",
-      "status": "todo"
-    },
-    {
-      "id": "andaman-trip-guide",
-      "category": "india",
-      "keyword": "andaman trip plan",
-      "angle": "Port Blair-Havelock-Neil, ferries, permits, best time, scuba basics, budget.",
-      "status": "todo"
-    },
-    {
       "id": "indian-currency-in-nepal",
       "category": "nepal",
       "keyword": "indian currency in nepal",
@@ -157,38 +259,10 @@
       "status": "todo"
     },
     {
-      "id": "bhutan-from-india",
+      "id": "europe-schengen-visa-indians",
       "category": "international",
-      "keyword": "bhutan trip from india",
-      "angle": "Entry permit for Indians, Sustainable Development Fee, by road via Phuentsholing vs flying to Paro, itinerary.",
-      "status": "todo"
-    },
-    {
-      "id": "ladakh-first-timers",
-      "category": "india",
-      "keyword": "ladakh trip for first timers",
-      "angle": "Acclimatisation, permits, best months, fly vs drive, Nubra and Pangong plan, what to pack.",
-      "status": "todo"
-    },
-    {
-      "id": "lumbini-visit-guide",
-      "category": "nepal",
-      "keyword": "lumbini visit from india",
-      "angle": "Getting there from Gorakhpur via Sunauli, what to see, how long to spend, combining with Pokhara.",
-      "status": "todo"
-    },
-    {
-      "id": "phuket-vs-krabi",
-      "category": "international",
-      "keyword": "phuket vs krabi",
-      "angle": "Which to choose or how to split nights, beaches, island tours, nightlife, families vs couples.",
-      "status": "todo"
-    },
-    {
-      "id": "rajasthan-itinerary",
-      "category": "india",
-      "keyword": "rajasthan itinerary 7 days",
-      "angle": "Jaipur-Jodhpur-Udaipur or Jaisalmer routes, desert camps, best months, train vs car.",
+      "keyword": "schengen visa for indians",
+      "angle": "Which country to apply to, documents, appointment timing, rejection reasons, first Europe itinerary.",
       "status": "todo"
     },
     {
@@ -196,34 +270,6 @@
       "category": "nepal",
       "keyword": "taking indian car to nepal",
       "angle": "Bhansar vehicle permit, documents, daily charges, which borders, driving tips and routes.",
-      "status": "todo"
-    },
-    {
-      "id": "japan-visa-for-indians",
-      "category": "international",
-      "keyword": "japan visa for indians",
-      "angle": "E-visa process, documents, cherry blossom and autumn seasons, 7-day Tokyo-Kyoto-Osaka plan, budget.",
-      "status": "todo"
-    },
-    {
-      "id": "meghalaya-trip",
-      "category": "india",
-      "keyword": "meghalaya trip plan",
-      "angle": "Shillong, Cherrapunji, Dawki, living root bridges; best months; 5-6 day route from Guwahati.",
-      "status": "todo"
-    },
-    {
-      "id": "pokhara-things-to-do",
-      "category": "nepal",
-      "keyword": "things to do in pokhara",
-      "angle": "Phewa lake, Sarangkot sunrise, paragliding, World Peace Pagoda, caves; costs and how many days.",
-      "status": "todo"
-    },
-    {
-      "id": "europe-schengen-visa-indians",
-      "category": "international",
-      "keyword": "schengen visa for indians",
-      "angle": "Which country to apply to, documents, appointment timing, rejection reasons, first Europe itinerary.",
       "status": "todo"
     }
   ]
