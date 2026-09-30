@@ -11,13 +11,13 @@
   "categories": ["travel", "lifestyle"],
   "icons": [
     {
-      "src": "https://res.cloudinary.com/dnty2fhxp/image/upload/w_192,h_192,c_scale/v1773128212/TripGuru_Logo_WITHOUT_BACKGROUND_WITHOUT_INDIA_kjgdbk.png",
+      "src": "/assets/TripGuru_Logo_WITHOUT_BACKGROUND_WITHOUT_INDIA_kjgdbk.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "https://res.cloudinary.com/dnty2fhxp/image/upload/w_512,h_512,c_scale/v1773128212/TripGuru_Logo_WITHOUT_BACKGROUND_WITHOUT_INDIA_kjgdbk.png",
+      "src": "/assets/TripGuru_Logo_WITHOUT_BACKGROUND_WITHOUT_INDIA_kjgdbk.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"

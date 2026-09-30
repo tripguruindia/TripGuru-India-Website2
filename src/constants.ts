@@ -14,7 +14,7 @@ export const DESTINATIONS: Destination[] = [
       'Exclusive snorkeling at the Heart Reef',
       'Private "Sounds of Silence" desert dinner'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774102563/Australia_mixitm.avif',
+    image: '/assets/Australia_mixitm.avif',
     accent: 'Azure',
     usp: 'The Ultimate Coastal Luxury',
     vibe: 'Sophisticated adventure meets pristine nature.',
@@ -46,7 +46,7 @@ export const DESTINATIONS: Destination[] = [
       'Exclusive boat cruise on Lake Hallstatt',
       'Private pastry masterclass at a historic café'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774106404/Austria_urxzd8.avif',
+    image: '/assets/Austria_urxzd8.avif',
     accent: 'Gold',
     usp: 'Imperial Elegance & Alpine Bliss',
     vibe: 'A timeless blend of high culture and mountain serenity.',
@@ -74,7 +74,7 @@ export const DESTINATIONS: Destination[] = [
       'Private visit to the mud volcanoes of Gobustan',
       'Traditional tea ceremony in a historic Karvansaray'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774087827/Azerbaijan_qzqqhe.avif',
+    image: '/assets/Azerbaijan_qzqqhe.avif',
     accent: 'Emerald',
     usp: 'The New Silk Road Luxury',
     vibe: 'Ultra-modern skylines rooted in ancient fire-worship traditions.',
@@ -100,7 +100,7 @@ export const DESTINATIONS: Destination[] = [
       'Traditional farmhouse dinner with a local family',
       'Private archery lesson—the national sport'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774087827/Bhutan_jg68b1.avif',
+    image: '/assets/Bhutan_jg68b1.avif',
     accent: 'Teal',
     usp: 'The Kingdom of Happiness',
     vibe: 'Spiritual awakening in the world’s only carbon-negative country.',
@@ -129,7 +129,7 @@ export const DESTINATIONS: Destination[] = [
       'Curated "Ruin Bar" crawl with a local expert',
       'Private tour of the historic Castle District'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774106404/Budapest_nujaci.avif',
+    image: '/assets/Budapest_nujaci.avif',
     accent: 'Ruby',
     usp: 'Grandeur on the Danube',
     vibe: 'Old-world charm meets a vibrant, modern nightlife scene.',
@@ -154,7 +154,7 @@ export const DESTINATIONS: Destination[] = [
       'Private speedboat to the secluded Koh Rong',
       'VIP tour of the Royal Palace in Phnom Penh'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774102563/Cambodia_oyyy5n.avif',
+    image: '/assets/Cambodia_oyyy5n.avif',
     accent: 'Gold',
     usp: 'Ancient Wonders, Modern Comfort',
     vibe: 'Mystical temple ruins paired with world-class luxury retreats.',
@@ -182,7 +182,7 @@ export const DESTINATIONS: Destination[] = [
       'Exclusive visit to the Giant Panda Research Base',
       'Private Huangpu River cruise in Shanghai'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774102564/China_ia0kj1.avif',
+    image: '/assets/China_ia0kj1.avif',
     accent: 'Ruby',
     usp: 'The Dragon Awakens',
     vibe: 'A breathtaking scale of history and hyper-modern innovation.',
@@ -214,7 +214,7 @@ export const DESTINATIONS: Destination[] = [
       'Private speedboat to the magical Blue Cave',
       'VIP tour of Diocletian\'s Palace in Split'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774106404/CROATIA_umh9zo.avif',
+    image: '/assets/CROATIA_umh9zo.avif',
     accent: 'Azure',
     usp: 'Adriatic’s Sun-Drenched Secret',
     vibe: 'Crystal waters, medieval walls, and a Mediterranean soul.',
@@ -244,7 +244,7 @@ export const DESTINATIONS: Destination[] = [
       'Exclusive day trip to Kronborg (Hamlet\'s Castle)',
       'Private evening at the historic Tivoli Gardens'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774106403/Denmark_lgpht9.avif',
+    image: '/assets/Denmark_lgpht9.avif',
     accent: 'Teal',
     usp: 'The Capital of Cool',
     vibe: 'Effortless design, Michelin dining, and "Hygge" comfort.',
@@ -269,7 +269,7 @@ export const DESTINATIONS: Destination[] = [
       'Exclusive yacht cruise around the Palm Jumeirah',
       'Personal shopping experience at the Dubai Mall'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774087826/Dubai_ffozrd.avif',
+    image: '/assets/Dubai_ffozrd.avif',
     accent: 'Gold',
     usp: 'The City of Gold',
     vibe: 'Where the impossible becomes reality every single day.',
@@ -295,7 +295,7 @@ export const DESTINATIONS: Destination[] = [
       'VIP tour of the Grand Egyptian Museum',
       'Private flight to the majestic Abu Simbel'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774102563/Egypt_vzelpw.avif',
+    image: '/assets/Egypt_vzelpw.avif',
     accent: 'Gold',
     usp: 'Timeless Wonders of the Nile',
     vibe: 'Ancient history on a scale that defies imagination.',
@@ -327,7 +327,7 @@ export const DESTINATIONS: Destination[] = [
       'Exclusive husky sledding through Arctic forests',
       'Private meeting with Santa in Rovaniemi'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774106403/FINLAND_ulzel5.avif',
+    image: '/assets/FINLAND_ulzel5.avif',
     accent: 'Azure',
     usp: 'The Arctic’s Magical Frontier',
     vibe: 'Pristine wilderness and the world’s happiest people.',
@@ -354,7 +354,7 @@ export const DESTINATIONS: Destination[] = [
       'Private yacht charter along the French Riviera',
       'Gourmet picnic in the Loire Valley châteaux'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774106404/France_xnbqu1.avif',
+    image: '/assets/France_xnbqu1.avif',
     accent: 'Ruby',
     usp: 'The Art of Living (Art de Vivre)',
     vibe: 'Romance, gastronomy, and unparalleled cultural depth.',
@@ -386,7 +386,7 @@ export const DESTINATIONS: Destination[] = [
       'Private Khinkali and Khachapuri making class',
       'Guided tour of the historic Tbilisi Old Town'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774087827/Georgia_l2btzs.avif',
+    image: '/assets/Georgia_l2btzs.avif',
     accent: 'Gold',
     usp: "Caucasus’ Hidden Gem",
     vibe: 'Ancient wine culture and legendary mountain hospitality.',
@@ -413,7 +413,7 @@ export const DESTINATIONS: Destination[] = [
       'Exclusive boat excursion to Delos and Rhenia',
       'Private villa stay with caldera views'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774102564/Greece_u1jtfa.avif',
+    image: '/assets/Greece_u1jtfa.avif',
     accent: 'Teal',
     usp: 'Cradle of Civilization',
     vibe: 'Whitewashed islands and the deep blue of the Aegean.',
@@ -443,7 +443,7 @@ export const DESTINATIONS: Destination[] = [
       'Private boat trip to the hidden Nusa Penida',
       'Luxury jungle villa stay in Ubud'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774087828/Indonesia_zuifnh.avif',
+    image: '/assets/Indonesia_zuifnh.avif',
     accent: 'Teal',
     usp: 'Tropical Zen & Island Magic',
     vibe: 'Lush jungles, spiritual depth, and world-class surfing.',
@@ -473,7 +473,7 @@ export const DESTINATIONS: Destination[] = [
       'Curated food tour of Tel Aviv\'s Carmel Market',
       'Private excursion to the Masada fortress'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774106405/ISRAEL_h8tgvs.avif',
+    image: '/assets/ISRAEL_h8tgvs.avif',
     accent: 'Azure',
     usp: 'The Holy Land & Modern Tech',
     vibe: 'Ancient spiritual sites meet a high-energy Mediterranean vibe.',
@@ -502,7 +502,7 @@ export const DESTINATIONS: Destination[] = [
       'Private wine tasting in the heart of Chianti',
       'VIP tour of the Colosseum and Roman Forum'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774106405/Italy_zdtfuj.avif',
+    image: '/assets/Italy_zdtfuj.avif',
     accent: 'Ruby',
     usp: 'La Dolce Vita',
     vibe: 'A feast for the senses: art, food, and timeless beauty.',
@@ -534,7 +534,7 @@ export const DESTINATIONS: Destination[] = [
       'VIP tour of Tokyo\'s neon-lit Golden Gai',
       'Bullet train journey in first-class luxury'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774087828/Japan_t7agfi.avif',
+    image: '/assets/Japan_t7agfi.avif',
     accent: 'Ruby',
     usp: 'Tradition Meets Tomorrow',
     vibe: 'Precision, politeness, and a deep respect for beauty.',
@@ -566,7 +566,7 @@ export const DESTINATIONS: Destination[] = [
       'Luxury "bubble" camp stay under the stars',
       'Private "Petra by Night" experience'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774106405/JORDAN_aq7jxr.avif',
+    image: '/assets/JORDAN_aq7jxr.avif',
     accent: 'Gold',
     usp: 'The Rose-Red City of Petra',
     vibe: 'Adventure in the desert and floating in the Dead Sea.',
@@ -594,7 +594,7 @@ export const DESTINATIONS: Destination[] = [
       'Private alpine trek in the Shymbulak mountains',
       'Traditional Kazakh feast with live folk music'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774087828/Kazakhstan_grbxuu.avif',
+    image: '/assets/Kazakhstan_grbxuu.avif',
     accent: 'Teal',
     usp: 'Central Asia’s Rising Star',
     vibe: 'Futuristic cities and vast, untouched natural beauty.',
@@ -621,7 +621,7 @@ export const DESTINATIONS: Destination[] = [
       'Private visit to a traditional Maasai Manyatta',
       'Luxury bush dinner under the African stars'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774087827/Kenya_do9wmw.avif',
+    image: '/assets/Kenya_do9wmw.avif',
     accent: 'Azure',
     usp: 'The Soul of Safari',
     vibe: 'The raw power of nature and the Great Migration.',
@@ -651,7 +651,7 @@ export const DESTINATIONS: Destination[] = [
       'Exclusive boat tour of the Kilim Karst Geoforest',
       'Private tea at the historic Majestic Hotel'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774087828/Malaysia_fxdign.avif',
+    image: '/assets/Malaysia_fxdign.avif',
     accent: 'Gold',
     usp: 'Truly Asia',
     vibe: 'A melting pot of cultures, food, and tropical beauty.',
@@ -678,7 +678,7 @@ export const DESTINATIONS: Destination[] = [
       'Private sandbank picnic for total seclusion',
       'Candlelit dinner on a private beach'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774087830/Maldives_kjjlrq.avif',
+    image: '/assets/Maldives_kjjlrq.avif',
     accent: 'Gold',
     usp: 'The Ultimate Island Escape',
     vibe: 'One island, one resort: the pinnacle of tropical luxury.',
@@ -704,7 +704,7 @@ export const DESTINATIONS: Destination[] = [
       'Luxury desert camp stay under the stars',
       'Private visit to the Majorelle Garden'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774106405/Morocco_cykoi6.avif',
+    image: '/assets/Morocco_cykoi6.avif',
     accent: 'Gold',
     usp: 'Gateway to the Sahara',
     vibe: 'A sensory explosion of colors, scents, and sounds.',
@@ -736,7 +736,7 @@ export const DESTINATIONS: Destination[] = [
       'Exclusive tour of Kathmandu\'s spiritual sites',
       'Private boat ride on the serene Phewa Lake'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774087828/Nepal_iox55t.avif',
+    image: '/assets/Nepal_iox55t.avif',
     accent: 'Ruby',
     usp: 'The Roof of the World',
     vibe: 'Spiritual peace and the world’s highest mountains.',
@@ -765,7 +765,7 @@ export const DESTINATIONS: Destination[] = [
       'Exclusive helicopter flight over tulip fields',
       'Private guided walk of the historic Jordaan'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774106407/Netherlands_pab4vb.avif',
+    image: '/assets/Netherlands_pab4vb.avif',
     accent: 'Teal',
     usp: 'Canals, Tulips & Masterpieces',
     vibe: 'Liberal, artistic, and beautifully organized.',
@@ -790,7 +790,7 @@ export const DESTINATIONS: Destination[] = [
       'Private glacier landing and guided walk',
       'Luxury winery tour on Waiheke Island'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774102563/New_Zealand_s8yawq.avif',
+    image: '/assets/New_Zealand_s8yawq.avif',
     accent: 'Emerald',
     usp: 'The Adventure Capital',
     vibe: 'Stunning landscapes that look like a movie set.',
@@ -822,7 +822,7 @@ export const DESTINATIONS: Destination[] = [
       'Private tour of the Munch Museum in Oslo',
       'Scenic journey on the iconic Flåm Railway'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774106406/Norway_lvsjfv.avif',
+    image: '/assets/Norway_lvsjfv.avif',
     accent: 'Azure',
     usp: 'The Land of the Fjords',
     vibe: 'Dramatic nature and the magic of the Northern Lights.',
@@ -852,7 +852,7 @@ export const DESTINATIONS: Destination[] = [
       'Luxury mountain resort stay in Jebel Akhdar',
       'Private sunset dhow cruise in Muscat'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774102563/Oman_rmn3y6.avif',
+    image: '/assets/Oman_rmn3y6.avif',
     accent: 'Gold',
     usp: 'Arabia’s Best Kept Secret',
     vibe: 'Authentic Arabian culture and stunning natural beauty.',
@@ -879,7 +879,7 @@ export const DESTINATIONS: Destination[] = [
       'Private visit to the Chocolate Hills and Tarsiers',
       'Luxury resort stay on a private island'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774087829/Philippines_gbdtuh.avif',
+    image: '/assets/Philippines_gbdtuh.avif',
     accent: 'Emerald',
     usp: '7,000 Islands of Paradise',
     vibe: 'Crystal lagoons and the world’s friendliest people.',
@@ -909,7 +909,7 @@ export const DESTINATIONS: Destination[] = [
       'Exclusive visit to the Strahov Library',
       'Private Vltava River jazz cruise'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774106407/Prague_hgceun.avif',
+    image: '/assets/Prague_hgceun.avif',
     accent: 'Gold',
     usp: 'The Fairytale City',
     vibe: 'Gothic spires and a rich, artistic history.',
@@ -934,7 +934,7 @@ export const DESTINATIONS: Destination[] = [
       'Private hydrofoil trip to Peterhof Palace',
       'Exclusive performance at the Bolshoi Theatre'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774102564/Russia_er1ha8.avif',
+    image: '/assets/Russia_er1ha8.avif',
     accent: 'Azure',
     usp: 'Grandeur of the Tsars',
     vibe: 'Imperial history and a scale that defies belief.',
@@ -965,7 +965,7 @@ export const DESTINATIONS: Destination[] = [
       'Private tour of Riyadh\'s historic Diriyah',
       'Luxury desert stargazing experience'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774106759/Saudi_Arabia_ohsp6x.avif',
+    image: '/assets/Saudi_Arabia_ohsp6x.avif',
     accent: 'Emerald',
     usp: 'The Kingdom’s New Dawn',
     vibe: 'Ancient heritage meets a bold, futuristic vision.',
@@ -994,7 +994,7 @@ export const DESTINATIONS: Destination[] = [
       'Private sandbank picnic for total seclusion',
       'Luxury beachfront villa stay'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774087829/Seychelles_rgbszs.avif',
+    image: '/assets/Seychelles_rgbszs.avif',
     accent: 'Azure',
     usp: 'The Garden of Eden',
     vibe: 'Pristine beaches and unique granite landscapes.',
@@ -1022,7 +1022,7 @@ export const DESTINATIONS: Destination[] = [
       'Exclusive food tour of Michelin-starred hawkers',
       'Private sunset cruise in the Marina Bay'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774087830/Singapore_rfbpjp.avif',
+    image: '/assets/Singapore_rfbpjp.avif',
     accent: 'Teal',
     usp: 'The Garden City',
     vibe: 'High-tech innovation meets lush, tropical greenery.',
@@ -1047,7 +1047,7 @@ export const DESTINATIONS: Destination[] = [
       'Private wine tasting in the Franschhoek valley',
       'Luxury coastal drive along Chapman\'s Peak'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774102566/South_Africa_h8ni5z.avif',
+    image: '/assets/South_Africa_h8ni5z.avif',
     accent: 'Gold',
     usp: 'A World in One Country',
     vibe: 'Safaris, vineyards, and stunning coastal drives.',
@@ -1079,7 +1079,7 @@ export const DESTINATIONS: Destination[] = [
       'Private guided trek on Jeju\'s Hallasan',
       'VIP tour of the DMZ and historic sites'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774102565/South_Korea_ktdk23.avif',
+    image: '/assets/South_Korea_ktdk23.avif',
     accent: 'Ruby',
     usp: 'The K-Wave Experience',
     vibe: 'Ancient palaces meet cutting-edge technology and pop culture.',
@@ -1108,7 +1108,7 @@ export const DESTINATIONS: Destination[] = [
       'Private Flamenco performance in a historic cave',
       'Luxury yacht charter along the Costa del Sol'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774106408/SPAIN_xnxh2b.avif',
+    image: '/assets/SPAIN_xnxh2b.avif',
     accent: 'Ruby',
     usp: 'Passion, Art & Sun',
     vibe: 'Vibrant festivals, stunning architecture, and sun-soaked beaches.',
@@ -1140,7 +1140,7 @@ export const DESTINATIONS: Destination[] = [
       'Private leopard-tracking safari in Yala',
       'VIP tour of the Temple of the Tooth Relic'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774087829/Sri_Lanka_n34fuk.avif',
+    image: '/assets/Sri_Lanka_n34fuk.avif',
     accent: 'Emerald',
     usp: 'The Pearl of the Indian Ocean',
     vibe: 'Tea estates, wildlife, and ancient Buddhist heritage.',
@@ -1169,7 +1169,7 @@ export const DESTINATIONS: Destination[] = [
       'Private chocolate masterclass in Zurich',
       'Luxury lakefront villa stay in Lucerne'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774106409/Switzerland_dqfs23.avif',
+    image: '/assets/Switzerland_dqfs23.avif',
     accent: 'Azure',
     usp: 'The Pinnacle of Alpine Luxury',
     vibe: 'Pristine lakes, mountain peaks, and world-class watches.',
@@ -1198,7 +1198,7 @@ export const DESTINATIONS: Destination[] = [
       'Exclusive tea ceremony in historic Jiufen',
       'Private lantern release in Shifen'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774102565/Taiwan_tgo2s0.avif',
+    image: '/assets/Taiwan_tgo2s0.avif',
     accent: 'Teal',
     usp: 'The Heart of Asia',
     vibe: 'Night markets, mountains, and a warm, island soul.',
@@ -1225,7 +1225,7 @@ export const DESTINATIONS: Destination[] = [
       'Private yacht charter in the Phi Phi Islands',
       'Gourmet street food tour with a local expert'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774087830/Thailand_sgqbqc.avif',
+    image: '/assets/Thailand_sgqbqc.avif',
     accent: 'Emerald',
     usp: 'The Land of Smiles',
     vibe: 'Tropical islands, ancient temples, and vibrant markets.',
@@ -1256,7 +1256,7 @@ export const DESTINATIONS: Destination[] = [
       'Private yacht cruise on the Bosphorus',
       'VIP tour of the ancient ruins of Ephesus'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774102565/Turkey_gqq61s.avif',
+    image: '/assets/Turkey_gqq61s.avif',
     accent: 'Gold',
     usp: 'Where Continents Collide',
     vibe: 'Rich history, stunning landscapes, and a vibrant culture.',
@@ -1288,7 +1288,7 @@ export const DESTINATIONS: Destination[] = [
       'VIP access to the Empire State Building',
       'Private wine tasting in the Napa Valley'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774102565/USA_l81oat.avif',
+    image: '/assets/USA_l81oat.avif',
     accent: 'Azure',
     usp: 'The Land of Opportunity',
     vibe: 'Iconic cities and breathtaking national parks.',
@@ -1322,7 +1322,7 @@ export const DESTINATIONS: Destination[] = [
       'Private tour of Bukhara\'s ancient Ark Fortress',
       'Traditional Uzbek feast with a local family'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774087829/Uzbekistan_btqnp8.avif',
+    image: '/assets/Uzbekistan_btqnp8.avif',
     accent: 'Ruby',
     usp: 'The Heart of the Silk Road',
     vibe: 'Blue-tiled mosques and a rich, ancient history.',
@@ -1350,7 +1350,7 @@ export const DESTINATIONS: Destination[] = [
       'Private tour of the Cu Chi Tunnels',
       'Gourmet street food tour in Hanoi'
     ],
-    image: 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1774087830/Vietnam_rdcuiz.avif',
+    image: '/assets/Vietnam_rdcuiz.avif',
     accent: 'Ruby',
     usp: 'Timeless Charm & Street Food',
     vibe: 'Staggering natural beauty and a rich, ancient heritage.',
@@ -1380,4 +1380,4 @@ export const CONTACT_INFO = {
   phone: '+91 7007106463'
 };
 
-export const LOGO_URL = 'https://res.cloudinary.com/dnty2fhxp/image/upload/v1773128212/TripGuru_Logo_WITHOUT_BACKGROUND_WITHOUT_INDIA_kjgdbk.png';
+export const LOGO_URL = '/assets/TripGuru_Logo_WITHOUT_BACKGROUND_WITHOUT_INDIA_kjgdbk.png';
