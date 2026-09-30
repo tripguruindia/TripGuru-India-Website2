@@ -11,105 +11,83 @@
 //   5. Publish   — only if the Checker passes it. Otherwise nothing is
 //                  published and the topic is marked rejected with the reason.
 //
+// It runs on Claude Code through the Agent SDK, signed in with Tanmay's own
+// Claude plan (CLAUDE_CODE_OAUTH_TOKEN, made with `claude setup-token`), so
+// articles cost nothing beyond the plan he already pays for. An
+// ANTHROPIC_API_KEY in the environment would take precedence and be billed per
+// token — the workflow deliberately passes only the OAuth token.
+//
 // Usage:
-//   ANTHROPIC_API_KEY=... node scripts/blog/agent.mjs
+//   CLAUDE_CODE_OAUTH_TOKEN=... node scripts/blog/agent.mjs
 //   node scripts/blog/agent.mjs --topic "Nepal trip in December"
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import Anthropic from '@anthropic-ai/sdk';
+import { query } from '@anthropic-ai/claude-agent-sdk';
 import {
   BASE_URL, guidelinesPath, internalLinkCatalog, loadPosts, loadSiteData, postsDir, serializePost, slugify, todayIST, topicsPath,
 } from './lib.mjs';
 import { ARTICLE_SCHEMA, TOPIC_LIST_SCHEMA, VERDICT_SCHEMA, pickTopic, toPost, validateArticle } from './pipeline.mjs';
 
-const MODEL = process.env.BLOG_MODEL || 'claude-opus-5';
-// Server-side fallback: if a safety classifier declines a request, the API
-// retries it on Anthropic's recommended model instead of failing the run.
-const BETAS = ['server-side-fallback-2026-07-01'];
-const PRICES = { 'claude-opus-5': [5, 25], 'claude-sonnet-5': [2, 10], 'claude-opus-5-5': [4, 20] };
+// Unset means the plan's own default model. BLOG_MODEL=opus / sonnet overrides.
+const MODEL = process.env.BLOG_MODEL || undefined;
 const MAX_CRITICAL_ROUNDS = 2;
 
 const args = process.argv.slice(2);
 const customTopic = (args.includes('--topic') ? args[args.indexOf('--topic') + 1] : process.env.BLOG_TOPIC || '').trim();
 
 const log = (...m) => console.log(`[${new Date().toISOString().slice(11, 19)}]`, ...m);
-const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, searches: 0, fetches: 0 };
+// On a Claude plan nothing is billed per token; this is the SDK's estimate of
+// what the same work would cost on the API, kept as a measure of plan usage.
+const usage = { estimateUSD: 0, turns: 0 };
 
 const monthYear = () => new Date(`${todayIST()}T00:00:00Z`).toLocaleDateString('en-IN', { month: 'long', year: 'numeric', timeZone: 'UTC' });
 
-const client = new Anthropic();
-
-function track(message) {
-  const u = message.usage || {};
-  usage.input += u.input_tokens || 0;
-  usage.output += u.output_tokens || 0;
-  usage.cacheRead += u.cache_read_input_tokens || 0;
-  usage.cacheWrite += u.cache_creation_input_tokens || 0;
-  usage.searches += u.server_tool_use?.web_search_requests || 0;
-  usage.fetches += u.server_tool_use?.web_fetch_requests || 0;
-}
-
-function costUSD() {
-  const [inp, out] = PRICES[MODEL] || PRICES['claude-opus-5'];
-  return (usage.input * inp + usage.cacheWrite * inp * 1.25 + usage.cacheRead * inp * 0.1 + usage.output * out) / 1e6 + usage.searches * 0.01;
-}
-
-function checkStop(message, step) {
-  if (message.stop_reason === 'refusal') throw new Error(`${step}: the model declined (${message.stop_details?.category || 'no category'}).`);
-  if (message.stop_reason === 'max_tokens') throw new Error(`${step}: ran out of output tokens.`);
-}
-
-const textOf = (message) => message.content.filter((b) => b.type === 'text').map((b) => b.text).join('');
-
-/** One call with web search + fetch, resuming if the server-side loop pauses. */
-async function researchCall({ system, prompt, step, searches = 10, fetches = 8 }) {
-  const messages = [{ role: 'user', content: prompt }];
-  const tools = [
-    { type: 'web_search_20260209', name: 'web_search', max_uses: searches, user_location: { type: 'approximate', country: 'IN', timezone: 'Asia/Kolkata' } },
-    { type: 'web_fetch_20260209', name: 'web_fetch', max_uses: fetches },
-  ];
-  let text = '';
-  for (let turn = 0; turn < 6; turn++) {
-    const message = await client.beta.messages
-      .stream({
-        model: MODEL,
-        max_tokens: 32000,
-        betas: BETAS,
-        fallbacks: 'default',
-        thinking: { type: 'adaptive' },
-        output_config: { effort: 'high' },
-        system,
+/**
+ * One Claude Code session. With `web`, it may search and read the web; with
+ * `schema`, it must answer with JSON matching it. It gets no file, shell or
+ * edit tools and runs in an empty temp directory, so all it can do is read
+ * the web and answer.
+ */
+async function claude({ system, prompt, step, web = false, schema }) {
+  const tools = web ? ['WebSearch', 'WebFetch'] : [];
+  const workdir = fs.mkdtempSync(path.join(os.tmpdir(), 'blog-agent-'));
+  try {
+    for await (const message of query({
+      prompt,
+      options: {
+        systemPrompt: system,
         tools,
-        messages,
-      })
-      .finalMessage();
-    track(message);
-    checkStop(message, step);
-    text += textOf(message);
-    if (message.stop_reason !== 'pause_turn') return text;
-    messages.push({ role: 'assistant', content: message.content });
+        allowedTools: tools,
+        permissionMode: 'dontAsk',
+        settingSources: [],
+        cwd: workdir,
+        maxTurns: web ? 60 : 6,
+        ...(MODEL ? { model: MODEL } : {}),
+        ...(schema ? { outputFormat: { type: 'json_schema', schema } } : {}),
+      },
+    })) {
+      if (message.type !== 'result') continue;
+      usage.estimateUSD = Math.max(0, usage.estimateUSD) + (message.total_cost_usd || 0);
+      usage.turns += message.num_turns || 0;
+      if (message.subtype !== 'success' || message.is_error) {
+        throw new Error(`${step}: Claude stopped (${message.subtype}${message.result ? `: ${String(message.result).slice(0, 300)}` : ''}).`);
+      }
+      if (!schema) return message.result;
+      return message.structured_output ?? JSON.parse(message.result);
+    }
+    throw new Error(`${step}: Claude ended without a result.`);
+  } finally {
+    fs.rmSync(workdir, { recursive: true, force: true });
   }
-  throw new Error(`${step}: did not finish after 6 continuations.`);
 }
 
-/** One call that must return JSON matching `schema`. No tools. */
-async function jsonCall({ system, prompt, schema, step }) {
-  const message = await client.beta.messages
-    .stream({
-      model: MODEL,
-      max_tokens: 32000,
-      betas: BETAS,
-      fallbacks: 'default',
-      thinking: { type: 'adaptive' },
-      output_config: { effort: 'high', format: { type: 'json_schema', schema } },
-      system,
-      messages: [{ role: 'user', content: prompt }],
-    })
-    .finalMessage();
-  track(message);
-  checkStop(message, step);
-  return JSON.parse(textOf(message));
+const researchCall = ({ system, prompt, step }) => claude({ system, prompt, step, web: true });
+const jsonCall = ({ system, prompt, schema, step }) => claude({ system, prompt, step, schema });
+
+function costNote() {
+  return `Charged to the Claude plan, not billed (API-equivalent estimate $${usage.estimateUSD.toFixed(2)}, ${usage.turns} turns${MODEL ? `, model ${MODEL}` : ''}).`;
 }
 
 function readJSON(file) {
@@ -158,8 +136,6 @@ async function proposeTopics({ topicsFile, posts }) {
   const covered = [...topicsFile.topics.map((t) => `${t.category}: ${t.keyword}`), ...posts.map((p) => `${p.category}: ${p.title}`)];
   const notes = await researchCall({
     step: 'topic research',
-    searches: 6,
-    fetches: 2,
     system: `You plan content for TripGuru, a Gorakhpur (India) travel agency. Today's date is ${todayIST()}.`,
     prompt: `Find 12 blog topics that Indian travellers are actively searching for right now, 4 in each category: nepal (Nepal travel from India), international (holidays abroad from India), india (domestic trips). Favour questions with clear search demand and upcoming seasons (the next 2-4 months). Do not repeat or closely overlap anything already covered:\n${covered.join('\n')}`,
   });
@@ -212,10 +188,8 @@ async function check(article, { system }) {
   log('Checker: verifying every claim independently…');
   const report = await researchCall({
     step: 'fact check',
-    searches: 12,
-    fetches: 10,
     system: `${system}\n\nYou are TripGuru's fact-checker. You did not write this article and you do not trust it. It will be published with no other human review, so you are the last line of defence against a wrong visa rule, a wrong fee, a made-up price or a broken promise reaching customers.`,
-    prompt: `Fact-check this draft.\n\n<draft>\n${articleForReview(article)}\n</draft>\n\nDo this:\n1. List every claim that could be wrong: rules, documents, visas, permits, fees, prices, distances, travel times, opening seasons, names, dates, transport options.\n2. Verify each one yourself with web_search and web_fetch. Prefer official sources (governments, embassies, tourism boards, airports, railways, park authorities). Do not accept a claim just because the draft cites a source — open the source and confirm it says that.\n3. Check the draft against every hard rule in the editorial rules (invented TripGuru prices/offers/reviews/statistics, undated prices, unsafe advice, etc.).\n4. Report each problem with: severity (CRITICAL if wrong, unsupported and risky, outdated, or it breaks a hard rule; MINOR for wording/clarity), the exact quote, what is wrong, and the corrected wording with the source URL.\nSay plainly at the end whether the article is safe to publish.`,
+    prompt: `Fact-check this draft.\n\n<draft>\n${articleForReview(article)}\n</draft>\n\nDo this:\n1. List every claim that could be wrong: rules, documents, visas, permits, fees, prices, distances, travel times, opening seasons, names, dates, transport options.\n2. Verify each one yourself with WebSearch and WebFetch. Prefer official sources (governments, embassies, tourism boards, airports, railways, park authorities). Do not accept a claim just because the draft cites a source — open the source and confirm it says that.\n3. Check the draft against every hard rule in the editorial rules (invented TripGuru prices/offers/reviews/statistics, undated prices, unsafe advice, etc.).\n4. Report each problem with: severity (CRITICAL if wrong, unsupported and risky, outdated, or it breaks a hard rule; MINOR for wording/clarity), the exact quote, what is wrong, and the corrected wording with the source URL.\nSay plainly at the end whether the article is safe to publish.`,
   });
   return jsonCall({
     step: 'verdict',
@@ -287,7 +261,7 @@ async function main() {
   research = await researchCall({
     step: 'research',
     system: `${system}\n\nYou are the research desk for TripGuru's blog.`,
-    prompt: `Research this topic for a TripGuru article.\nKeyword: ${topic.keyword}\nAngle: ${topic.angle}\n${topic.category ? `Category: ${topic.category}` : ''}\n\nUse web_search and web_fetch. Official sources for rules, documents, visas, permits and fees; recent reputable sources for prices and practical detail. Write research notes with:\n1. Verified facts, each with its source URL.\n2. Current price ranges in INR (convert and say so), with source and date.\n3. Rules and requirements for Indian travellers, from official sources.\n4. The questions people most often ask about this (from search results, "People also ask", forums).\n5. Anything recently changed, conflicting between sources, or uncertain — say so explicitly.\nEnd with a numbered SOURCES list (title — URL) of pages you actually read.`,
+    prompt: `Research this topic for a TripGuru article.\nKeyword: ${topic.keyword}\nAngle: ${topic.angle}\n${topic.category ? `Category: ${topic.category}` : ''}\n\nUse WebSearch and WebFetch. Official sources for rules, documents, visas, permits and fees; recent reputable sources for prices and practical detail. Write research notes with:\n1. Verified facts, each with its source URL.\n2. Current price ranges in INR (convert and say so), with source and date.\n3. Rules and requirements for Indian travellers, from official sources.\n4. The questions people most often ask about this (from search results, "People also ask", forums).\n5. Anything recently changed, conflicting between sources, or uncertain — say so explicitly.\nEnd with a numbered SOURCES list (title — URL) of pages you actually read.`,
   });
 
   log('Writer: drafting…');
@@ -355,7 +329,7 @@ async function main() {
   const url = `${BASE_URL}/blog/${article.slug}`;
   summaryLine(`✅ Published: **${article.title}** — ${url}`);
   summaryLine(`Checker: ${checkerNote}`);
-  summaryLine(`Cost: about $${costUSD().toFixed(2)} (${usage.searches} searches, ${usage.fetches} page reads, ${usage.input + usage.cacheRead + usage.cacheWrite} input / ${usage.output} output tokens, model ${MODEL}).`);
+  summaryLine(costNote());
   setOutput({ published: 'true', slug: article.slug, url, title: article.title });
 }
 
@@ -367,13 +341,13 @@ function reject(topic, topicsFile, reason) {
     saveTopics(topicsFile);
   }
   summaryLine(`⛔ Not published — ${topic.keyword}. ${reason}`);
-  summaryLine(`Cost: about $${costUSD().toFixed(2)}.`);
+  summaryLine(costNote());
   setOutput({ published: 'false', rejected: 'true' });
 }
 
 main().catch((error) => {
   console.error(error);
   summaryLine(`❌ Blog agent failed: ${error.message}`);
-  if (usage.input) summaryLine(`Cost so far: about $${costUSD().toFixed(2)}.`);
+  if (usage.turns) summaryLine(costNote());
   process.exit(1);
 });

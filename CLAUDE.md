@@ -473,9 +473,16 @@ The pipeline, and why each step exists:
    `rejected` with the reason. A rejection is a normal, successful run. Only a
    technical failure (API key, credits) fails the workflow and emails GitHub.
 
-Model `claude-opus-5` (override with the `BLOG_MODEL` env var), adaptive
-thinking, server-side `fallbacks: "default"`. Each run prints its cost to the
-Actions run summary. After publishing, the workflow waits for Vercel and pings
+**It runs on Tanmay's own Claude plan, not a paid API key** — he asked for
+it to be free. The agent drives Claude Code through the Agent SDK
+(`@anthropic-ai/claude-agent-sdk`), signed in with the repository secret
+`CLAUDE_CODE_OAUTH_TOKEN` (made with `claude setup-token`). Articles count
+against his plan's usage limits and are not billed. Never add an
+`ANTHROPIC_API_KEY` to that step: it outranks the OAuth token and would start
+billing per token. The token lasts about a year; when runs start failing on
+auth, generate a new one and replace the secret. Each session gets only
+`WebSearch` and `WebFetch`, in an empty temp directory — no file, shell or
+edit tools. Model is the plan's default unless `BLOG_MODEL` is set. After publishing, the workflow waits for Vercel and pings
 IndexNow (Bing, which ChatGPT search uses); the key file is
 `public/b81c9cdc6d64c416ab35d3106e584f25.txt` and must stay.
 
