@@ -6,8 +6,12 @@
       "category": "nepal",
       "keyword": "gorakhpur to nepal by road",
       "angle": "Gorakhpur to Kathmandu and Pokhara via the Sunauli border: route, distance, drive time, border formalities, ID documents, car vs bus, costs.",
-      "status": "rejected",
-      "reason": "Still had critical problems after 2 rounds of corrections: The specific closure dates (25–27 September, implying a two-day closure) contradict the cited source reporting, which shows the Narayangadh–Muglin landslide occurred and was cleared on the same day (27 September, ~7:55am–12:15pm). No source confirms a closure beginning 25 September on this section. This is a concrete, checkable factual date error presented as fact."
+      "status": "todo",
+      "attempts": 1,
+      "lastFailure": {
+        "date": "2026-10-01",
+        "reason": "Still had critical problems after 2 rounds of corrections: The specific closure dates (25–27 September, implying a two-day closure) contradict the cited source reporting, which shows the Narayangadh–Muglin landslide occurred and was cleared on the same day (27 September, ~7:55am–12:15pm). No source confirms a closure beginning 25 September on this section. This is a concrete, checkable factual date error presented as fact."
+      }
     },
     {
       "id": "thailand-visa-for-indians",

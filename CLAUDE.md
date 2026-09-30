@@ -469,9 +469,17 @@ The pipeline, and why each step exists:
    itself, then returns publish / revise / reject. Critical issues go back to
    the Writer and are re-checked (max 2 rounds); minor ones are applied
    without a re-check.
-5. A draft that still fails is **not published**; its topic is marked
-   `rejected` with the reason. A rejection is a normal, successful run. Only a
-   technical failure (API key, credits) fails the workflow and emails GitHub.
+5. A draft that still fails is **not published**. Its topic goes to the back
+   of the queue with the reason in `lastFailure`, and is only marked
+   `rejected` after a second failure (`recordFailure`). The first live run
+   lost *Gorakhpur to Nepal by road* permanently to one wrong landslide date
+   before this. A rejection is a normal, successful run. Only a technical
+   failure (auth, usage limit) fails the workflow and emails GitHub.
+
+That first rejection is also why the guidelines forbid dated news (closures,
+landslides, strikes), and why a revision must **delete** a critical claim it
+cannot prove rather than reword it — the Writer had twice replaced one
+unverified date with another.
 
 **It runs on Tanmay's own Claude plan, not a paid API key** — he asked for
 it to be free. The agent drives Claude Code through the Agent SDK

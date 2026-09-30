@@ -64,6 +64,11 @@ documents for Nepal), and often go by train or road.
 - Only link to TripGuru pages that are in the provided list. External links
   only to the sources actually used.
 - No criticism of competitors or other agencies by name.
-- Do not write about political events, protests or disasters as current news.
-  If research shows a destination has a live travel advisory, say so plainly
-  and link the official advisory.
+- **Write evergreen guides, not news.** Never give the dates of a temporary
+  event — a landslide, a road or border closure, a strike, a flood, a
+  festival-week traffic jam. They are out of date within days and easy to get
+  wrong. Say instead that such things happen (e.g. "the Mugling–Narayangadh
+  road is prone to landslides in the monsoon") and tell the reader to check
+  current conditions before setting out.
+- Do not write about political events or protests. If research shows a
+  destination has a live official travel advisory, say so plainly and link it.

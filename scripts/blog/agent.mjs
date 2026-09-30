@@ -28,7 +28,7 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 import {
   BASE_URL, guidelinesPath, internalLinkCatalog, loadPosts, loadSiteData, postsDir, serializePost, slugify, todayIST, topicsPath,
 } from './lib.mjs';
-import { ARTICLE_SCHEMA, TOPIC_LIST_SCHEMA, VERDICT_SCHEMA, pickTopic, toPost, validateArticle } from './pipeline.mjs';
+import { ARTICLE_SCHEMA, TOPIC_LIST_SCHEMA, VERDICT_SCHEMA, pickTopic, recordFailure, toPost, validateArticle } from './pipeline.mjs';
 
 // Unset means the plan's own default model. BLOG_MODEL=opus / sonnet overrides.
 const MODEL = process.env.BLOG_MODEL || undefined;
@@ -205,7 +205,9 @@ async function revise(article, issues, { system, research, step }) {
     step,
     schema: ARTICLE_SCHEMA,
     system,
-    prompt: `Revise this article to fix every issue below. Apply each fix exactly. Where a claim cannot be verified, remove it or point the reader to the official source instead. Keep everything else as it is.\n\n<issues>\n${issues.map((i, n) => `${n + 1}. [${i.severity}] ${i.problem}\n   Text: ${i.quote}\n   Fix: ${i.fix}`).join('\n')}\n</issues>\n\n<article_json>\n${JSON.stringify(article)}\n</article_json>\n\n<research_notes>\n${research}\n</research_notes>`,
+    // The first live run was rejected because the Writer twice "corrected" a
+    // wrong date to another unverified date. Deleting beats rewording.
+    prompt: `Revise this article to fix every issue below. Keep everything else as it is.\n\nFor each CRITICAL issue: use the corrected wording only if the research notes or the Checker's fix prove it beyond doubt. Otherwise DELETE the claim — and anything that depends on it — rather than rewording it. If readers need that information, send them to the official source instead. A shorter correct article is always better than a longer one with a doubtful fact.\n\nMINOR issues: apply the fix.\n\n<issues>\n${issues.map((i, n) => `${n + 1}. [${i.severity}] ${i.problem}\n   Text: ${i.quote}\n   Fix: ${i.fix}`).join('\n')}\n</issues>\n\n<article_json>\n${JSON.stringify(article)}\n</article_json>\n\n<research_notes>\n${research}\n</research_notes>`,
   });
 }
 
@@ -334,13 +336,10 @@ async function main() {
 }
 
 function reject(topic, topicsFile, reason) {
-  const entry = topicsFile.topics.find((t) => t.id === topic.id);
-  if (entry) {
-    entry.status = 'rejected';
-    entry.reason = reason.slice(0, 500);
-    saveTopics(topicsFile);
-  }
-  summaryLine(`⛔ Not published — ${topic.keyword}. ${reason}`);
+  const entry = recordFailure(topicsFile, topic.id, reason, { date: todayIST() });
+  if (entry) saveTopics(topicsFile);
+  const next = !entry ? '' : entry.status === 'todo' ? ' It will be tried again later.' : ' Given up after repeated failures.';
+  summaryLine(`⛔ Not published — ${topic.keyword}. ${reason}${next}`);
   summaryLine(costNote());
   setOutput({ published: 'false', rejected: 'true' });
 }
