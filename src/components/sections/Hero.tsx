@@ -6,25 +6,25 @@ import { getOptimizedCloudinaryUrl } from '../../utils';
 
 const HERO_SLIDES = [
   {
-    image: "https://res.cloudinary.com/dnty2fhxp/image/upload/v1774087828/Nepal_iox55t.avif",
+    image: "/assets/Nepal_iox55t.avif",
     destination: "Nepal",
     tagline: "Himalayan Retreats",
     position: "50% center",
   },
   {
-    image: "https://res.cloudinary.com/dnty2fhxp/image/upload/v1774087827/Bhutan_jg68b1.avif",
+    image: "/assets/Bhutan_jg68b1.avif",
     destination: "Bhutan",
     tagline: "The Thunder Dragon",
     position: "50% center",
   },
   {
-    image: "https://res.cloudinary.com/dnty2fhxp/image/upload/v1774087829/Philippines_gbdtuh.avif",
+    image: "/assets/Philippines_gbdtuh.avif",
     destination: "Philippines",
     tagline: "Tropical Archipelagos",
     position: "50% center",
   },
   {
-    image: "https://res.cloudinary.com/dnty2fhxp/image/upload/v1774102564/China_ia0kj1.avif",
+    image: "/assets/China_ia0kj1.avif",
     destination: "China",
     tagline: "Imperial Dynasties",
     position: "50% center",
