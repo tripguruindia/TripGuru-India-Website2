@@ -511,6 +511,11 @@ in GitHub -> Actions.
 
 - **Frontend:** Vercel project `trip-guru-india-website2`, auto-deploys from
   `main`. Needs `VITE_INTRAVWEB_API_BASE` and `VITE_NEPAL_API_BASE`.
+  `package.json` `engines.node` must be a version Vercel still supports
+  (`24.x` since Oct 2026). Vercel retired 20.x and **failed the build** on it,
+  leaving the previous deploy live — which pointed at Cloudinary images that
+  had just been deleted, so the site lost every photo. A failed deploy shows
+  only as a red status on the commit; check it after merging.
 - **Backend:** Render, auto-deploys from `main`. Build runs `npm run migrate`.
 - **Database:** Turso. Credentials live only in Render env vars — never in the
   repo.
