@@ -163,7 +163,7 @@ h1,h2,h3{font-family:"Cormorant Garamond",serif;font-weight:600;line-height:1.15
 
 function layout({ title, description, canonical, image, imageAlt, ogType = 'website', head = '', body, current, publishedTime, modifiedTime, siteData }) {
   const { LOGO_URL } = siteData;
-  const ogImage = image || `https://res.cloudinary.com/dnty2fhxp/image/upload/w_1200,h_630,c_pad,b_auto/v1773128212/TripGuru_Logo_WITHOUT_BACKGROUND_WITHOUT_INDIA_kjgdbk.png`;
+  const ogImage = image || `https://tripguruindia.com/assets/TripGuru_Logo_WITHOUT_BACKGROUND_WITHOUT_INDIA_kjgdbk.png`;
   const icon = (size) => LOGO_URL.replace('/upload/', `/upload/w_${size},h_${size},c_scale/`);
   return `<!doctype html>
 <html lang="en-IN">
