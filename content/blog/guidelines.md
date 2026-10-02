@@ -78,6 +78,9 @@ not adjectives. Specific beats superlative.
 - **Visa, passport, ID, permit and border rules** only from official or
   clearly current sources, dated. Indians need no visa for Nepal — but say
   which ID documents are accepted, and that children's rules differ.
+- **State the rule as it is now, not its history.** Do not give the date a
+  rule, system, fee or form was introduced or changed ("launched in September
+  2025") — the reader needs what to do, and such dates are easy to get wrong.
 - Nothing that could hurt someone if wrong: no medical advice beyond "consult
   a doctor", no promises about safety, weather or availability.
 - Only link to TripGuru pages that are in the provided list. External links

@@ -467,7 +467,8 @@ The pipeline, and why each step exists:
    opening* (404 / dead domain fails; 403 is let through as bot-blocking).
 4. **Checker** — a separate call that re-verifies every claim on the web
    itself, then returns publish / revise / reject. Critical issues go back to
-   the Writer and are re-checked (max 2 rounds); minor ones are applied
+   the Writer and are re-checked (max 4 rounds — 2 was too few: the Bali run on 3 Oct went
+   2 → 3 → 1 critical issues and was thrown away with one wrong date left); minor ones are applied
    without a re-check.
 5. A draft that still fails is **not published**. Its topic goes to the back
    of the queue with the reason in `lastFailure`, and is only marked
