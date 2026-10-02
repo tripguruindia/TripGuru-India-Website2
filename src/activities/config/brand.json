@@ -1,0 +1,33 @@
+{
+  "_readme": "THE ONLY PLACE THE BRAND LIVES. Change name/tagline/colours here and every page, page title, e-ticket, voucher, invoice and email follows. Never type the brand name anywhere else. Legal items stay in legalName's name.",
+  "name": "SairGo",
+  "logoAccentFrom": 4,
+  "tagline": "Things to do abroad, priced in rupees.",
+  "subTagline": "The price you see is the price you pay — GST included, no forex or card markup.",
+  "legalName": "TripGuru India",
+  "legalType": "Proprietorship",
+  "footerLine": "{name} is a brand of {legalName}",
+  "supportEmail": "",
+  "supportPhone": "+91 70071 06463",
+  "whatsappNumber": "917007106463",
+  "supportLanguages": "English and Hindi",
+  "gstin": "",
+  "registeredAddress": "",
+  "grievanceOfficer": { "name": "", "email": "" },
+  "colors": {
+    "primary": "#13234B",
+    "primaryDark": "#0B1630",
+    "accent": "#E8902C",
+    "accentInk": "#6A4A12",
+    "accentSoft": "#FBEBD3",
+    "success": "#1E6B3A",
+    "successSoft": "#EAF6EE",
+    "danger": "#A12A2A",
+    "dangerSoft": "#FDEEEE",
+    "ink": "#141B2D",
+    "muted": "#5A6378",
+    "line": "#E1E5EE",
+    "surface": "#F4F6FA",
+    "page": "#FFFFFF"
+  }
+}

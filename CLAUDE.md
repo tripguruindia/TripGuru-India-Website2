@@ -163,6 +163,58 @@ blocks as the pattern.
 measuring computed styles in the browser rather than guessing — two "still
 broken" reports from Tanmay turned out to be stale cached CSS.
 
+## The activities section (`/activities`) — a separate shop
+
+A third product, alongside the marketing site and the Nepal portal: tours,
+attraction tickets, airport transfers and eSIMs abroad, sold to Indian
+travellers (trains and insurance later). Working brand **SairGo, which is
+temporary**.
+
+- **The brand lives only in `src/activities/config/brand.json`.** Name,
+  tagline, colours, support details, the "is a brand of TripGuru India" line.
+  Never type the brand name anywhere else — not in a page, a template, a
+  table, a folder or a URL. Legal items (invoices, GST, terms) are always in
+  `legalName` (TripGuru India). Changing the name is one edit there.
+- **Categories live in `src/activities/config/categories.json`**, read by both
+  the site and the server. `live: false` shows "Coming soon" and the server
+  refuses to publish a product in it — that is how trains and insurance stay
+  off until the partner and the legal route exist (insurance needs an IRDAI
+  route; foreign eSIMs need a DoT-NOC holder as supplier).
+- **No hard-coded domain or path.** Everything goes through `BASE_PATH`/`url()`
+  in `src/activities/config/site.ts` (`VITE_ACTIVITIES_BASE_PATH`,
+  `VITE_ACTIVITIES_API_BASE`), so moving to its own domain is env vars.
+- **It imports nothing from the Nepal portal or the marketing site**, and they
+  import nothing from it except the one lazy route in `src/App.tsx`. Its CSS
+  is scoped under `.act-root` inside `@layer components`, so Tailwind utilities
+  still win and nothing leaks either way.
+- **Server: `server/activities/`**, mounted at `/api/activities` by one block
+  in `server/src/index.js`. Same process and (for now) same Turso database as
+  Nepal, but its own `act_*` tables, migrations (run at boot, not in the Render
+  build), login and signing key (`JWT_SECRET + ':activities'` unless
+  `ACTIVITIES_JWT_SECRET` is set — a Nepal token never opens it). A setup
+  failure answers 503 on its routes only and must never take Nepal down.
+  `ACTIVITIES_DATABASE_URL`/`_TOKEN` move it to its own database.
+- **The first admin comes from `ACTIVITIES_ADMIN_EMAIL` /
+  `ACTIVITIES_ADMIN_PASSWORD`**, created once, only while no admin exists.
+- **Supplier adapters** (`server/activities/suppliers/`): every product has a
+  `supplier`; booking/cancel/availability go through its adapter. Only
+  `manual` works (team books by hand). GlobalTix, Headout, Viator, rail and
+  insurance are registered stubs that refuse until built.
+- **Prices are final and GST-inclusive, whole rupees.** GST is on the
+  **agent model** (Tanmay's CA call): only TripGuru's fee is taxed — the
+  booking tables already store cost, fee and GST separately. TCS does not
+  apply (Tanmay). Cancellation rules are **per product** (tiers of hours ->
+  refund %).
+- Seeded on first boot: eight destinations (published) and four **sample
+  products as drafts**, flagged `sample` — Admin warns that every price and
+  fact is an example; publishing a sample strips the flag and the `sample-`
+  slug prefix.
+- `LAUNCHED = false` in `site.ts` puts noindex on every page until launch.
+- Phase 1 (catalogue, Admin, "Book on WhatsApp") is built. Next: cart,
+  checkout with Easebuzz (account being set up), GST invoice, e-ticket
+  email; then the agent portal and WhatsApp API. Tested by
+  `server/test/activities.test.js`.
+
 ## Backend (`server/`)
 
 Node + Express, hand-written SQL via `@libsql/client`, **no ORM**.

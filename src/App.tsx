@@ -31,6 +31,10 @@ import { Destination } from './types';
 // downloaded and parsed the entire admin/agent/traveller portal even though
 // only a small fraction ever open /nepal.
 const NepalApp = lazy(() => import('./portals/nepal/App'));
+// The activities section is its own app with its own chunk, layout and
+// styles; this site only hands it the URLs under its base path.
+const ActivitiesApp = lazy(() => import('./activities/ActivitiesApp'));
+import { BASE_PATH as ACTIVITIES_BASE } from './activities/config/site';
 
 const ScrollToSection = () => {
   const { pathname } = useLocation();
@@ -192,6 +196,17 @@ function AppContent() {
   const isNepalRoute = normalizedPath === '/nepal';
   const isPrivacyPolicyRoute = normalizedPath === '/privacy-policy';
   const isThankYouRoute = normalizedPath === '/thank-you';
+
+  const isActivitiesRoute = !!ACTIVITIES_BASE &&
+    (normalizedPath === ACTIVITIES_BASE || normalizedPath.startsWith(ACTIVITIES_BASE + '/'));
+
+  if (isActivitiesRoute) {
+    return (
+      <Suspense fallback={<div className="min-h-screen bg-white" />}>
+        <ActivitiesApp />
+      </Suspense>
+    );
+  }
 
   if (isNepalRoute) {
     return (
