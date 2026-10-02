@@ -2,13 +2,6 @@
   "_readme": "The Writer takes the first topic below whose status is 'todo', rotating categories. Add a topic by copying a line: id (short, unique), category (nepal | international | india), keyword (what people type into Google), angle (what the article should cover). The agent sets status to 'published' or 'rejected' itself. When every topic is used, it researches and adds new ones on its own.",
   "topics": [
     {
-      "id": "pokhara-things-to-do",
-      "category": "nepal",
-      "keyword": "things to do in pokhara",
-      "angle": "Phewa lake, Sarangkot sunrise, paragliding, World Peace Pagoda, caves; costs and how many days.",
-      "status": "todo"
-    },
-    {
       "id": "bali-things-to-do",
       "category": "international",
       "keyword": "things to do in bali",
@@ -271,6 +264,18 @@
       "keyword": "taking indian car to nepal",
       "angle": "Bhansar vehicle permit, documents, daily charges, which borders, driving tips and routes.",
       "status": "todo"
+    },
+    {
+      "id": "pokhara-things-to-do",
+      "category": "nepal",
+      "keyword": "things to do in pokhara",
+      "angle": "Phewa lake, Sarangkot sunrise, paragliding, World Peace Pagoda, caves; costs and how many days.",
+      "status": "todo",
+      "attempts": 1,
+      "lastFailure": {
+        "date": "2026-10-02",
+        "reason": "Still had critical problems after 2 rounds of corrections: The article's own cited source (Holidify) states Mahendra Cave hours are 10am–4pm and closed on Tuesdays, which is corroborated by other sources. The draft's '9am–6pm' figure omits a weekly closure day entirely, risking travellers arriving to a shut gate. | Research suggests India's MEA may have issued (and possibly not formally withdrawn) a travel advisory urging Indians to defer travel to Nepal amid unrest. The editorial rules require "
+      }
     }
   ]
 }
