@@ -89,5 +89,15 @@ not adjectives. Specific beats superlative.
   wrong. Say instead that such things happen (e.g. "the Mugling–Narayangadh
   road is prone to landslides in the monsoon") and tell the reader to check
   current conditions before setting out.
-- Do not write about political events or protests. If research shows a
-  destination has a live official travel advisory, say so plainly and link it.
+- Do not write about political events or protests, and **never state whether
+  a travel advisory is or is not in force** — advisories change and their
+  status is hard to confirm. Instead, every article about Nepal or a trip
+  abroad carries this line near the end of its practical advice: "Before you
+  travel, check the latest advisory from India's Ministry of External Affairs
+  ([mea.gov.in](https://www.mea.gov.in)) and the Indian Embassy in the
+  country." That is always true, and it is enough: the Checker must not
+  block an article over an advisory it cannot confirm.
+- **Opening hours, weekly closing days and ticket prices of attractions**
+  change often. Give exact figures only from the attraction's own or an
+  official tourism website, dated. Otherwise write "open in the daytime —
+  check timings locally, as some sites close one day a week".

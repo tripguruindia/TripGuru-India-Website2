@@ -481,6 +481,17 @@ landslides, strikes), and why a revision must **delete** a critical claim it
 cannot prove rather than reword it — the Writer had twice replaced one
 unverified date with another.
 
+The second rejection (*Things to do in Pokhara*, 2 Oct) added two more rules.
+Exact opening hours and ticket prices of attractions come only from an official
+source; otherwise "check timings locally". And **articles never state whether
+a travel advisory is in force** — they carry a fixed pointer to mea.gov.in and
+the Indian Embassy instead, which `validateArticle` requires for every non-India
+article. The Checker had blocked the piece over a 2025 MEA "avoid Nepal"
+advisory whose current status it could not confirm; without the pointer rule
+every Nepal article would have stalled the same way. The Checker's prompt now
+separates "stated as fact and wrong" (critical) from "could not confirm, and
+the article does not claim it" (not critical).
+
 **It runs on Tanmay's own Claude plan, not a paid API key** — he asked for
 it to be free. The agent drives Claude Code through the Agent SDK
 (`@anthropic-ai/claude-agent-sdk`), signed in with the repository secret
