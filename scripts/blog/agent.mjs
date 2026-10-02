@@ -32,7 +32,11 @@ import { ARTICLE_SCHEMA, TOPIC_LIST_SCHEMA, VERDICT_SCHEMA, pickTopic, recordFai
 
 // Unset means the plan's own default model. BLOG_MODEL=opus / sonnet overrides.
 const MODEL = process.env.BLOG_MODEL || undefined;
-const MAX_CRITICAL_ROUNDS = 2;
+// Each Checker pass reads the whole article afresh and tends to find a little
+// less: the Bali run (3 Oct) went 2 -> 3 -> 1 critical issues and was rejected
+// with one wrong date left. Four rounds lets a converging draft finish; one
+// that is still wrong after four is not going to be fixed by a fifth.
+const MAX_CRITICAL_ROUNDS = 4;
 
 const args = process.argv.slice(2);
 const customTopic = (args.includes('--topic') ? args[args.indexOf('--topic') + 1] : process.env.BLOG_TOPIC || '').trim();
