@@ -31,7 +31,7 @@ const goodArticle = () => ({
   tags: ['Nepal', 'Sunauli', 'Road trip'],
   summary: 'Drive north from Gorakhpur to the Sunauli border, then on to Pokhara or Kathmandu.',
   keyFacts: [{ label: 'Border', value: 'Sunauli' }, { label: 'ID', value: 'Passport or Voter ID' }, { label: 'Best time', value: 'October–April' }],
-  body: `Intro paragraph. See our [Nepal trip planner](/nepal) and [Nepal holidays](/destinations/nepal).\n\n${section('How far is the border?')}${section('Which documents do you need?')}${section('How long does the drive take?')}${section('What does it cost?')}${section('When should you go?')}`,
+  body: `Intro paragraph. See our [Nepal trip planner](/nepal) and [Nepal holidays](/destinations/nepal).\n\n${section('How far is the border?')}${section('Which documents do you need?')}${section('How long does the drive take?')}${section('What does it cost?')}${section('When should you go?')}Before you travel, check the latest advisory from India's Ministry of External Affairs ([mea.gov.in](https://www.mea.gov.in)) and the Indian Embassy in the country.`,
   faqs: [1, 2, 3, 4, 5].map((n) => ({ q: `Question ${n}?`, a: `Answer ${n}.` })),
   sources: [{ title: 'Nepal Tourism Board', url: 'https://ntb.gov.np/' }, { title: 'Embassy of India, Kathmandu', url: 'https://www.indembkathmandu.gov.in/' }],
   imageId: 'dest-nepal',
@@ -96,6 +96,13 @@ console.log('\nThe checks that stop a bad article going live');
   a.summary = 'Nepal is a breathtaking hidden gem.';
   const all = validateArticle(a, context);
   ok(all.some((p) => p.severity === 'minor' && p.quote === 'breathtaking') && critical(a).length === 0, 'stock phrases are flagged as minor, not blocking');
+}
+{
+  const a = goodArticle();
+  a.body = a.body.replace(/Before you travel[^\n]*$/, '');
+  ok(critical(a).some((p) => p.problem.includes('travel advisory')), 'a Nepal article without the official-advisory pointer is caught');
+  a.category = 'india';
+  ok(!critical(a).some((p) => p.problem.includes('travel advisory')), 'a trip within India does not need it');
 }
 
 console.log('\nChoosing the next topic');

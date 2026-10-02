@@ -172,6 +172,13 @@ export function validateArticle(article, { allowedPaths, existingSlugs, imageIds
   if (article.cta?.path && !allowed.has(article.cta.path)) add(`CTA links to "${article.cta.path}", which is not in the page list.`, 'Use a path from the list, or "".');
   if (article.imageId !== 'none' && !imageIds.includes(article.imageId)) add(`Unknown imageId "${article.imageId}".`, 'Use an id from the image list, or "none".');
 
+  // Abroad, the article points readers to the official advisory instead of
+  // stating its status. Without this line the Checker blocked a Pokhara
+  // article over an advisory it could not confirm either way.
+  if (article.category !== 'india' && !/mea\.gov\.in/i.test(`${article.body} ${(article.faqs || []).map((f) => f.a).join(' ')}`)) {
+    add('No pointer to the official travel advisory.', 'Near the end of the practical advice, add: "Before you travel, check the latest advisory from India\'s Ministry of External Affairs ([mea.gov.in](https://www.mea.gov.in)) and the Indian Embassy in the country." Do not say whether any advisory is in force.');
+  }
+
   const text = `${article.title} ${article.summary} ${article.body}`.toLowerCase();
   for (const word of HYPE) {
     if (text.includes(word)) problems.push({ severity: 'minor', quote: word, problem: `Uses the stock phrase "${word}".`, fix: 'Rewrite in plain, specific language.' });
