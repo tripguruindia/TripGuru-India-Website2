@@ -296,6 +296,15 @@ async function main() {
     const verdict = await check(article, { system: brief({ guidelines, links, images, posts }) });
     const critical = verdict.issues.filter((i) => i.severity === 'critical');
     log(`Checker verdict: ${verdict.verdict} — ${critical.length} critical, ${verdict.issues.length - critical.length} minor.`);
+    // Each critical issue, so a draft that stalls (Kerala, 3 Oct: 2 -> 2 -> 2)
+    // shows whether the Writer is failing to fix the same thing or the
+    // Checker is finding new things each pass.
+    for (const issue of critical) {
+      log(`  ✗ "${issue.quote.slice(0, 120)}" — ${issue.problem.slice(0, 240)} → fix: ${issue.fix.slice(0, 160)}`);
+    }
+    if (critical.length && process.env.GITHUB_STEP_SUMMARY) {
+      fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `**Check ${criticalRounds + 1}** — ${critical.length} critical:\n${critical.map((i) => `- ${i.problem}`).join('\n')}\n\n`);
+    }
 
     if (verdict.verdict === 'reject') {
       return reject(topic, topicsFile, `Checker rejected the topic: ${verdict.summary}`);
