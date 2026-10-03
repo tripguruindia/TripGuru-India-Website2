@@ -46,6 +46,13 @@ app.use('/api/nepal/bookings', bookingsRoutes);
 app.use('/api/nepal/quotes', quotesRoutes);
 app.use('/api/nepal/wallet', walletRoutes);
 
+// The activities section (server/activities) shares this process and, for
+// now, this database -- nothing more. It imports no Nepal code and keeps its
+// own act_* tables, so it can move to its own service unchanged.
+const activities = require('../activities');
+app.use('/api/activities', activities.router);
+activities.init().catch(() => { /* logged inside; retried on the next request */ });
+
 // Centralized error handler -- catches thrown/rejected errors from routes
 // above (e.g. Prisma errors) so a bug never leaks a stack trace to the client.
 app.use((err, req, res, next) => {
