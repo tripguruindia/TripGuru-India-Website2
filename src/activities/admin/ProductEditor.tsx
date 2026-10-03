@@ -13,7 +13,7 @@ const DEFAULT_AVAILABILITY: Availability = { weekdays: [], closed: [], from: '',
 const newOption = (perUnit = false): ProductOption => ({
   id: '', name: '', description: '', pricingUnit: perUnit ? 'per_unit' : 'per_person',
   prices: { adult: null, child: null, senior: null, unit: null },
-  net: { adult: null, child: null, senior: null, unit: null },
+  cost: { adult: null, child: null, senior: null, unit: null },
   minPax: 1, maxPax: 20, availability: { ...DEFAULT_AVAILABILITY }, active: true, sortOrder: 0,
 });
 
@@ -85,7 +85,7 @@ const OptionEditor: React.FC<{
   const a = o.availability;
   const setA = (patch: Partial<Availability>) => onChange({ ...o, availability: { ...a, ...patch } });
   const setP = (k: keyof ProductOption['prices'], v: number | null) => onChange({ ...o, prices: { ...o.prices, [k]: v } });
-  const setN = (k: keyof ProductOption['prices'], v: number | null) => onChange({ ...o, net: { ...(o.net || newOption().net!), [k]: v } });
+  const setC = (k: keyof ProductOption['prices'], v: number | null) => onChange({ ...o, cost: { ...(o.cost || newOption().cost!), [k]: v } });
   const id = (k: string) => `o${i}-${k}`;
   const unitWord = category === 'transfer' ? 'vehicle' : category === 'esim' ? 'eSIM' : 'unit';
 
@@ -137,12 +137,12 @@ const OptionEditor: React.FC<{
       </div>
 
       <details>
-        <summary className="text-sm font-semibold cursor-pointer">Agent net rates (for the agent portal, later)</summary>
+        <summary className="text-sm font-semibold cursor-pointer">Your cost from the operator (private — for profit reports)</summary>
         <div className="grid gap-3 grid-cols-3 mt-3">
           {o.pricingUnit === 'per_unit'
-            ? <Field id={id('nunit')} label={`Per ${unitWord}`}><Money id={id('nunit')} value={o.net?.unit} onChange={(v) => setN('unit', v)} placeholder="—" /></Field>
+            ? <Field id={id('nunit')} label={`Per ${unitWord}`}><Money id={id('nunit')} value={o.cost?.unit} onChange={(v) => setC('unit', v)} placeholder="—" /></Field>
             : (['adult', 'child', 'senior'] as const).map((t) => (
-              <Field key={t} id={id('n' + t)} label={t[0].toUpperCase() + t.slice(1)}><Money id={id('n' + t)} value={o.net?.[t]} onChange={(v) => setN(t, v)} placeholder="—" /></Field>
+              <Field key={t} id={id('n' + t)} label={t[0].toUpperCase() + t.slice(1)}><Money id={id('n' + t)} value={o.cost?.[t]} onChange={(v) => setC(t, v)} placeholder="—" /></Field>
             ))}
         </div>
       </details>

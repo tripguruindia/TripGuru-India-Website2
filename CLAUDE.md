@@ -210,9 +210,18 @@ temporary**.
   fact is an example; publishing a sample strips the flag and the `sample-`
   slug prefix.
 - `LAUNCHED = false` in `site.ts` puts noindex on every page until launch.
+- **Two sections only: traveller and Admin. There is no travel-agent section**
+  (Tanmay, 3 Oct, reversing the first brief) — no agencies, wallet, net rates
+  or markup. An option's `cost_*` is what TripGuru pays the operator: private,
+  Admin-only, for margin reports and the agent-model GST split. Traveller
+  sign-up/checkout will make the **mobile number compulsory**.
+- Launch focus: Thailand, Dubai, Vietnam, Singapore, then Japan.
+- Supplier APIs (GlobalTix/Headout, which also bring their own photos) plug in
+  once keys arrive, after checkout exists — until then photos are the
+  operator's or licensed stock.
 - Phase 1 (catalogue, Admin, "Book on WhatsApp") is built. Next: cart,
   checkout with Easebuzz (account being set up), GST invoice, e-ticket
-  email; then the agent portal and WhatsApp API. Tested by
+  email; then WhatsApp API and supplier APIs. Tested by
   `server/test/activities.test.js`.
 
 ## Backend (`server/`)

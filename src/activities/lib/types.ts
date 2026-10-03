@@ -21,7 +21,7 @@ export interface ProductOption {
   description: string;
   pricingUnit: 'per_person' | 'per_unit';
   prices: Prices;
-  net?: Prices;
+  cost?: Prices;
   minPax: number;
   maxPax: number;
   availability: Availability;

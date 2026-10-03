@@ -10,7 +10,7 @@ const PRICING_UNITS = ['per_person', 'per_unit'];
 // Destination slugs sit at the top of the section's URL space, beside its
 // own pages, so these can never be a destination.
 const RESERVED_SLUGS = new Set([
-  'admin', 'search', 'cart', 'checkout', 'account', 'login', 'signup', 'agent', 'agents',
+  'admin', 'search', 'cart', 'checkout', 'account', 'login', 'signup',
   'help', 'about', 'terms', 'privacy', 'refund-policy', 'cancellation-policy', 'contact',
   'api', 'booking', 'bookings', 'my-bookings', 'invoice', 'ticket', 'voucher',
   ...categories.map((c) => c.slug), ...CATEGORY_IDS,
@@ -97,7 +97,7 @@ function cleanAvailability(a) {
   };
 }
 
-function optionFromRow(r, { withNet = false } = {}) {
+function optionFromRow(r, { withCost = false } = {}) {
   const o = {
     id: r.id,
     name: r.name,
@@ -115,7 +115,7 @@ function optionFromRow(r, { withNet = false } = {}) {
     active: !!r.active,
     sortOrder: r.sort_order,
   };
-  if (withNet) o.net = { adult: r.net_adult, child: r.net_child, senior: r.net_senior, unit: r.net_unit };
+  if (withCost) o.cost = { adult: r.cost_adult, child: r.cost_child, senior: r.cost_senior, unit: r.cost_unit };
   return o;
 }
 
@@ -132,8 +132,8 @@ function fromPrice(options) {
   return { amount: min, per: opt.pricingUnit === 'per_unit' ? 'unit' : 'adult' };
 }
 
-function productFromRow(r, options = [], destination = null, { withNet = false } = {}) {
-  const opts = options.map((o) => optionFromRow(o, { withNet }));
+function productFromRow(r, options = [], destination = null, { withCost = false } = {}) {
+  const opts = options.map((o) => optionFromRow(o, { withCost }));
   return {
     id: r.id,
     slug: r.slug,
@@ -161,7 +161,7 @@ function productFromRow(r, options = [], destination = null, { withNet = false }
     supplierRef: r.supplier_ref,
     status: r.status,
     sortOrder: r.sort_order,
-    options: opts.filter((o) => withNet || o.active),
+    options: opts.filter((o) => withCost || o.active),
     fromPrice: fromPrice(opts),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -297,7 +297,7 @@ function cleanOption(body, index) {
   if (!name) errors.push(`Option ${index + 1} needs a name`);
   const pricingUnit = PRICING_UNITS.includes(body.pricingUnit) ? body.pricingUnit : 'per_person';
   const p = body.prices || {};
-  const n = body.net || {};
+  const n = body.cost || {};
   return {
     errors,
     value: {
@@ -309,10 +309,10 @@ function cleanOption(body, index) {
       price_child: price(p.child),
       price_senior: price(p.senior),
       price_unit: price(p.unit),
-      net_adult: price(n.adult) ?? 0,
-      net_child: price(n.child) ?? 0,
-      net_senior: price(n.senior) ?? 0,
-      net_unit: price(n.unit) ?? 0,
+      cost_adult: price(n.adult) ?? 0,
+      cost_child: price(n.child) ?? 0,
+      cost_senior: price(n.senior) ?? 0,
+      cost_unit: price(n.unit) ?? 0,
       min_pax: int(body.minPax, 1, 1, 100),
       max_pax: int(body.maxPax, 20, 1, 500),
       availability: JSON.stringify(cleanAvailability(body.availability || {})),

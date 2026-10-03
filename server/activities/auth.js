@@ -28,7 +28,7 @@ function readToken(req) {
 async function loadUser(req) {
   const payload = readToken(req);
   if (!payload) return null;
-  return one('SELECT id, email, name, phone, role, agency_id, agency_role, approval_status FROM act_users WHERE id = ?', [payload.id]);
+  return one('SELECT id, email, name, phone, role, approval_status FROM act_users WHERE id = ?', [payload.id]);
 }
 
 function requireRole(...roles) {

@@ -87,7 +87,7 @@ const product = (destinationId, extra = {}) => ({
   summary: 'A day on the water.',
   features: ['hotel_pickup', 'veg'],
   cancellationPolicy: { tiers: [{ hours: 24, refund: 100 }] },
-  options: [{ name: 'Join-in', prices: { adult: 3200, child: 2400, senior: null }, availability: { weekdays: [1, 3, 5] } }],
+  options: [{ name: 'Join-in', prices: { adult: 3200, child: 2400, senior: null }, cost: { adult: 2700 }, availability: { weekdays: [1, 3, 5] } }],
   ...extra,
 });
 
@@ -126,6 +126,7 @@ const product = (destinationId, extra = {}) => ({
     r = await api('GET', '/public/products/sample-desert-safari-bbq-dinner?preview=1', null, admin);
     ok(r.status === 200 && r.data.options.length === 2, 'the sample opens for the admin with both options');
     ok(r.data.supplierRef === undefined, 'the supplier reference is not sent to the page');
+    ok(r.data.options.every((o) => o.cost === undefined), 'nor is what TripGuru pays the operator');
 
     console.log('\nCreating a product');
     const dests = (await api('GET', '/admin/destinations', null, admin)).data;
@@ -139,6 +140,9 @@ const product = (destinationId, extra = {}) => ({
     const created = r.data;
     ok(created.slug === 'phi-phi-islands-day-trip-by-speedboat', 'its web address is made from the title', created.slug);
     ok(created.options[0].prices.senior === null, 'a blank senior price stays "not sold", not zero');
+    ok(created.options[0].cost.adult === 2700, 'Admin keeps the operator cost');
+    r = await api('GET', '/public/products/phi-phi-islands-day-trip-by-speedboat');
+    ok(r.status === 200 && r.data.options[0].cost === undefined, 'the live page never carries it');
 
     r = await api('GET', '/public/destinations/thailand');
     ok(r.data.products.length === 1, 'it appears on the Thailand page');

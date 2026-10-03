@@ -13,7 +13,7 @@
   "supportLanguages": "English and Hindi",
   "gstin": "",
   "registeredAddress": "",
-  "grievanceOfficer": { "name": "", "email": "" },
+  "grievanceOfficer": { "name": "Tanmay Agrawal", "email": "" },
   "colors": {
     "primary": "#13234B",
     "primaryDark": "#0B1630",

@@ -76,7 +76,7 @@ async function loadFull(id) {
   if (!r) return null;
   const d = await one('SELECT * FROM act_destinations WHERE id = ?', [r.destination_id]);
   const opts = await all('SELECT * FROM act_options WHERE product_id = ? ORDER BY sort_order', [id]);
-  return C.productFromRow(r, opts, d, { withNet: true });
+  return C.productFromRow(r, opts, d, { withCost: true });
 }
 
 router.get('/products', async (req, res) => {
@@ -84,7 +84,7 @@ router.get('/products', async (req, res) => {
   const opts = await all('SELECT * FROM act_options ORDER BY sort_order');
   const dests = new Map((await all('SELECT * FROM act_destinations')).map((d) => [d.id, d]));
   res.json(rows.map((r) => {
-    const p = C.productFromRow(r, opts.filter((o) => o.product_id === r.id), dests.get(r.destination_id), { withNet: true });
+    const p = C.productFromRow(r, opts.filter((o) => o.product_id === r.id), dests.get(r.destination_id), { withCost: true });
     return {
       id: p.id, slug: p.slug, title: p.title, category: p.category, status: p.status,
       destination: p.destination, fromPrice: p.fromPrice, optionCount: p.options.length,

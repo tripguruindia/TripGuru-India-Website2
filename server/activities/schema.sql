@@ -68,8 +68,9 @@ CREATE TABLE IF NOT EXISTS act_products (
 CREATE INDEX IF NOT EXISTS act_products_destination ON act_products(destination_id, status);
 
 -- The choices on a product page ("Standard camp" / "Premium camp", "5 GB /
--- 7 days"). Selling prices are what a traveller pays, GST included. Net rates
--- are what an agent pays (Phase 3); 0 means "no agent rate set".
+-- 7 days"). Selling prices are what a traveller pays, GST included. Cost is
+-- what TripGuru pays the operator -- private, never sent to a page, used for
+-- margin and the agent-model GST split; 0 means "not entered".
 -- A price of NULL means that traveller type is not sold on this option.
 CREATE TABLE IF NOT EXISTS act_options (
   id                TEXT PRIMARY KEY,
@@ -81,10 +82,10 @@ CREATE TABLE IF NOT EXISTS act_options (
   price_child       INTEGER,
   price_senior      INTEGER,
   price_unit        INTEGER,
-  net_adult         INTEGER NOT NULL DEFAULT 0,
-  net_child         INTEGER NOT NULL DEFAULT 0,
-  net_senior        INTEGER NOT NULL DEFAULT 0,
-  net_unit          INTEGER NOT NULL DEFAULT 0,
+  cost_adult        INTEGER NOT NULL DEFAULT 0,
+  cost_child        INTEGER NOT NULL DEFAULT 0,
+  cost_senior       INTEGER NOT NULL DEFAULT 0,
+  cost_unit         INTEGER NOT NULL DEFAULT 0,
   min_pax           INTEGER NOT NULL DEFAULT 1,
   max_pax           INTEGER NOT NULL DEFAULT 20,
   availability      TEXT NOT NULL DEFAULT '{}',
@@ -95,9 +96,9 @@ CREATE TABLE IF NOT EXISTS act_options (
 );
 CREATE INDEX IF NOT EXISTS act_options_product ON act_options(product_id);
 
--- Accounts for all three sections. role: admin | staff | traveller | agent.
--- Agents belong to an agency (Phase 3); several logins per agency are the
--- "team logins". Kept apart from the Nepal portal's users on purpose.
+-- Accounts: role admin | staff | traveller. There is no travel-agent section
+-- (Tanmay's decision) -- traveller sign-up needs a mobile number. Kept apart
+-- from the Nepal portal's users on purpose.
 CREATE TABLE IF NOT EXISTS act_users (
   id              TEXT PRIMARY KEY,
   email           TEXT NOT NULL UNIQUE,
@@ -105,38 +106,9 @@ CREATE TABLE IF NOT EXISTS act_users (
   name            TEXT NOT NULL DEFAULT '',
   phone           TEXT NOT NULL DEFAULT '',
   role            TEXT NOT NULL,
-  agency_id       TEXT,
-  agency_role     TEXT NOT NULL DEFAULT '',
   approval_status TEXT NOT NULL DEFAULT 'approved',
   created_at      TEXT NOT NULL
 );
-
-CREATE TABLE IF NOT EXISTS act_agencies (
-  id              TEXT PRIMARY KEY,
-  name            TEXT NOT NULL,
-  gst_number      TEXT NOT NULL DEFAULT '',
-  logo            TEXT NOT NULL DEFAULT '',
-  phone           TEXT NOT NULL DEFAULT '',
-  address         TEXT NOT NULL DEFAULT '',
-  default_markup  REAL NOT NULL DEFAULT 0,
-  approval_status TEXT NOT NULL DEFAULT 'pending',
-  approval_note   TEXT NOT NULL DEFAULT '',
-  created_at      TEXT NOT NULL
-);
-
--- Every rupee in or out of an agency wallet, never edited, only appended.
--- The balance is the sum of this table, so it can always be explained.
-CREATE TABLE IF NOT EXISTS act_wallet_ledger (
-  id          TEXT PRIMARY KEY,
-  agency_id   TEXT NOT NULL,
-  amount      INTEGER NOT NULL,
-  kind        TEXT NOT NULL,
-  reference   TEXT NOT NULL DEFAULT '',
-  note        TEXT NOT NULL DEFAULT '',
-  created_by  TEXT NOT NULL DEFAULT '',
-  created_at  TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS act_wallet_agency ON act_wallet_ledger(agency_id, created_at);
 
 -- A booking is one checkout; it holds one or more items, each of any
 -- category. Payment, invoice and refund rows hang off the booking.
@@ -146,8 +118,7 @@ CREATE TABLE IF NOT EXISTS act_bookings (
   id              TEXT PRIMARY KEY,
   reference       TEXT NOT NULL UNIQUE,
   user_id         TEXT,
-  agency_id       TEXT,
-  channel         TEXT NOT NULL DEFAULT 'b2c',
+  channel         TEXT NOT NULL DEFAULT 'web',
   status          TEXT NOT NULL DEFAULT 'pending_payment',
   contact         TEXT NOT NULL DEFAULT '{}',
   customer_gstin  TEXT NOT NULL DEFAULT '',
@@ -155,7 +126,6 @@ CREATE TABLE IF NOT EXISTS act_bookings (
   cost_amount     INTEGER NOT NULL DEFAULT 0,
   service_fee     INTEGER NOT NULL DEFAULT 0,
   gst_amount      INTEGER NOT NULL DEFAULT 0,
-  agent_markup    INTEGER NOT NULL DEFAULT 0,
   payment_status  TEXT NOT NULL DEFAULT 'unpaid',
   created_at      TEXT NOT NULL,
   updated_at      TEXT NOT NULL
