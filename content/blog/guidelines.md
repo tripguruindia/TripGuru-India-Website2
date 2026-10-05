@@ -72,9 +72,18 @@ not adjectives. Specific beats superlative.
   anything else say "message us for a quote".
 - **Never invent reviews, customer stories, testimonials, awards, years in
   business, number of customers or statistics.**
-- Market prices (hotel rates, fares, entry fees, permit fees) only from the
+- Market prices (hotel rates, entry fees, permit fees) only from the
   research, written as approximate ranges with the month and year ("about
   ₹2,500–4,000 a night as of September 2026").
+- **No schedule-level transport detail.** Never give flight fares, which
+  airlines fly a route, whether a route has direct flights, train names or
+  numbers, the days a train runs, or exact journey times. They change week to
+  week, and the Kerala article (5 Oct) was rejected four times over exactly
+  these. Write what stays true for a year — "Kochi is well connected by air
+  from Delhi and Lucknow, mostly via one stop from eastern UP; the train takes
+  about two days" — and send the reader to IRCTC or the airline for the
+  current schedule and fares. Road distances and rough drive times between
+  places are fine.
 - **Visa, passport, ID, permit and border rules** only from official or
   clearly current sources, dated. Indians need no visa for Nepal — but say
   which ID documents are accepted, and that children's rules differ.
