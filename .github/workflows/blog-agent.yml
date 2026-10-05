@@ -72,8 +72,23 @@ jobs:
           else
             git commit -m "Blog agent: update topic list"
           fi
+          # The build rewrites tracked files (public/sitemap.xml). They are
+          # build output, not part of the commit, and a dirty tree makes
+          # `git pull --rebase` refuse — which lost the first article that
+          # passed the Checker (Kathmandu, 5 Oct). Drop them before pulling.
+          git reset --hard HEAD
           git pull --rebase origin main
           git push origin HEAD:main
+
+      # If publishing fails anyway, the article must not vanish with the
+      # runner: keep it downloadable from the run page for 30 days.
+      - name: Keep a copy of the article
+        if: always() && steps.agent.outputs.published == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: article-${{ steps.agent.outputs.slug }}
+          path: content/blog/posts/${{ steps.agent.outputs.slug }}.md
+          retention-days: 30
 
       # Vercel deploys main on its own. Wait until the article is live, then
       # tell Bing (which ChatGPT search uses) and other IndexNow engines about
