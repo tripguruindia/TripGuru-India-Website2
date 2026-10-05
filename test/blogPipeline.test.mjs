@@ -11,7 +11,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { pickTopic, recordFailure, validateArticle, toPost } from '../scripts/blog/pipeline.mjs';
+import { changedSentences, pickTopic, recordFailure, validateArticle, toPost } from '../scripts/blog/pipeline.mjs';
 import { renderBlog } from '../scripts/blog/render.mjs';
 
 let passed = 0;
@@ -131,6 +131,16 @@ console.log('\nA failed topic is retried once, not lost');
   const second = recordFailure(file, 'road', 'wrong again', { date: '2026-10-03' });
   ok(second.status === 'rejected' && second.lastFailure.reason === 'wrong again', 'after a second failure it is given up, with the reason kept');
   ok(recordFailure(file, 'no-such-topic', 'x') === null, 'a custom topic (not in the list) is simply ignored');
+}
+
+console.log('\nA re-check reads only what the Writer changed');
+{
+  const before = 'Kochi airport is 30 km from the city. The train takes 44 hours.\n\n## Munnar\nTea gardens cover the hills.';
+  const after = 'Kochi airport is 30 km from the city. The train takes about two days.\n\n## Munnar\nTea gardens cover the hills.';
+  const changed = changedSentences(before, after);
+  ok(changed.length === 1 && changed[0] === 'The train takes about two days.', 'only the rewritten sentence is sent back', JSON.stringify(changed));
+  ok(changedSentences(before, before).length === 0, 'an unchanged draft has nothing new to check');
+  ok(changedSentences(before, before.replace('cover the hills.', 'cover  the  hills.')).length === 0, 'extra spaces alone are not a change');
 }
 
 console.log('\nThe rendered page');

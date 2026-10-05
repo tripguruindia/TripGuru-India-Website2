@@ -493,6 +493,15 @@ every Nepal article would have stalled the same way. The Checker's prompt now
 separates "stated as fact and wrong" (critical) from "could not confirm, and
 the article does not claim it" (not critical).
 
+**Only the first check reads the whole article.** The Kerala run (5 Oct) found a
+*different* critical issue on each of four full passes — train running days,
+Munnar temperatures, rainfall, then flights and fares — and never converged.
+Later passes now get the earlier issues plus only the sentences that changed
+(`changedSentences` in `pipeline.mjs`), and confirm the fixes. The guidelines
+also ban schedule-level transport detail (fares, airlines, direct-or-not,
+train names/numbers/days, exact journey times): that was what every pass was
+finding, and it goes stale in weeks anyway.
+
 **It runs on Tanmay's own Claude plan, not a paid API key** — he asked for
 it to be free. The agent drives Claude Code through the Agent SDK
 (`@anthropic-ai/claude-agent-sdk`), signed in with the repository secret

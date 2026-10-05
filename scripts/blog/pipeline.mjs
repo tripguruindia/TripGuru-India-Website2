@@ -124,6 +124,23 @@ export function recordFailure(topicsFile, id, reason, { date, maxAttempts = 2 } 
   return entry;
 }
 
+/**
+ * Sentences in `after` that do not appear in `before`. A re-check after the
+ * first full fact-check reads only these (plus the issues it raised): re-reading
+ * the whole article each pass found a *new* detail to object to every time —
+ * Kerala (5 Oct) went trains, temperature, rainfall, flights over four rounds
+ * and never converged.
+ */
+export function changedSentences(before, after) {
+  const split = (text) =>
+    text
+      .split(/\n+|(?<=[.!?])\s+/)
+      .map((s) => s.replace(/\s+/g, ' ').trim())
+      .filter((s) => s.length > 3);
+  const seen = new Set(split(before));
+  return [...new Set(split(after))].filter((s) => !seen.has(s));
+}
+
 function internalPath(href) {
   if (href.startsWith(BASE_URL)) return href.slice(BASE_URL.length) || '/';
   if (href.startsWith('/')) return href;

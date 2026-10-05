@@ -28,7 +28,7 @@ import { query } from '@anthropic-ai/claude-agent-sdk';
 import {
   BASE_URL, guidelinesPath, internalLinkCatalog, loadPosts, loadSiteData, postsDir, serializePost, slugify, todayIST, topicsPath,
 } from './lib.mjs';
-import { ARTICLE_SCHEMA, TOPIC_LIST_SCHEMA, VERDICT_SCHEMA, pickTopic, recordFailure, toPost, validateArticle } from './pipeline.mjs';
+import { ARTICLE_SCHEMA, TOPIC_LIST_SCHEMA, VERDICT_SCHEMA, changedSentences, pickTopic, recordFailure, toPost, validateArticle } from './pipeline.mjs';
 
 // Unset means the plan's own default model. BLOG_MODEL=opus / sonnet overrides.
 const MODEL = process.env.BLOG_MODEL || undefined;
@@ -188,13 +188,36 @@ function articleForReview(a) {
   ].join('\n\n');
 }
 
-async function check(article, { system }) {
+const SEVERITY_RULES = `Report each problem with: severity, the exact quote, what is wrong, and the corrected wording with the source URL.\n   CRITICAL = something the article STATES AS FACT that is wrong, outdated, or unsupported and risky to a traveller; or a hard-rule break.\n   NOT critical: something you could not confirm (a site blocked you, sources are unclear) that the article does not assert, or that it already sends the reader to the official source for. Travel advisories are handled this way by rule — the article must carry the standard "check the latest advisory from MEA and the Indian Embassy" line and must not claim any advisory status; if that line is present, an advisory is not an issue.\n   MINOR = wording or clarity.\n   For every CRITICAL issue, make the fix something the Writer can apply without research: give the exact corrected wording with its source, or say "delete this sentence". Prefer "delete" or a general, durable wording over a new specific figure.`;
+
+/**
+ * The first check reads the whole draft. Later ones (`previous` set) confirm
+ * the earlier issues were fixed and verify only the sentences that changed —
+ * the rest was already verified, and re-reading it found something new to
+ * object to on every pass, so a draft never converged.
+ */
+async function check(article, { system, previous }) {
+  const checkerSystem = `${system}\n\nYou are TripGuru's fact-checker. You did not write this article and you do not trust it. It will be published with no other human review, so you are the last line of defence against a wrong visa rule, a wrong fee, a made-up price or a broken promise reaching customers.`;
+  if (previous) {
+    const changed = changedSentences(articleForReview(previous.article), articleForReview(article));
+    log(`Checker: re-checking ${previous.issues.length} earlier issue(s) and ${changed.length} changed sentence(s)…`);
+    const report = await researchCall({
+      step: 'fact re-check',
+      system: checkerSystem,
+      prompt: `You already fact-checked an earlier version of this draft in full and raised the issues below. The Writer has revised it. Everything not listed under CHANGED TEXT was verified in that full check — do not re-open it.\n\n<earlier_issues>\n${previous.issues.map((i, n) => `${n + 1}. [${i.severity}] "${i.quote}" — ${i.problem}`).join('\n')}\n</earlier_issues>\n\n<changed_text>\n${changed.map((s) => `- ${s}`).join('\n') || '(none)'}\n</changed_text>\n\n<full_draft_for_context>\n${articleForReview(article)}\n</full_draft_for_context>\n\nDo this:\n1. For each earlier CRITICAL issue, confirm it is now fixed correctly or removed. If it is not, report it again.\n2. Verify every factual claim in CHANGED TEXT with WebSearch and WebFetch, preferring official sources.\n3. Check CHANGED TEXT against the hard rules in the editorial rules.\n4. ${SEVERITY_RULES}\nSay plainly at the end whether the article is safe to publish.`,
+    });
+    return verdictFrom(report);
+  }
   log('Checker: verifying every claim independently…');
   const report = await researchCall({
     step: 'fact check',
-    system: `${system}\n\nYou are TripGuru's fact-checker. You did not write this article and you do not trust it. It will be published with no other human review, so you are the last line of defence against a wrong visa rule, a wrong fee, a made-up price or a broken promise reaching customers.`,
-    prompt: `Fact-check this draft.\n\n<draft>\n${articleForReview(article)}\n</draft>\n\nDo this:\n1. List every claim that could be wrong: rules, documents, visas, permits, fees, prices, distances, travel times, opening seasons, names, dates, transport options.\n2. Verify each one yourself with WebSearch and WebFetch. Prefer official sources (governments, embassies, tourism boards, airports, railways, park authorities). Do not accept a claim just because the draft cites a source — open the source and confirm it says that.\n3. Check the draft against every hard rule in the editorial rules (invented TripGuru prices/offers/reviews/statistics, undated prices, unsafe advice, etc.).\n4. Report each problem with: severity, the exact quote, what is wrong, and the corrected wording with the source URL.\n   CRITICAL = something the article STATES AS FACT that is wrong, outdated, or unsupported and risky to a traveller; or a hard-rule break.\n   NOT critical: something you could not confirm (a site blocked you, sources are unclear) that the article does not assert, or that it already sends the reader to the official source for. Travel advisories are handled this way by rule — the article must carry the standard "check the latest advisory from MEA and the Indian Embassy" line and must not claim any advisory status; if that line is present, an advisory is not an issue.\n   MINOR = wording or clarity.\n   For every CRITICAL issue, make the fix something the Writer can apply without research: give the exact corrected wording with its source, or say "delete this sentence".\nSay plainly at the end whether the article is safe to publish.`,
+    system: checkerSystem,
+    prompt: `Fact-check this draft.\n\n<draft>\n${articleForReview(article)}\n</draft>\n\nDo this:\n1. List every claim that could be wrong: rules, documents, visas, permits, fees, prices, distances, travel times, opening seasons, names, dates, transport options.\n2. Verify each one yourself with WebSearch and WebFetch. Prefer official sources (governments, embassies, tourism boards, airports, railways, park authorities). Do not accept a claim just because the draft cites a source — open the source and confirm it says that.\n3. Check the draft against every hard rule in the editorial rules (invented TripGuru prices/offers/reviews/statistics, undated prices, unsafe advice, etc.).\n4. ${SEVERITY_RULES}\nSay plainly at the end whether the article is safe to publish.`,
   });
+  return verdictFrom(report);
+}
+
+function verdictFrom(report) {
   return jsonCall({
     step: 'verdict',
     schema: VERDICT_SCHEMA,
@@ -279,6 +302,9 @@ async function main() {
   });
 
   let criticalRounds = 0;
+  // The version the Checker last read and what it raised; later checks look
+  // only at what changed since.
+  let lastCheck = null;
   for (let round = 1; ; round++) {
     const problems = validateArticle(article, context);
     const dead = await deadLinks(article.sources.map((s) => s.url));
@@ -293,7 +319,7 @@ async function main() {
       continue;
     }
 
-    const verdict = await check(article, { system: brief({ guidelines, links, images, posts }) });
+    const verdict = await check(article, { system: brief({ guidelines, links, images, posts }), previous: lastCheck });
     const critical = verdict.issues.filter((i) => i.severity === 'critical');
     log(`Checker verdict: ${verdict.verdict} — ${critical.length} critical, ${verdict.issues.length - critical.length} minor.`);
     // Each critical issue, so a draft that stalls (Kerala, 3 Oct: 2 -> 2 -> 2)
@@ -324,6 +350,7 @@ async function main() {
     if (criticalRounds > MAX_CRITICAL_ROUNDS) {
       return reject(topic, topicsFile, `Still had critical problems after ${MAX_CRITICAL_ROUNDS} rounds of corrections: ${critical.map((i) => i.problem).join(' | ')}`);
     }
+    lastCheck = { article, issues: verdict.issues };
     article = await revise(article, verdict.issues, { system, research, step: `checker fixes ${criticalRounds}` });
   }
 
