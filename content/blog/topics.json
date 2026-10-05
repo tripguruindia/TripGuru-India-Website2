@@ -2,13 +2,6 @@
   "_readme": "The Writer takes the first topic below whose status is 'todo', rotating categories. Add a topic by copying a line: id (short, unique), category (nepal | international | india), keyword (what people type into Google), angle (what the article should cover). The agent sets status to 'published' or 'rejected' itself. When every topic is used, it researches and adds new ones on its own.",
   "topics": [
     {
-      "id": "kerala-itinerary-7-days",
-      "category": "india",
-      "keyword": "kerala itinerary 7 days",
-      "angle": "Kochi-Munnar-Thekkady-Alleppey day-by-day, houseboat tips, best season, how to reach from north India.",
-      "status": "todo"
-    },
-    {
       "id": "kathmandu-places-to-visit",
       "category": "nepal",
       "keyword": "places to visit in kathmandu",
@@ -280,6 +273,18 @@
       "lastFailure": {
         "date": "2026-10-03",
         "reason": "Still had critical problems after 2 rounds of corrections: Incorrect launch date for the mandatory nationwide 'All Indonesia' arrival registration system. The official mandatory launch was 1 October 2025, not September 2025 (September saw only limited trial phases at select airports)."
+      }
+    },
+    {
+      "id": "kerala-itinerary-7-days",
+      "category": "india",
+      "keyword": "kerala itinerary 7 days",
+      "angle": "Kochi-Munnar-Thekkady-Alleppey day-by-day, houseboat tips, best season, how to reach from north India.",
+      "status": "todo",
+      "attempts": 1,
+      "lastFailure": {
+        "date": "2026-10-05",
+        "reason": "Still had critical problems after 4 rounds of corrections: Live flight data (ixigo) shows a daily non-stop IndiGo Lucknow–Kochi flight (~4h25m, from ₹16,345), contradicting the claim that no direct flight exists from Lucknow. This false claim is repeated five times across the article (KEY FACTS, QUICK ANSWER, body text, and 'In short' summary). | Live ixigo data for October 2026 shows Gorakhpur–Kochi fares ranging from about ₹11,918 to ₹18,659, meaning the stated floor of ₹8,500 understates real"
       }
     }
   ]
