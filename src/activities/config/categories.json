@@ -1,0 +1,11 @@
+{
+  "_readme": "Product categories, shared by the site and the server. 'live: false' shows a category as Coming soon and refuses to publish products in it. Turning trains or insurance on is changing false to true here once the partner and the legal route are in place.",
+  "categories": [
+    { "id": "tour", "label": "Tours & day trips", "short": "Tours", "slug": "tours", "live": true },
+    { "id": "ticket", "label": "Attraction tickets", "short": "Tickets", "slug": "tickets", "live": true },
+    { "id": "transfer", "label": "Airport transfers & cabs", "short": "Transfers", "slug": "transfers", "live": true },
+    { "id": "esim", "label": "Travel eSIMs", "short": "eSIMs", "slug": "esims", "live": true },
+    { "id": "train", "label": "Trains & rail passes", "short": "Trains", "slug": "trains", "live": false },
+    { "id": "insurance", "label": "Travel insurance", "short": "Insurance", "slug": "insurance", "live": false }
+  ]
+}
