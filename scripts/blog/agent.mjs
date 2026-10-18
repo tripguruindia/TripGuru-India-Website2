@@ -30,8 +30,10 @@ import {
 } from './lib.mjs';
 import { ARTICLE_SCHEMA, TOPIC_LIST_SCHEMA, VERDICT_SCHEMA, changedSentences, pickTopic, recordFailure, toPost, validateArticle } from './pipeline.mjs';
 
-// Unset means the plan's own default model. BLOG_MODEL=opus / sonnet overrides.
-const MODEL = process.env.BLOG_MODEL || undefined;
+// Sonnet 5.5 at low effort by default (Tanmay's call: cheaper on plan usage).
+// BLOG_MODEL / BLOG_EFFORT override; BLOG_EFFORT=default uses the model's own.
+const MODEL = process.env.BLOG_MODEL || 'claude-sonnet-5-5';
+const EFFORT = process.env.BLOG_EFFORT || 'low';
 // Each Checker pass reads the whole article afresh and tends to find a little
 // less: the Bali run (3 Oct) went 2 -> 3 -> 1 critical issues and was rejected
 // with one wrong date left. Four rounds lets a converging draft finish; one
@@ -69,6 +71,7 @@ async function claude({ system, prompt, step, web = false, schema }) {
         cwd: workdir,
         maxTurns: web ? 60 : 6,
         ...(MODEL ? { model: MODEL } : {}),
+        ...(EFFORT && EFFORT !== 'default' ? { effort: EFFORT } : {}),
         ...(schema ? { outputFormat: { type: 'json_schema', schema } } : {}),
       },
     })) {
@@ -91,7 +94,7 @@ const researchCall = ({ system, prompt, step }) => claude({ system, prompt, step
 const jsonCall = ({ system, prompt, schema, step }) => claude({ system, prompt, step, schema });
 
 function costNote() {
-  return `Charged to the Claude plan, not billed (API-equivalent estimate $${usage.estimateUSD.toFixed(2)}, ${usage.turns} turns${MODEL ? `, model ${MODEL}` : ''}).`;
+  return `Charged to the Claude plan, not billed (API-equivalent estimate $${usage.estimateUSD.toFixed(2)}, ${usage.turns} turns${MODEL ? `, model ${MODEL}` : ''}, effort ${EFFORT}).`;
 }
 
 function readJSON(file) {
