@@ -95,7 +95,7 @@ not adjectives. Specific beats superlative.
 - Only link to TripGuru pages that are in the provided list. External links
   only to the sources actually used.
 - No criticism of competitors or other agencies by name.
-- **Write evergreen guides, not news.** Never give the dates of a temporary
+- **Evergreen guides by default; news only as a "News explainer" (see below).** Never give the dates of a temporary
   event — a landslide, a road or border closure, a strike, a flood, a
   festival-week traffic jam. They are out of date within days and easy to get
   wrong. Say instead that such things happen (e.g. "the Mugling–Narayangadh
@@ -113,3 +113,24 @@ not adjectives. Specific beats superlative.
   change often. Give exact figures only from the attraction's own or an
   official tourism website, dated. Otherwise write "open in the daytime —
   check timings locally, as some sites close one day a week".
+
+## News explainers — the one exception to "no news"
+
+About **one article in five** may be a news explainer: a rule or process that
+has just changed and that Indian travellers are searching for (a new visa
+system or fee, an e-visa or entry-form change, a new direct route, a major
+pass or permit rule). Example: "Japan visa for Indians — what is new".
+
+Rules for these, on top of everything above:
+- Cover **only changes confirmed on an official source** (embassy, ministry,
+  immigration or tourism-board website) that the Writer actually opened.
+  Press reports alone are not enough; if the official page cannot be opened,
+  do not write it.
+- Open with "As of <month year>", say what changed and **what the traveller
+  should do**, and end by sending the reader to the official page and to us.
+- Give the rule as it stands, not a story of how it was announced. No
+  speculation about what might change, no political commentary.
+- Still no closures, strikes, disasters or advisory status. Safety/advisory
+  news is never written up.
+- Mark it with category tag `news` in the frontmatter title area only if the
+  schema allows; otherwise write it like any other article.
