@@ -3,9 +3,7 @@
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "redirects": [
-    { "source": "/packages/bali", "destination": "/instagram/bali", "permanent": true },
-    { "source": "/vietnam", "destination": "/instagram/vietnam", "permanent": true },
-    { "source": "/vietnam/", "destination": "/instagram/vietnam", "permanent": true }
+    { "source": "/packages/bali", "destination": "/instagram/bali", "permanent": true }
   ],
   "rewrites": [
     { "source": "/(.*)", "destination": "/index.html" }
