@@ -250,7 +250,7 @@ export const packageLandingPages: PackageLandingPageConfig[] = [
   },
   {
     slug: 'bali',
-    path: '/packages/bali',
+    path: '/instagram/bali',
     name: 'Bali 6N/7D',
     title: 'Bali Tour Package | 6 Nights 7 Days with Private Pool Villa | TripGuru India',
     description:
