@@ -139,7 +139,7 @@ async function main() {
     '/destinations',
     '/privacy-policy',
     // Hand-made offer pages served as static files from public/.
-    '/vietnam',
+    '/instagram/vietnam',
     ...cityPaths,
     ...packagePages.map((page) => page.path),
     ...destinationSlugs.map((slug) => `/destinations/${slug}`),
